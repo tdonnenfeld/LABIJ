@@ -25,14 +25,16 @@ var lobby_rows: VBoxContainer
 var lock_button: Button
 var lobby_data: Dictionary = {}
 var exit_status: Label
-var confirm_exit: Button
-var cancel_exit: Button
 var pending_exit := -1
 var pending_kick := 0
-var kick_confirm: Button
-var kick_cancel: Button
 var notice: Label
 var header: Label
+var confirmation: Control
+var confirmation_title: Label
+var confirmation_message: Label
+var confirmation_action: Button
+var confirmation_callback: Callable
+var confirmation_cancel: Button
 
 func _ready() -> void:
 	theme = Parchment.build(true)
@@ -53,7 +55,7 @@ func _ready() -> void:
 	column.add_theme_constant_override("separation", 8)
 	paper.add_child(column)
 	header = Label.new()
-	header.text = "Expedition journal"
+	header.text = "Expedition menu"
 	Parchment.heading(header, 25)
 	column.add_child(header)
 	var hint := Label.new()
@@ -78,6 +80,7 @@ func _ready() -> void:
 	column.add_child(notice)
 	button(column, "Resume expedition [Esc]", func(): resume.emit())
 	tabs.tab_changed.connect(func(_tab): cancel_binding(); reset_confirmations())
+	build_confirmation()
 	hide()
 
 func button(parent: Control, caption: String, callback: Callable) -> Button:
@@ -219,13 +222,6 @@ func build_lobby() -> void:
 	lock_button = button(content, "Lock new joins", func(): lobby_lock.emit(not lobby_data.get("locked", false)))
 	lobby_rows = VBoxContainer.new()
 	content.add_child(lobby_rows)
-	kick_confirm = button(content, "Confirm removal", func():
-		if pending_kick != 0:
-			kick.emit(pending_kick)
-		reset_confirmations())
-	kick_cancel = button(content, "Cancel removal", reset_confirmations)
-	kick_confirm.hide()
-	kick_cancel.hide()
 
 func update_lobby(data: Dictionary) -> void:
 	if data == lobby_data:
@@ -251,52 +247,116 @@ func update_lobby(data: Dictionary) -> void:
 			var peer: int = member[0]
 			var player_name: String = member[1]
 			button(row, "Remove", func():
-				pending_kick = peer
-				kick_confirm.text = "Remove " + player_name + "?"
-				kick_confirm.show()
-				kick_cancel.show())
-	if not can_manage:
-		pending_kick = 0
-		kick_confirm.hide()
-		kick_cancel.hide()
+				ask_kick(peer, player_name))
+	if pending_kick != 0:
+		var present := false
+		for member in data.get("players", []):
+			if member[0] == pending_kick:
+				present = true
+		if not can_manage or not present:
+			reset_confirmations()
 
 func build_exit() -> void:
 	var content := page("Exit")
+	var title := Label.new()
+	title.text = "Leave the expedition"
+	Parchment.heading(title, 20)
+	content.add_child(title)
 	exit_status = Label.new()
 	exit_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	exit_status.text = "Your current expedition is not saved. You can resume without leaving."
 	content.add_child(exit_status)
 	button(content, "Return to main menu", func(): ask_exit(false))
-	button(content, "Quit LABIJ", func(): ask_exit(true))
-	confirm_exit = button(content, "Confirm", func():
-		if pending_exit >= 0:
-			leave.emit(pending_exit == 1)
-		reset_confirmations())
-	cancel_exit = button(content, "Cancel", reset_confirmations)
-	reset_confirmations()
+	button(content, "Quit game", func(): ask_exit(true))
+
+func build_confirmation() -> void:
+	confirmation = Control.new()
+	add_child(confirmation)
+	confirmation.set_anchors_and_offsets_preset(PRESET_FULL_RECT)
+	confirmation.mouse_filter = MOUSE_FILTER_STOP
+	var shade := ColorRect.new()
+	shade.color = Color("#16100dcc")
+	confirmation.add_child(shade)
+	shade.set_anchors_and_offsets_preset(PRESET_FULL_RECT)
+	shade.mouse_filter = MOUSE_FILTER_STOP
+	var center := CenterContainer.new()
+	confirmation.add_child(center)
+	center.set_anchors_and_offsets_preset(PRESET_FULL_RECT)
+	center.mouse_filter = MOUSE_FILTER_IGNORE
+	var panel := PanelContainer.new()
+	panel.custom_minimum_size.x = 420
+	center.add_child(panel)
+	var column := VBoxContainer.new()
+	column.add_theme_constant_override("separation", 12)
+	panel.add_child(column)
+	confirmation_title = Label.new()
+	Parchment.heading(confirmation_title, 22)
+	column.add_child(confirmation_title)
+	confirmation_message = Label.new()
+	confirmation_message.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	confirmation_message.custom_minimum_size.x = 400
+	column.add_child(confirmation_message)
+	var actions := HBoxContainer.new()
+	column.add_child(actions)
+	confirmation_cancel = button(actions, "Cancel", reset_confirmations)
+	confirmation_cancel.size_flags_horizontal = SIZE_EXPAND_FILL
+	confirmation_action = button(actions, "Leave", accept_confirmation)
+	confirmation_action.size_flags_horizontal = SIZE_EXPAND_FILL
+	confirmation_action.add_theme_stylebox_override("normal", Parchment.frame(Color("#743c31"), Color("#b47a62"), 7.0))
+	confirmation_action.add_theme_stylebox_override("hover", Parchment.frame(Color("#965144"), Color("#dab299"), 7.0))
+	confirmation.hide()
+
+func show_confirmation(title: String, message: String, action: String, callback: Callable) -> void:
+	cancel_binding()
+	confirmation_title.text = title
+	confirmation_message.text = message
+	confirmation_action.text = action
+	confirmation_callback = callback
+	confirmation.show()
+	confirmation.move_to_front()
+	confirmation_cancel.grab_focus()
 
 func ask_exit(quit_game: bool) -> void:
+	reset_confirmations()
 	pending_exit = 1 if quit_game else 0
 	var host: bool = lobby_data.get("admin", false)
-	exit_status.text = "This will end the hosted expedition for everyone." if host else "You will leave the expedition and lose your current run progress."
-	confirm_exit.show()
-	cancel_exit.show()
+	var message := "The hosted expedition will end for everyone." if host else "You will leave the current expedition."
+	message += "\nYour run progress will be lost."
+	show_confirmation("Quit the game?" if quit_game else "Return to main menu?", message, "Quit game" if quit_game else "Leave expedition", func(): leave.emit(quit_game))
+
+func ask_kick(peer: int, player_name: String) -> void:
+	reset_confirmations()
+	pending_kick = peer
+	show_confirmation("Remove companion?", player_name + " will be disconnected from your expedition.", "Remove companion", func(): kick.emit(peer))
+
+func accept_confirmation() -> void:
+	if not confirmation.visible or not confirmation_callback.is_valid():
+		return
+	var callback := confirmation_callback
+	reset_confirmations()
+	callback.call()
+
+func cancel_confirmation() -> bool:
+	if not is_instance_valid(confirmation) or not confirmation.visible:
+		return false
+	reset_confirmations()
+	return true
 
 func reset_confirmations() -> void:
 	pending_exit = -1
 	pending_kick = 0
-	if is_instance_valid(confirm_exit):
-		exit_status.text = "Leaving is permanent for this run. There is no saved expedition."
-		confirm_exit.hide()
-		cancel_exit.hide()
-	if is_instance_valid(kick_confirm):
-		kick_confirm.hide()
-		kick_cancel.hide()
+	confirmation_callback = Callable()
+	if is_instance_valid(confirmation):
+		confirmation.hide()
+		if is_instance_valid(confirmation_cancel):
+			confirmation_cancel.release_focus()
 
 func open_menu(mode: int, muted: bool) -> void:
 	cancel_binding()
 	reset_confirmations()
 	sync_sound(mode, muted)
 	display_controls.refresh()
+	tabs.current_tab = 0
 	show()
 	move_to_front()
 
