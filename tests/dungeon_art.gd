@@ -33,11 +33,18 @@ func run() -> void:
 	check(plain.visual_builder == null and decorated.visual_builder != null, "No art on headless generation")
 	var builder = decorated.visual_builder
 	check(builder.lights.size() == 4 and not builder.torches.is_empty(), "Bounded torch pool")
-	var floor_count := 0
+	var rendered: Dictionary = {}
 	for batch in builder.batches.values():
-		if batch.material == "floor":
-			floor_count += batch.transforms.size()
-	check(floor_count == plain.tiles.size(), "Every cell rendered once")
+		if batch.material in ["floor", "floor1", "floor2", "floor3"]:
+			for transform in batch.transforms:
+				var cell := Vector2i(roundi(transform.origin.x / Dungeon.CELL), roundi(transform.origin.z / Dungeon.CELL))
+				rendered[cell] = int(rendered.get(cell, 0)) + 1
+	var expected := plain.tiles.duplicate()
+	for cell in plain.hidden_tiles:
+		expected[cell] = true
+	check(rendered.size() == expected.size(), "All floor cells rendered")
+	for cell in expected:
+		check(rendered.get(cell, 0) == 1, "Every cell rendered once: %s" % cell)
 	check(ThemeKit.material("floor") == ThemeKit.material("floor"), "Shared material cache")
 	check(ThemeKit.material("wall").albedo_texture.get_width() == 128, "Low resolution texture")
 	builder.update_lighting(builder.torches[0], 0.3)
