@@ -139,7 +139,11 @@ func _ready() -> void:
 		crosshair.hide()
 		inventory_ui = InventoryUI.new()
 		layer.add_child(inventory_ui)
-		inventory_ui.position = Vector2(250, 120)
+		inventory_ui.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+		inventory_ui.offset_left = -350
+		inventory_ui.offset_right = 350
+		inventory_ui.offset_top = -222
+		inventory_ui.offset_bottom = 222
 		inventory_ui.action.connect(_inventory_action)
 		skills_ui = SkillsUI.new()
 		layer.add_child(skills_ui)
@@ -614,6 +618,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		if inventory_ui:
 			skills_ui.hide()
 			inventory_ui.visible = not inventory_ui.visible
+			if inventory_ui.visible:
+				inventory_ui.move_to_front()
 			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if inventory_ui.visible else Input.MOUSE_MODE_CAPTURED
 		return
 	if event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_K:
