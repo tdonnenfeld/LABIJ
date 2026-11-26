@@ -64,7 +64,8 @@ func build(seed_value: int, render_geometry: bool, size: int = 1) -> void:
 		add_child(level)
 		level.position.y = -i * SPACING
 		var room_count := (5 if i >= Routes.MAIN_COUNT else 9) + 3 * (clampi(party_size, 1, 8) - 1)
-		level.generate(seed_value + i * 7919, visual, room_count, i >= Routes.MAIN_COUNT, i)
+		level.generate(seed_value + i * 7919, visual, room_count, i >= Routes.MAIN_COUNT, i, true)
+		level.hide()
 		floors[i] = level
 		if i in [2, 3, Routes.SANCTUARY] and not level.side_rooms.is_empty():
 			var cell: Vector2i = level.side_rooms[0]
@@ -254,6 +255,8 @@ func visible_floor(id: int) -> void:
 	projectiles.visible_floor(id)
 	for key in floors:
 		floors[key].visible = key == id
+		if key == id:
+			floors[key].ensure_visuals()
 	for mob in monsters.values():
 		var rig = mob.node.get_node_or_null("ActorRig")
 		var alive: bool = mob.health > 0
