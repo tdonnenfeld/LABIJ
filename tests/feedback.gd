@@ -72,7 +72,7 @@ func run() -> void:
 				expected = "Damage "
 			"shield":
 				expected = "Damage blocked"
-			"armor":
+			"armor", "helmet", "gloves", "boots", "amulet", "ring":
 				expected = "Damage reduction"
 			"scroll":
 				expected = "Learn a spell permanently."

@@ -147,13 +147,14 @@ func _ready() -> void:
 		inventory_ui = InventoryUI.new()
 		layer.add_child(inventory_ui)
 		inventory_ui.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
-		inventory_ui.offset_left = -350
-		inventory_ui.offset_right = 350
-		inventory_ui.offset_top = -222
-		inventory_ui.offset_bottom = 222
+		inventory_ui.offset_left = -450
+		inventory_ui.offset_right = 450
+		inventory_ui.offset_top = -245
+		inventory_ui.offset_bottom = 245
 		inventory_ui.action.connect(_inventory_action)
 		inventory_ui.moved.connect(_inventory_move)
 		inventory_ui.organize.connect(_inventory_organize)
+		inventory_ui.equip_slot.connect(_inventory_equip_slot)
 		skills_ui = SkillsUI.new()
 		layer.add_child(skills_ui)
 		skills_ui.position = Vector2(160, 24)
@@ -984,7 +985,11 @@ func apply_inventory_move(id: int, index: int, at: Vector2i, split: bool, revisi
 		return
 	var actor = actors[id]
 	if actor.health > 0 and actor.attack_phase == 0 and actor.cast_id == "" and actor.inventory.revision == revision:
-		actor.inventory.move_item(index, at, split)
+		var worn: bool = actor.inventory.is_equipped(index)
+		if actor.inventory.move_item(index, at, split) and worn:
+			actor.empowered = ""
+			if actor.inventory.shield_index < 0:
+				actor.blocking = false
 
 @rpc("any_peer", "call_remote", "reliable")
 func request_item(index: int, drop: bool, revision: int = -1) -> void:
@@ -1325,6 +1330,14 @@ func apply_inventory_organize(id: int, operation: String, index: int, revision: 
 		"sort": actor.inventory.sort_items()
 		"load": actor.inventory.load_belt(index)
 		"unload": actor.inventory.unload_belt()
+		"equip":
+			if actor.inventory.equip(index):
+				actor.empowered = ""
+		"unequip":
+			if actor.inventory.unequip(index):
+				actor.empowered = ""
+				if actor.inventory.shield_index < 0:
+					actor.blocking = false
 
 @rpc("any_peer", "call_remote", "reliable")
 func request_belt(slot: int) -> void:
@@ -1381,3 +1394,22 @@ func publish_trade_views() -> void:
 func receive_trade_view(data: Dictionary) -> void:
 	if not dedicated and active and is_instance_valid(trade_panel):
 		trade_panel.refresh_state(data)
+
+func _inventory_equip_slot(index: int, slot: int, revision: int) -> void:
+	if multiplayer.is_server():
+		apply_inventory_equip_slot(multiplayer.get_unique_id(), index, slot, revision)
+	else:
+		request_inventory_equip_slot.rpc_id(1, index, slot, revision)
+
+@rpc("any_peer", "call_remote", "reliable")
+func request_inventory_equip_slot(index: int, slot: int, revision: int) -> void:
+	if multiplayer.is_server():
+		apply_inventory_equip_slot(multiplayer.get_remote_sender_id(), index, slot, revision)
+
+func apply_inventory_equip_slot(id: int, index: int, slot: int, revision: int) -> void:
+	if not active or world.objective.result != "" or not actors.has(id):
+		return
+	var actor = actors[id]
+	if actor.health > 0 and actor.attack_phase == 0 and actor.cast_id == "" and actor.inventory.revision == revision and slot >= 0:
+		if actor.inventory.equip(index, slot):
+			actor.empowered = ""

@@ -32,7 +32,7 @@ func run() -> void:
 	inventory.add("sword:keen")
 	satchel.refresh(inventory.state())
 	check(satchel.grid.model.used_cells() == inventory.used_cells() and satchel.selection == 0, "Spatial grid and initial selection")
-	check(satchel.use_button.disabled and satchel.drop_button.disabled, "Equipped protected")
+	check(satchel.use_button.text == "Unequip" and satchel.drop_button.disabled, "Equipped protected")
 	satchel.send(true)
 	check(actions.is_empty(), "Cannot request dropping equipped gear")
 	satchel.select_item(2)
