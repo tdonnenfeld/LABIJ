@@ -146,6 +146,8 @@ func equipped_slot(index: int) -> int:
 func equip(index: int, slot: int = -1) -> bool:
 	if index < 0 or index >= items.size():
 		return false
+	if items[index].ends_with(":unknown"):
+		return false
 	var kind: String = Catalog.get_item(items[index]).kind
 	if slot == -1:
 		slot = SLOT_KINDS.find(kind)
@@ -357,3 +359,20 @@ func consume_belt(slot: int) -> bool:
 	belt -= 1
 	revision += 1
 	return true
+
+func identify_item(index: int) -> bool:
+	if index < 0 or index >= items.size() or not items[index].ends_with(":unknown"):
+		return false
+	items[index] = Catalog.identify(items[index])
+	revision += 1
+	return true
+
+func set_pieces(set_id: String) -> int:
+	var seen: Dictionary = {}
+	for slot in range(SLOT_KINDS.size()):
+		var index := slot_index(slot)
+		if index >= 0:
+			var id := items[index]
+			if Catalog.set_name(id) == set_id:
+				seen[id] = true
+	return seen.size()
