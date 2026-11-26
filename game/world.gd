@@ -103,7 +103,7 @@ func build(seed_value: int, render_geometry: bool, size: int = 1) -> void:
 					continue
 				add_fixture(i * 10 + n, i, at, ["chest", "crate", "inscription"][n - 1])
 		if not level.doors.is_empty():
-			add_fixture(10000 + i * 10, i, level.position + Vector3(0.9, 0, 0.9), "key")
+			add_fixture(10000 + i * 10, i, level.position + Vector3(2.3, 0, 2.0), "key")
 			if level.rooms.size() > 3:
 				var room: Vector2i = level.rooms[1]
 				add_fixture(10001 + i * 10, i, level.position + Vector3(room.x * Dungeon.CELL - 1.0, 0, room.y * Dungeon.CELL - 1.0), "lever")
@@ -533,7 +533,7 @@ func move_monster(mob: Dictionary, at: Vector3, delta: float, speed: float) -> v
 	var next: Vector2i = mob.path_next
 	if mob.kind != "rat":
 		var door = level.doors.get(next, level.doors.get(start))
-		if door and not door.opened and not door.locked and horizontal_distance(node.global_position, door.global_position) <= 1.2:
+		if door and not door.opened and not door.locked and not door.trapped and horizontal_distance(node.global_position, door.global_position) <= 1.2:
 			door.set_open(true)
 			sound(mob.floor, door.global_position, 5.0, "impact")
 	var destination := Vector3(next.x * Dungeon.CELL, node.position.y, next.y * Dungeon.CELL)
@@ -1125,6 +1125,10 @@ func objective_hint(actor, peer: int) -> String:
 	for fixture in fixtures.values():
 		if not fixture.used and fixture.floor == actor.floor_id and horizontal_distance(actor.position, fixture.at) <= 1.7:
 			return {"crate":"Attack: Break crate", "chest":"E: Open chest", "key":"E: Take floor key", "lever":"E: Pull lever", "seal":"E: Activate seal", "sealed_chest":"E: Open sealed cache", "inscription":"E: Read inscription"}.get(fixture.kind, "E: Interact")
+	if actor.skills.bonus("disarm") > 0:
+		for trap in hazards.traps.values():
+			if trap.floor == actor.floor_id and trap.phase < 2 and horizontal_distance(actor.position, trap.node.position) <= 1.8:
+				return "E: Disarm pressure plate"
 	if objective.carrier == peer:
 		return "G: Drop Jewel for teammate"
 	return ""
