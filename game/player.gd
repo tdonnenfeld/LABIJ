@@ -247,12 +247,18 @@ func take_damage(amount: float, source: Vector3, magical: bool = false, source_n
 		collision_layer = 0
 		collision_mask = 0
 
-func update_hands(delta: float, motion: float = 1.0) -> void:
+func update_hands(delta: float, motion: float = 1.0, remote: bool = false) -> void:
+	if remote:
+		attack_timer = maxf(0.0, attack_timer - delta)
+		cast_timer = maxf(0.0, cast_timer - delta)
+	var weapon = Catalog.get_item(inventory.weapon)
+	var duration: float = (weapon.windup if attack_phase == 1 else weapon.recovery) * attack_speed_factor()
+	var progress := clampf(1.0 - attack_timer / maxf(duration, 0.001), 0.0, 1.0)
 	if hands:
 		hands.animate(self, delta, motion)
 	if character_rig:
 		character_rig.equip_inventory(inventory)
-		character_rig.animate(delta, health > 0.0, attack_phase, false, hurt_timer > 0, blocking, cast_id != "")
+		character_rig.animate(delta, health > 0.0, 1 if bow_drawing else attack_phase, false, hurt_timer > 0, blocking, cast_id != "", 0.0, bow_charge if bow_drawing else progress)
 
 func use_item(index: int) -> bool:
 	if health <= 0 or attack_phase != 0 or cast_id != "" or index < 0 or index >= inventory.items.size():
