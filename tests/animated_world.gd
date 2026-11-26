@@ -72,6 +72,22 @@ func run() -> void:
 	companion.update_hands(0.1)
 	check(companion.character_rig.right_item != null and companion.character_rig.worn.size() == 1, "Companion gear visible")
 	companion.free()
+	var dungeon := Dungeon.new()
+	root.add_child(dungeon)
+	dungeon.generate(123, true, 9, false, 2)
+	var builder = dungeon.visual_builder
+	check(builder != null and builder.room_styles.size() > 0, "Room-specific visual styles")
+	var material_ids := {}
+	for batch in builder.batches.values():
+		material_ids[batch.material] = true
+	check(material_ids.has("floor") and material_ids.has("floor1") and material_ids.has("wall1"), "Varied tile materials")
+	var layout := dungeon.tiles.duplicate()
+	var plain := Dungeon.new()
+	root.add_child(plain)
+	plain.generate(123, false, 9, false, 2)
+	check(plain.tiles == layout and plain.corridor_blocks == dungeon.corridor_blocks, "Visual variety preserves collision layout")
+	dungeon.free()
+	plain.free()
 	var world := World.new()
 	root.add_child(world)
 	world.build(123, false, 1)

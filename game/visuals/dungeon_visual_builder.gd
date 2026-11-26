@@ -10,6 +10,8 @@ var torches: Array[Vector3] = []
 var lights: Array[OmniLight3D] = []
 var light_timer := 0.0
 var theme_id := 0
+var room_styles: Dictionary = {}
+const ROOM_STYLES := ["crypt", "storeroom", "library", "shrine", "prison", "cistern", "armory", "ruins"]
 const THEMES := [Color("#ffffff"), Color("#a3a09b"), Color("#7598a4"), Color("#b8a587"), Color("#8f9ca6"), Color("#b99580"), Color("#c5b69a")]
 
 func box(id: String, at: Vector3, size: Vector3, angle: float = 0.0) -> void:
@@ -20,8 +22,14 @@ func box(id: String, at: Vector3, size: Vector3, angle: float = 0.0) -> void:
 	var basis := Basis(Vector3.UP, angle).scaled_local(size)
 	batches[key].transforms.append(Transform3D(basis, at))
 
-func build(tiles: Dictionary, seed_value: int, corridor_blocks: Array = [], floor_theme: int = 0) -> void:
+func build(tiles: Dictionary, seed_value: int, corridor_blocks: Array = [], floor_theme: int = 0, room_bounds: Array = []) -> void:
 	theme_id = clampi(floor_theme, 0, THEMES.size() - 1)
+	for i in range(room_bounds.size()):
+		var bounds: Rect2i = room_bounds[i]
+		var style: String = ROOM_STYLES[posmod(seed_value + i * 13 + theme_id * 3, ROOM_STYLES.size())]
+		for y in range(bounds.position.y, bounds.end.y):
+			for x in range(bounds.position.x, bounds.end.x):
+				room_styles[Vector2i(x, y)] = style
 	var narrowed: Dictionary = {}
 	for block in corridor_blocks:
 		var at: Vector3 = block[0]
@@ -29,7 +37,12 @@ func build(tiles: Dictionary, seed_value: int, corridor_blocks: Array = [], floo
 	for key in tiles:
 		var cell: Vector2i = key
 		var origin := Vector3(cell.x * CELL, 0, cell.y * CELL)
-		box("floor", origin + Vector3.DOWN * 0.15, Vector3(3, 0.3, 3))
+		var style: String = room_styles.get(cell, "corridor")
+		var tile_variant := posmod(cell.x * 73 + cell.y * 151 + seed_value, 11)
+		var floor_id := "floor" if tile_variant < 5 else "floor%d" % (1 + tile_variant % 3)
+		box(floor_id, origin + Vector3.DOWN * 0.15, Vector3(3, 0.3, 3))
+		if not narrowed.has(cell):
+			decorate_floor(origin, cell, style, seed_value)
 		box("ceiling", origin + Vector3.UP * 3.15, Vector3(3, 0.3, 3))
 		for side in SIDES:
 			if tiles.has(cell + side):
@@ -37,17 +50,22 @@ func build(tiles: Dictionary, seed_value: int, corridor_blocks: Array = [], floo
 			var normal := Vector3(side.x, 0, side.y)
 			var angle := PI / 2.0 if side.x != 0 else 0.0
 			var at := origin + normal * 1.5
-			box("wall", at + Vector3.UP * 1.5, Vector3(3, 3, 0.2), angle)
+			var wall_variant := posmod(cell.x * 31 + cell.y * 79 + side.x * 11 + side.y * 17 + seed_value, 9)
+			var wall_id := "wall" if wall_variant < 5 else "wall%d" % (1 + wall_variant % 3)
+			box(wall_id, at + Vector3.UP * 1.5, Vector3(3, 3, 0.2), angle)
 			box("trim", at - normal * 0.025 + Vector3.UP * 0.12, Vector3(3, 0.24, 0.22), angle)
 			box("trim", at - normal * 0.025 + Vector3.UP * 2.88, Vector3(3, 0.24, 0.22), angle)
 			var hash_value := posmod(cell.x * 73 + cell.y * 151 + side.x * 17 + side.y * 31 + seed_value, 19)
 			if hash_value == 0 and not narrowed.has(cell):
 				add_torch(at, normal, angle)
+			if not narrowed.has(cell) and abs(cell.x) + abs(cell.y) > 2:
+				decorate_wall(at, normal, angle, style, hash_value)
 			if hash_value in [4, 11] and not narrowed.has(cell):
 				box("wall", at - normal * 0.04 + Vector3.UP * 1.5, Vector3(0.34, 3.0, 0.20), angle)
 		add_arch(tiles, cell, origin)
 		if not narrowed.has(cell):
 			decorate_cell(tiles, cell, origin, seed_value)
+			decorate_corner(tiles, cell, origin, style, seed_value)
 			decorate_theme(tiles, cell, origin, seed_value)
 	for block in corridor_blocks:
 		box("wall", block[0], block[1])
@@ -94,7 +112,7 @@ func flush_batches() -> void:
 	for batch in batches.values():
 		var mesh := BoxMesh.new()
 		mesh.size = Vector3.ONE
-		mesh.material = StoneKit.tinted(batch.material, THEMES[theme_id]) if batch.material in ["floor", "wall", "ceiling", "trim"] else StoneKit.material(batch.material)
+		mesh.material = StoneKit.tinted(batch.material, THEMES[theme_id]) if (batch.material.begins_with("floor") or batch.material.begins_with("wall") or batch.material in ["ceiling", "trim"]) else StoneKit.material(batch.material)
 		var multimesh := MultiMesh.new()
 		multimesh.transform_format = MultiMesh.TRANSFORM_3D
 		multimesh.mesh = mesh
@@ -203,3 +221,118 @@ func decorate_theme(tiles: Dictionary, cell: Vector2i, origin: Vector3, seed_val
 		elif theme_id in [3, 6]:
 			box("gold", at + Vector3.UP * 1.75, Vector3(0.32, 0.32, 0.32), PI / 4.0)
 		break
+
+func decorate_floor(origin: Vector3, cell: Vector2i, style: String, seed_value: int) -> void:
+	var roll := posmod(cell.x * 41 + cell.y * 67 + seed_value, 17)
+	if style in ["shrine", "library", "armory"]:
+		for side in [-1.0, 1.0]:
+			box("grout", origin + Vector3(side * 1.33, 0.009, 0), Vector3(0.035, 0.012, 2.7))
+			box("marble", origin + Vector3(side * 1.22, 0.008, 0), Vector3(0.13, 0.012, 2.7))
+		if roll < 3:
+			box("gold", origin + Vector3.UP * 0.014, Vector3(0.45, 0.015, 0.45), PI / 4.0)
+			box("marble", origin + Vector3.UP * 0.025, Vector3(0.24, 0.015, 0.24), PI / 4.0)
+	elif style in ["cistern", "ruins"] and roll < 6:
+		for i in range(3):
+			var offset := Vector3(-0.95 + i * 0.18, 0.014, 0.8 + (i % 2) * 0.12)
+			box("moss", origin + offset, Vector3(0.25, 0.02, 0.18), float(i))
+	elif style == "crypt" and roll < 4:
+		for i in range(3):
+			box("bone", origin + Vector3(0.95 + i * 0.12, 0.035, -1.02 + i * 0.08), Vector3(0.055, 0.06, 0.24), float(i) * 1.3)
+	if roll == 8:
+		for i in range(3):
+			box("rubble", origin + Vector3(-1.0 + i * 0.12, 0.04, 1.02), Vector3(0.17, 0.08, 0.13), float(i))
+
+func decorate_wall(at: Vector3, normal: Vector3, angle: float, style: String, roll: int) -> void:
+	var cross := Vector3(normal.z, 0, -normal.x)
+	var base := at - normal * 0.19
+	if roll in [0, 4, 11]:
+		return
+	if style == "library" and roll < 7:
+		for y in [0.55, 1.05, 1.55, 2.05]:
+			box("wood", base + Vector3.UP * y, Vector3(1.45, 0.09, 0.18), angle)
+			for i in range(7):
+				var color := ["book", "cloth", "cloth_blue", "paper"][posmod(i + int(y * 10) + roll, 4)]
+				box(color, base + cross * (-0.57 + i * 0.19) + Vector3.UP * (y + 0.19), Vector3(0.13, 0.29 + 0.04 * (i % 2), 0.14), angle)
+		for sign_value in [-1.0, 1.0]:
+			box("wood", base + cross * sign_value * 0.76 + Vector3.UP * 1.3, Vector3(0.10, 1.65, 0.2), angle)
+	elif style == "armory" and roll < 8:
+		box("wood", base + Vector3.UP * 1.45, Vector3(1.5, 0.16, 0.16), angle)
+		for i in range(4):
+			var x := cross * (-0.55 + i * 0.36)
+			box("wood", base + x + Vector3.UP * 1.35, Vector3(0.07, 1.45, 0.07), angle)
+			box("iron", base + x + Vector3.UP * 2.1, Vector3(0.12, 0.27, 0.09), angle)
+	elif style == "prison" and roll < 9:
+		box("dark", base + Vector3.UP * 1.55, Vector3(1.55, 1.75, 0.07), angle)
+		for i in range(7):
+			box("iron", base - normal * 0.05 + cross * (-0.69 + i * 0.23) + Vector3.UP * 1.55, Vector3(0.06, 1.78, 0.09), angle)
+		for y in [0.7, 2.4]:
+			box("iron", base - normal * 0.05 + Vector3.UP * y, Vector3(1.58, 0.09, 0.10), angle)
+	elif style == "shrine" and roll < 9:
+		box("trim", base + Vector3.UP * 1.65, Vector3(0.88, 1.2, 0.15), angle)
+		box("marble", base - normal * 0.07 + Vector3.UP * 1.65, Vector3(0.65, 0.95, 0.10), angle)
+		box("gold", base - normal * 0.13 + Vector3.UP * 1.65, Vector3(0.35, 0.35, 0.10), angle + PI / 4.0)
+	elif style in ["crypt", "ruins"] and roll < 8:
+		box("dark", base + Vector3.UP * 1.35, Vector3(0.95, 1.6, 0.09), angle)
+		for y in [0.52, 2.18]:
+			box("trim", base - normal * 0.06 + Vector3.UP * y, Vector3(1.13, 0.16, 0.19), angle)
+		box("bone", base - normal * 0.09 + Vector3.UP * 1.72, Vector3(0.24, 0.23, 0.14), angle)
+		for sign_value in [-1.0, 1.0]:
+			box("bone", base - normal * 0.09 + cross * sign_value * 0.12 + Vector3.UP * 1.35, Vector3(0.08, 0.38, 0.09), angle)
+	elif style == "cistern" and roll < 9:
+		for i in range(4):
+			box("moss", base + cross * (-0.7 + i * 0.4) + Vector3.UP * (0.35 + (i % 2) * 0.23), Vector3(0.33, 0.55, 0.065), angle)
+		box("iron", base + Vector3.UP * 0.45, Vector3(0.46, 0.48, 0.09), angle)
+		for i in range(3):
+			box("dark", base - normal * 0.06 + cross * (-0.14 + i * 0.14) + Vector3.UP * 0.45, Vector3(0.065, 0.34, 0.07), angle)
+	elif style == "storeroom" and roll < 8:
+		for y in [0.65, 1.25]:
+			box("wood", base + Vector3.UP * y, Vector3(1.25, 0.10, 0.19), angle)
+			for i in range(3):
+				var offset := cross * (-0.38 + i * 0.38)
+				box("clay", base + offset + Vector3.UP * (y + 0.19), Vector3(0.22, 0.28, 0.17), angle)
+				box("clay", base + offset + Vector3.UP * (y + 0.36), Vector3(0.15, 0.07, 0.14), angle)
+	elif roll in [9, 13]:
+		box("wood", base + Vector3.UP * 2.35, Vector3(0.85, 0.09, 0.14), angle)
+		box("cloth" if theme_id % 2 == 0 else "cloth_blue", base + Vector3.UP * 1.83, Vector3(0.65, 1.0, 0.08), angle)
+		box("gold", base - normal * 0.05 + Vector3.UP * 1.9, Vector3(0.22, 0.22, 0.04), angle)
+
+func decorate_corner(tiles: Dictionary, cell: Vector2i, origin: Vector3, style: String, seed_value: int) -> void:
+	if abs(cell.x) + abs(cell.y) <= 2:
+		return
+	var walls: Array[Vector2i] = []
+	for side in SIDES:
+		if not tiles.has(cell + side):
+			walls.append(side)
+	if walls.size() != 2 or walls[0] == -walls[1]:
+		return
+	var roll := posmod(cell.x * 97 + cell.y * 53 + seed_value, 11)
+	if roll < 6:
+		return
+	var n := Vector3(walls[0].x, 0, walls[0].y)
+	var cross := Vector3(walls[1].x, 0, walls[1].y)
+	var at := origin + (n + cross) * 1.12
+	match style:
+		"crypt":
+			box("trim", at + Vector3.UP * 0.18, Vector3(0.52, 0.36, 0.52))
+			box("bone", at + Vector3.UP * 0.43, Vector3(0.21, 0.19, 0.19))
+			for side in [-1.0, 1.0]:
+				box("dark", at + cross * side * 0.05 - n * 0.10 + Vector3.UP * 0.46, Vector3(0.042, 0.045, 0.042))
+		"storeroom", "library":
+			for j in range(3):
+				box("wood", at + Vector3.UP * (0.12 + j * 0.16), Vector3(0.44, 0.15, 0.44), float(j) * 0.12)
+				box("iron", at + Vector3.UP * (0.19 + j * 0.16), Vector3(0.46, 0.035, 0.46))
+		"shrine":
+			box("marble", at + Vector3.UP * 0.25, Vector3(0.44, 0.5, 0.44))
+			box("gold", at + Vector3.UP * 0.53, Vector3(0.49, 0.08, 0.49))
+			for j in range(3):
+				box("paper", at + cross * (j - 1) * 0.11 + Vector3.UP * 0.66, Vector3(0.065, 0.18, 0.065))
+				box("ember", at + cross * (j - 1) * 0.11 + Vector3.UP * 0.78, Vector3(0.045, 0.08, 0.045))
+		"cistern":
+			for j in range(3):
+				box("crystal", at + cross * (j - 1) * 0.13 + Vector3.UP * (0.18 + j * 0.065), Vector3(0.10, 0.36 + j * 0.13, 0.10), float(j) * 0.7)
+		"armory":
+			box("wood", at + Vector3.UP * 0.38, Vector3(0.46, 0.76, 0.46))
+			box("iron", at - n * 0.24 + Vector3.UP * 0.52, Vector3(0.12, 0.42, 0.33))
+		_:
+			for j in range(4):
+				box("rubble", at - n * j * 0.07 + Vector3.UP * (0.07 + j * 0.045), Vector3(0.25, 0.13, 0.22), float(j) * 0.9)

@@ -317,4 +317,8 @@ func ensure_visuals() -> void:
 		render_tiles[cell] = true
 	visual_builder = VisualBuilder.new()
 	add_child(visual_builder)
-	visual_builder.build(render_tiles, visual_seed, corridor_blocks, visual_theme)
+	var styles: Array = room_bounds.duplicate()
+	styles.append_array(side_bounds)
+	if not hidden_tiles.is_empty():
+		styles.append(Rect2i(hidden_room - Vector2i.ONE, Vector2i(3, 3)))
+	visual_builder.build(render_tiles, visual_seed, corridor_blocks, visual_theme, styles)
