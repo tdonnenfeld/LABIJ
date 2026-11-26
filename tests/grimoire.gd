@@ -29,6 +29,7 @@ func run() -> void:
 	for domain in range(Skills.TITLES.size()):
 		ui.select_domain(domain)
 		await process_frame
+		await process_frame
 		var tree = ui.tree
 		var nodes: Array = tree.buttons.values()
 		for a in range(nodes.size()):
@@ -36,7 +37,9 @@ func run() -> void:
 			check(Rect2(Vector2.ZERO, tree.custom_minimum_size).encloses(area), "Node contained in scroll canvas")
 			for b in range(a + 1, nodes.size()):
 				check(not area.intersects(nodes[b].get_rect()), "Talent nodes do not overlap")
-		check(ui.size.y <= 500.0, "Grimoire fits logical viewport")
+		check(ui.size.y <= 500.0, "Grimoire fits logical viewport: %s" % ui.size)
+		var content: Control = ui.get_node("Control/GrimoireContent") if ui.has_node("Control/GrimoireContent") else ui.get_child(0).get_child(0)
+		check(content.size.y <= ui.size.y - 24.0 + 1.0, "Content fits page: %s / %s" % [content.size, ui.size])
 	ui.queue_free()
 	var banner := Banner.new()
 	root.add_child(banner)

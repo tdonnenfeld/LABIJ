@@ -27,9 +27,15 @@ func _ready() -> void:
 	theme = Parchment.build(true)
 	add_theme_stylebox_override("panel", Parchment.parchment(12.0))
 	mouse_filter = Control.MOUSE_FILTER_STOP
+	var viewport := Control.new()
+	viewport.clip_contents = true
+	viewport.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(viewport)
 	var column := VBoxContainer.new()
+	column.name = "GrimoireContent"
 	column.add_theme_constant_override("separation", 7)
-	add_child(column)
+	viewport.add_child(column)
+	column.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	var top := HBoxContainer.new()
 	column.add_child(top)
 	var title := Label.new()
@@ -55,7 +61,7 @@ func _ready() -> void:
 	controls.add_child(priority)
 	priority.item_selected.connect(func(i): priority_changed.emit(domain, i))
 	heading = Label.new()
-	heading.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	heading.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	column.add_child(heading)
 	var spread := HBoxContainer.new()
 	spread.add_theme_constant_override("separation", 12)

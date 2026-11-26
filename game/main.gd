@@ -558,6 +558,7 @@ func _failed() -> void:
 		inventory_ui.hide()
 		skills_ui.hide()
 		xp_label.hide()
+		level_up.reset()
 		objective_label.hide()
 		log_panel.hide()
 		log_panel.reset()
