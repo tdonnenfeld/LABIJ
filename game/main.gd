@@ -14,6 +14,8 @@ const World = preload("res://game/world.gd")
 const Player = preload("res://game/player.gd")
 const InventoryUI = preload("res://game/items/inventory_ui.gd")
 const SkillsUI = preload("res://game/progression/skills_ui.gd")
+const LevelUp = preload("res://game/ui/level_up.gd")
+var level_up: PanelContainer
 var skills_ui: PanelContainer
 var talent_requests: Dictionary = {}
 var xp_label: Label
@@ -165,7 +167,12 @@ func _ready() -> void:
 		inventory_ui.equip_slot.connect(_inventory_equip_slot)
 		skills_ui = SkillsUI.new()
 		layer.add_child(skills_ui)
-		skills_ui.position = Vector2(160, 24)
+		skills_ui.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		skills_ui.offset_left = 20
+		skills_ui.offset_top = 20
+		skills_ui.offset_right = -20
+		skills_ui.offset_bottom = -20
+		skills_ui.closed.connect(close_skills)
 		skills_ui.priority_changed.connect(_skill_action)
 		skills_ui.talent_action.connect(_talent_action)
 		xp_label = Label.new()
@@ -310,6 +317,13 @@ func _ready() -> void:
 		escape_menu.kick.connect(kick_companion)
 		escape_menu.leave.connect(leave_expedition)
 		escape_menu.settings_changed.connect(refresh_binding_hints)
+		level_up = LevelUp.new()
+		layer.add_child(level_up)
+		level_up.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
+		level_up.offset_left = -200
+		level_up.offset_right = 200
+		level_up.offset_top = 96
+		level_up.offset_bottom = 192
 		refresh_binding_hints()
 
 func make_bar(layer: Control, at: Vector2, color: Color, caption: String) -> ProgressBar:
@@ -587,6 +601,8 @@ func _spawn(id: int, profile: Array = ["", 0, 0]) -> void:
 	if multiplayer.is_server() and player_name.is_empty():
 		player_name = "Player %d" % next_party_number
 	actor.configure_profile(player_name, int(profile[1]), int(profile[2]))
+	if not dedicated and id == multiplayer.get_unique_id():
+		level_up.reset(actor.skills.character_level())
 	if multiplayer.is_server():
 		party_names[id] = actor.display_name
 		next_party_number += 1
@@ -713,6 +729,11 @@ func _unhandled_input(event: InputEvent) -> void:
 		close_trade()
 		inventory_ui.hide()
 		skills_ui.visible = not skills_ui.visible
+		if skills_ui.visible:
+			skills_ui.move_to_front()
+			var id := multiplayer.get_unique_id()
+			if actors.has(id):
+				skills_ui.refresh(actors[id].skills.state(), world.safe(actors[id]))
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if skills_ui.visible else Input.MOUSE_MODE_CAPTURED
 		return
 	if trade_panel.visible or skills_ui.visible:
@@ -880,7 +901,9 @@ func _physics_process(delta: float) -> void:
 		if hp_bar:
 			hp_bar.max_value = local.max_health()
 			hp_bar.value = local.health
-			xp_label.text = "Level %d · %d XP" % [local.skills.character_level(), local.skills.total_xp]
+			var character_level: int = local.skills.character_level()
+			xp_label.text = "Level %d · %d XP" % [character_level, local.skills.total_xp]
+			level_up.observe(character_level, settings.label("talents"))
 			for i in range(3):
 				var ability: String = local.skills.slots[i]
 				var node: Array = local.Skills.Talents.find(ability)
@@ -1195,6 +1218,7 @@ func show_result() -> void:
 	if dedicated or result_shown:
 		return
 	result_shown = true
+	level_up.reset()
 	if is_instance_valid(escape_menu):
 		escape_menu.close_menu()
 	voice_chat.reset()
@@ -1512,6 +1536,10 @@ func refresh_binding_hints() -> void:
 		potion_belt.slots[i].text = settings.label("belt%d" % (i + 1))
 		potion_belt.slots[i].tooltip_text = "Potion belt [%s]" % potion_belt.slots[i].text
 	inventory_ui.rotate_button.text = "Rotate [%s]" % settings.label("rotate")
+	var labels: Array[String] = []
+	for i in range(3):
+		labels.append(settings.label("ability%d" % (i + 1)))
+	skills_ui.set_slot_keys(labels)
 
 func lobby_admin() -> bool:
 	return active and not dedicated and multiplayer.is_server() and multiplayer.has_multiplayer_peer() and multiplayer.multiplayer_peer is ENetMultiplayerPeer
@@ -1559,3 +1587,8 @@ func leave_expedition(quit_game: bool) -> void:
 	_failed()
 	if quit_game:
 		get_tree().quit()
+
+func close_skills() -> void:
+	skills_ui.hide()
+	if active and world.objective.result == "":
+		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
