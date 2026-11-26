@@ -25,7 +25,7 @@ func box(id: String, at: Vector3, size: Vector3, angle: float = 0.0) -> void:
 	var basis := Basis(Vector3.UP, angle).scaled_local(size)
 	batches[key].transforms.append(Transform3D(basis, at))
 
-func build(tiles: Dictionary, seed_value: int, corridor_blocks: Array = [], floor_theme: int = 0, room_bounds: Array = [], ceiling_heights: Dictionary = {}, bridge_cells: Dictionary = {}, arena_cells: Dictionary = {}, architecture: Array = []) -> void:
+func build(tiles: Dictionary, seed_value: int, corridor_blocks: Array = [], floor_theme: int = 0, room_bounds: Array = [], ceiling_heights: Dictionary = {}, bridge_cells: Dictionary = {}, arena_cells: Dictionary = {}, architecture: Array = [], gate_cells: Dictionary = {}) -> void:
 	theme_id = clampi(floor_theme, 0, THEMES.size() - 1)
 	for i in range(room_bounds.size()):
 		var bounds: Rect2i = room_bounds[i]
@@ -52,6 +52,8 @@ func build(tiles: Dictionary, seed_value: int, corridor_blocks: Array = [], floo
 			vault(origin, height)
 		if bridge_cells.has(cell):
 			bridge(origin, bridge_cells[cell])
+		if gate_cells.has(cell):
+			open_gate(origin, gate_cells[cell])
 		if arena_cells.has(cell):
 			arena_tile(origin, cell, seed_value)
 		for side in SIDES:
@@ -423,3 +425,22 @@ func decorate_special(at: Vector3, normal: Vector3, angle: float, style: String,
 		water.position = base + Vector3.UP * 1.25
 		Props.block(water, Vector3.ZERO, Vector3(0.58, 2.45, 0.075), "water").rotation.y = angle
 		moving_props.append({"node": water, "kind": "water", "phase": at.x})
+
+func open_gate(origin: Vector3, data: Dictionary) -> void:
+	var axis: Vector2i = data.axis
+	var across := Vector3(-axis.y, 0, axis.x)
+	var angle := PI / 2.0 if axis.x != 0 else 0.0
+	var width: float = data.width
+	var material := "wood" if data.kind == "door" else "iron"
+	for side in [-1.0, 1.0]:
+		box("trim", origin + across * side * (width * 0.5 + 0.07) + Vector3.UP * 1.45, Vector3(0.14, 2.9, 0.22), angle)
+	box(material, origin + Vector3.UP * 2.80, Vector3(width, 0.18, 0.24), angle)
+	if data.kind == "portcullis":
+		for i in range(7):
+			box("iron", origin + across * (-width * 0.45 + width * 0.15 * i) + Vector3.UP * 2.66, Vector3(0.055, 0.48, 0.055))
+	elif data.kind == "gate":
+		for side in [-1.0, 1.0]:
+			box("iron", origin + across * side * (width * 0.5 + 0.03) + Vector3.UP * 1.25, Vector3(0.06, 2.5, 0.4), angle)
+	else:
+		for side in [-1.0, 1.0]:
+			box("wood", origin + across * side * (width * 0.5 + 0.04) + Vector3.UP * 1.2, Vector3(0.065, 2.4, 0.6), angle)
