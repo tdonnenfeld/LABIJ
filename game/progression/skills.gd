@@ -1,16 +1,16 @@
 extends RefCounted
 
 const Talents = preload("res://game/progression/talents.gd")
-const TITLES := ["Fighting", "Long Blades", "Axes", "Polearms", "Shields", "Dodging", "Fire Magic", "Ice Magic", "Air Magic", "Earth Magic", "Archery"]
+const TITLES := ["Fighting", "Long Blades", "Axes", "Polearms", "Shields", "Dodging", "Fire Magic", "Ice Magic", "Air Magic", "Earth Magic", "Archery", "Stealth"]
 const SLOT_COUNT := 3
 const Spells = preload("res://game/combat/spells.gd")
 const SCROLL_REQUIREMENTS := {"firebolt": 1, "frostbolt": 1, "spark": 1, "stonebolt": 1, "fireball": 2, "freeze": 2, "thunder": 2, "boulder": 2}
 signal usage_xp(domain: int, amount: float)
 var allocating := false
 var total_xp := 0
-var xp: Array[float] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-var wallet: Array[float] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-var priorities: Array[int] = [1, 2, 0, 0, 1, 0, 0, 0, 0, 0, 0]
+var xp: Array[float] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+var wallet: Array[float] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+var priorities: Array[int] = [1, 2, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0]
 var learned: Array[String] = []
 var discovered: Array[String] = []
 var slots: Array[String] = ["", "", ""]

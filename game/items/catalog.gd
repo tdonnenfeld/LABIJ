@@ -24,7 +24,8 @@ const ITEMS := {
 	"ember_staff": preload("res://content/items/ember_staff.tres"),
 	"ward_mail": preload("res://content/items/ward_mail.tres"),
 	"warden_shield": preload("res://content/items/warden_shield.tres"),
-	"oracle_staff": preload("res://content/items/oracle_staff.tres")
+	"oracle_staff": preload("res://content/items/oracle_staff.tres"),
+	"noise_stone": preload("res://content/items/noise_stone.tres")
 }
 
 const AFFIXES := ["keen", "swift", "venom"]
@@ -62,3 +63,12 @@ static func enchant(id: String, rng: RandomNumberGenerator) -> String:
 		return id
 	var choices := ["keen", "swift"] if item.projectile_speed > 0 else AFFIXES
 	return id + ":" + choices[rng.randi_range(0, choices.size() - 1)]
+
+static func noise_multiplier(id: String) -> float:
+	match id.get_slice(":", 0):
+		"leather": return 1.1
+		"mail": return 1.5
+		"ward_mail": return 1.3
+		"axe": return 1.25
+		"venom_dagger": return 0.7
+		_: return 1.0

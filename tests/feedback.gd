@@ -74,6 +74,8 @@ func run() -> void:
 				expected = "Damage reduction:"
 			"scroll":
 				expected = "Read to learn permanently"
+			"distraction":
+				expected = "Throw with H"
 			_:
 				expected = "Restores "
 		check(ui.details.text.begins_with(expected), "Inventory %s: %s" % [id, ui.details.text])
