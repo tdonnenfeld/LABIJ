@@ -59,23 +59,21 @@ func run() -> void:
 	ui.show()
 	for id in Catalog.ITEMS:
 		ui.refresh([["sword", "shield", id], 0, 1, -1])
-		ui.list.select(2)
-		ui.update_details()
-		var selected := ui.list.get_selected_items()
-		check(selected.size() == 1 and selected[0] == 2, "Selection failed for %s: %s" % [id, selected])
+		ui.select_item(2)
+		check(ui.selection == 2 and ui.slots[2].button_pressed, "Selection failed for %s" % id)
 		var item = Catalog.get_item(id)
 		var expected := ""
 		match item.kind:
 			"weapon":
 				expected = "Damage "
 			"shield":
-				expected = "Damage blocked:"
+				expected = "Damage blocked"
 			"armor":
-				expected = "Damage reduction:"
+				expected = "Damage reduction"
 			"scroll":
-				expected = "Read to learn permanently"
+				expected = "Learn a spell permanently."
 			"distraction":
-				expected = "Throw with H"
+				expected = "Throw to draw enemies"
 			_:
 				expected = "Restores "
 		check(ui.details.text.begins_with(expected), "Inventory %s: %s" % [id, ui.details.text])
@@ -84,5 +82,5 @@ func run() -> void:
 		if id == "ward_mail":
 			check(ui.details.text.contains("15%") and ui.details.text.contains("30%"), "Runed Mail: %s" % ui.details.text)
 		if id == "potion":
-			check(ui.details.text == "Restores 35 HP", "Potion: %s" % ui.details.text)
+			check(ui.details.text.begins_with("Restores 35 HP, up to maximum health."), "Potion: %s" % ui.details.text)
 	quit(0 if failures == 0 else 1)
