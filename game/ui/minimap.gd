@@ -1,5 +1,7 @@
 extends Control
 
+const Parchment = preload("res://game/ui/parchment.gd")
+var page_style := Parchment.parchment(4.0)
 const Exploration = preload("res://game/world/exploration.gd")
 const Acoustics = preload("res://game/world/noise.gd")
 var memory := Exploration.new()
@@ -30,26 +32,27 @@ func refresh(world, actor, actors: Dictionary, angle: float) -> void:
 	queue_redraw()
 
 func _draw() -> void:
-	draw_rect(Rect2(Vector2.ZERO, size), Color("#151a19e8"))
-	var step := minf(size.x, size.y - 24.0) / 17.0
+	draw_style_box(page_style, Rect2(Vector2.ZERO, size))
+	draw_line(Vector2(8, 21), Vector2(size.x - 8, 21), Parchment.BRASS, 1.0)
+	var step := minf(size.x - 16.0, size.y - 32.0) / 17.0
 	if step <= 0:
 		return
 	var middle := Vector2(size.x * 0.5, (size.y + 24.0) * 0.5)
 	var cells: Dictionary = memory.explored.get(floor_id, {})
 	var font := ThemeDB.fallback_font
-	draw_string(font, Vector2(7, 16), floor_title + " [M]", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color("#d9dacb"))
+	draw_string(font, Vector2(7, 16), floor_title + " [M]", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Parchment.INK)
 	for cell in cells:
 		var offset: Vector2i = cell - center
 		if absi(offset.x) > 8 or absi(offset.y) > 8:
 			continue
 		var at := middle + Vector2(offset) * step
-		draw_rect(Rect2(at - Vector2.ONE * step * 0.5, Vector2.ONE * (step - 0.7)), Color("#777d72"))
+		draw_rect(Rect2(at - Vector2.ONE * step * 0.5, Vector2.ONE * (step - 0.7)), Color("#78634a"))
 		if markers.has(cell):
-			draw_string(font, at + Vector2(-4, 4), markers[cell], HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color("#f5c86b"))
+			draw_string(font, at + Vector2(-4, 4), markers[cell], HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color("#ffe3a0"))
 		if party.has(cell):
-			draw_circle(at, 2.5, Color("#75c0e6"))
+			draw_circle(at, 2.5, Color("#72b8db"))
 	var forward := Vector2(-sin(heading), -cos(heading))
-	draw_circle(middle, 3.5, Color("#f3e9c4"))
+	draw_circle(middle, 3.5, Color("#8c3935"))
 	draw_line(middle, middle + forward * step * 0.75, Color("#f3e9c4"), 2.0)
 
 func reset() -> void:

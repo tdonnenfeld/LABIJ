@@ -94,3 +94,7 @@ Stone footsteps now use six CC0 Fantozzi recordings, enemy footsteps use four CC
 ## Environmental sound
 
 The client plays a quiet wind bed with faded edges, occasional spatial water drips and up to two nearest audible torch loops. Torch/drip selection is limited to the current floor and connected dungeon tiles. Environmental audio is cosmetic only: it does not create noise or alter enemy AI, combat, voice chat, or authoritative simulation. Separate Effects, Ambience and Voice playback sliders in the main menu adjust output only, not microphone sensitivity or AI loudness. Settings last for the current game process. Sources and licenses (including the CC BY 3.0 fire loop) are in `art/audio/CREDITS.md`. No external downloads needed. The short wind/drip excerpts are not a full authored dungeon ambience track; audio balance still needs playtesting.
+
+## Expedition Journal UI
+
+The setup menu and expedition result use parchment pages, and the combat HUD uses dark brass-framed plates with labelled HP/stamina/mana, separate ability slots, a parchment minimap and expedition log. Existing inventory and talent controls inherit the shared dark theme. No extra assets or fonts are required. See `docs/UI_ART_DIRECTION.md` for the palette, UI roadmap and deferred audio work. Final item icons and 3D models are not included in this pass.
