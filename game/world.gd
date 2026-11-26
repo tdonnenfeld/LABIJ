@@ -291,7 +291,9 @@ func animate_monsters(delta: float) -> void:
 			continue
 		var rig = mob.node.get_node_or_null("ActorRig")
 		if rig:
-			rig.animate(delta, mob.health > 0, mob.phase, mob.asleep, mob.hurt > 0, false, false, float(mob.get("hit_direction", 0.0)))
+			var stats := Bestiary.stats(mob.kind)
+			var duration: float = float(stats[5] if mob.phase == 1 else stats[6])
+			rig.animate(delta, mob.health > 0, mob.phase, mob.asleep, mob.hurt > 0, false, false, float(mob.get("hit_direction", 0.0)), clampf(1.0 - float(mob.timer) / duration, 0.0, 1.0))
 
 
 func transfer(actor, peer_id: int, actors: Dictionary = {}) -> bool:
@@ -681,7 +683,7 @@ func monster_snapshot() -> Dictionary:
 	var states := {}
 	for id in monsters:
 		var mob = monsters[id]
-		states[id] = [mob.floor, mob.node.position, mob.health, mob.phase, mob.hurt, mob.stun, mob.bleed, mob.burn, mob.slow, mob.target, mob.poison, mob.asleep, mob.investigate, mob.threat.duplicate(), mob.node.rotation.y, mob.get("hit_direction", 0.0)]
+		states[id] = [mob.floor, mob.node.position, mob.health, mob.phase, mob.hurt, mob.stun, mob.bleed, mob.burn, mob.slow, mob.target, mob.poison, mob.asleep, mob.investigate, mob.threat.duplicate(), mob.node.rotation.y, mob.get("hit_direction", 0.0), mob.timer]
 	return states
 
 func apply_monsters(states: Dictionary, smooth: bool = false) -> void:
@@ -709,6 +711,8 @@ func apply_monsters(states: Dictionary, smooth: bool = false) -> void:
 			monsters[id].threat = states[id][13]
 			if states[id].size() > 15:
 				mob.hit_direction = states[id][15]
+			if states[id].size() > 16:
+				mob.timer = states[id][16]
 			set_monster_collision(monsters[id])
 
 func strike(actor, party: Dictionary = {}) -> bool:
