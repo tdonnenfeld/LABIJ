@@ -453,7 +453,7 @@ func simulate(actors: Dictionary, delta: float) -> void:
 				idle_move(mob, delta)
 			continue
 		if closest <= float(stats[3]) and Combat.clear_path(node, actors[target].position):
-			face_toward(mob, actors[target].position, delta)
+			face_toward(mob, actors[target].position)
 			mob.move_speed = 0.0
 			mob.phase = 1
 			mob.timer = float(stats[5])
@@ -801,6 +801,7 @@ func reward_kill(mob: Dictionary, killer, party: Dictionary) -> void:
 			continue
 		if horizontal_distance(teammate.position, mob.node.position) <= 15.0:
 			teammate.gain_xp(reward)
+			journal.add("XP", "%s assists: +%d XP" % [teammate.display_name, reward])
 	if killer != null and killer.health > 0:
 		killer.gain_xp(reward)
 		killer.skills.credit(0, 10)
