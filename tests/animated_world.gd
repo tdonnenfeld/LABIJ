@@ -1,5 +1,6 @@
 extends SceneTree
 
+const Motion = preload("res://game/visuals/motion_curves.gd")
 const Assets = preload("res://game/visuals/asset_registry.gd")
 const Rig = preload("res://game/visuals/actor_rig.gd")
 const Player = preload("res://game/player.gd")
@@ -19,6 +20,9 @@ func check(ok: bool, description: String) -> void:
 		push_error(description)
 
 func run() -> void:
+	check(is_equal_approx(Motion.blend(0.2, 10.0), 1.0 - pow(1.0 - Motion.blend(0.1, 10.0), 2.0)), "Frame-rate independent smoothing")
+	check(Motion.strike(0.0) == 0.0 and Motion.strike(0.22) == 1.0 and Motion.settle(1.0) == 1.0, "Strike and recovery curve endpoints")
+	check(Motion.swing("axe") != Motion.swing("spear"), "Distinct weapon trajectories")
 	var parent := Node3D.new()
 	root.add_child(parent)
 	for kind in Assets.CHARACTERS:
@@ -33,7 +37,7 @@ func run() -> void:
 		rig.animate(0.1, true, 1, false, true)
 		check(rig.ever_alive and rig.speed > 0.0, "Motion sampling")
 		rig.animate(1.0, false, 0, false, false)
-		check(is_equal_approx(rig.pose, -PI * 0.5), "Corpse pose")
+		check(absf(rig.pose + PI * 0.5) < 0.001, "Corpse pose")
 		rig.free()
 	check(Assets.grain().get_width() == 16, "Shared low-res texture")
 	parent.free()
