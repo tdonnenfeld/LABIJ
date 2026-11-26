@@ -5,9 +5,12 @@ const WIDTH := 8
 const HEIGHT := 5
 const CAPACITY := WIDTH * HEIGHT
 const WORN := Vector2i(-1, -1)
+const BELT_CAPACITY := 4
 var items: Array[String] = []
 var positions: Array[Vector2i] = []
 var quantities: Array[int] = []
+var rotated: Array[bool] = []
+var belt := 0
 var revision := 0
 var weapon_index := 0
 var shield_index := 1
@@ -26,12 +29,15 @@ func reset_items(initial: Array) -> void:
 	items.assign(initial)
 	positions.clear()
 	quantities.clear()
+	rotated.clear()
+	belt = 0
 	weapon_index = 0
 	shield_index = 1
 	armor_index = -1
 	for i in range(items.size()):
 		positions.append(WORN)
 		quantities.append(1)
+		rotated.append(false)
 	for i in range(2, items.size()):
 		positions[i] = first_fit(items[i], i)
 	revision += 1
@@ -53,7 +59,7 @@ func used_cells() -> int:
 	var total := 0
 	for i in range(items.size()):
 		if not is_equipped(i):
-			var extent := Catalog.dimensions(items[i])
+			var extent := footprint(items[i], rotated[i])
 			total += extent.x * extent.y
 	return total
 
@@ -61,12 +67,16 @@ func item_at(cell: Vector2i, ignore: int = -1) -> int:
 	for i in range(items.size()):
 		if i == ignore or positions[i] == WORN:
 			continue
-		if Rect2i(positions[i], Catalog.dimensions(items[i])).has_point(cell):
+		if Rect2i(positions[i], footprint(items[i], rotated[i])).has_point(cell):
 			return i
 	return -1
 
-func fits(id: String, at: Vector2i, ignore: int = -1) -> bool:
+static func footprint(id: String, turned: bool = false) -> Vector2i:
 	var extent := Catalog.dimensions(id)
+	return Vector2i(extent.y, extent.x) if turned else extent
+
+func fits(id: String, at: Vector2i, ignore: int = -1, turned: bool = false) -> bool:
+	var extent := footprint(id, turned)
 	if at.x < 0 or at.y < 0 or at.x + extent.x > WIDTH or at.y + extent.y > HEIGHT:
 		return false
 	for y in range(at.y, at.y + extent.y):
@@ -75,11 +85,11 @@ func fits(id: String, at: Vector2i, ignore: int = -1) -> bool:
 				return false
 	return true
 
-func first_fit(id: String, ignore: int = -1) -> Vector2i:
+func first_fit(id: String, ignore: int = -1, turned: bool = false) -> Vector2i:
 	for y in range(HEIGHT):
 		for x in range(WIDTH):
 			var at := Vector2i(x, y)
-			if fits(id, at, ignore):
+			if fits(id, at, ignore, turned):
 				return at
 	return WORN
 
@@ -104,6 +114,7 @@ func add(id: String, amount: int = 1) -> bool:
 		items.append(id)
 		positions.append(at)
 		quantities.append(remaining)
+		rotated.append(false)
 	revision += 1
 	return true
 
@@ -122,7 +133,11 @@ func equip(index: int) -> bool:
 	var source := positions[index]
 	positions[index] = WORN
 	if previous >= 0:
-		var at := source if fits(items[previous], source) else first_fit(items[previous])
+		var at := source if fits(items[previous], source, -1, rotated[previous]) else first_fit(items[previous], -1, rotated[previous])
+		if at == WORN:
+			at = first_fit(items[previous], -1, not rotated[previous])
+			if at != WORN:
+				rotated[previous] = not rotated[previous]
 		if at == WORN:
 			positions[index] = source
 			return false
@@ -142,13 +157,14 @@ func move_item(index: int, at: Vector2i, split: bool = false) -> bool:
 	var id := items[index]
 	var other := item_at(at, index)
 	if split:
-		if quantities[index] < 2 or not fits(id, at):
+		if quantities[index] < 2 or not fits(id, at, -1, rotated[index]):
 			return false
 		var amount := floori(float(quantities[index]) / 2.0)
 		quantities[index] -= amount
 		items.append(id)
 		positions.append(at)
 		quantities.append(amount)
+		rotated.append(rotated[index])
 	elif other >= 0 and items[other] == id and Catalog.stack_limit(id) > 1:
 		var amount := mini(quantities[index], Catalog.stack_limit(id) - quantities[other])
 		if amount <= 0:
@@ -158,7 +174,7 @@ func move_item(index: int, at: Vector2i, split: bool = false) -> bool:
 		if quantities[index] == 0:
 			erase_entry(index)
 	else:
-		if at == positions[index] or not fits(id, at, index):
+		if at == positions[index] or not fits(id, at, index, rotated[index]):
 			return false
 		positions[index] = at
 	revision += 1
@@ -174,6 +190,7 @@ func erase_entry(index: int) -> void:
 	items.remove_at(index)
 	positions.remove_at(index)
 	quantities.remove_at(index)
+	rotated.remove_at(index)
 	if weapon_index > index:
 		weapon_index -= 1
 	if shield_index > index:
@@ -200,7 +217,7 @@ func remove_stack(index: int) -> String:
 	return id
 
 func state() -> Array:
-	return [items.duplicate(), weapon_index, shield_index, armor_index, positions.duplicate(), quantities.duplicate(), revision]
+	return [items.duplicate(), weapon_index, shield_index, armor_index, positions.duplicate(), quantities.duplicate(), revision, rotated.duplicate(), belt]
 
 func apply(data: Array) -> void:
 	items.assign(data[0])
@@ -210,3 +227,86 @@ func apply(data: Array) -> void:
 	positions.assign(data[4])
 	quantities.assign(data[5])
 	revision = data[6]
+	rotated.assign(data[7])
+	belt = data[8]
+
+func rotate_item(index: int) -> bool:
+	if index < 0 or index >= items.size() or is_equipped(index):
+		return false
+	var id := items[index]
+	var extent := Catalog.dimensions(id)
+	if extent.x == extent.y:
+		return false
+	var turned := not rotated[index]
+	if not fits(id, positions[index], index, turned):
+		return false
+	rotated[index] = turned
+	revision += 1
+	return true
+
+func sort_items() -> bool:
+	var before := state()
+	var i := 0
+	while i < items.size():
+		if not is_equipped(i) and Catalog.stack_limit(items[i]) > 1:
+			var j := i + 1
+			while j < items.size():
+				if not is_equipped(j) and items[j] == items[i]:
+					var transfer := mini(Catalog.stack_limit(items[i]) - quantities[i], quantities[j])
+					quantities[i] += transfer
+					quantities[j] -= transfer
+					if quantities[j] == 0:
+						erase_entry(j)
+						continue
+				j += 1
+		i += 1
+	var order: Array[int] = []
+	for index in range(items.size()):
+		if not is_equipped(index):
+			order.append(index)
+			positions[index] = WORN
+	order.sort_custom(func(a: int, b: int):
+		var sa := Catalog.dimensions(items[a])
+		var sb := Catalog.dimensions(items[b])
+		var area_a := sa.x * sa.y
+		var area_b := sb.x * sb.y
+		if area_a != area_b:
+			return area_a > area_b
+		if items[a] != items[b]:
+			return items[a] < items[b]
+		return a < b)
+	for index in order:
+		var at := first_fit(items[index], index)
+		rotated[index] = false
+		if at == WORN:
+			at = first_fit(items[index], index, true)
+			rotated[index] = true
+		if at == WORN:
+			apply(before)
+			return false
+		positions[index] = at
+	if state() == before:
+		return false
+	revision += 1
+	return true
+
+func load_belt(index: int) -> bool:
+	if belt >= BELT_CAPACITY or index < 0 or index >= items.size() or items[index] != "potion":
+		return false
+	if remove(index) == "":
+		return false
+	belt += 1
+	return true
+
+func unload_belt() -> bool:
+	if belt <= 0 or not add("potion"):
+		return false
+	belt -= 1
+	return true
+
+func consume_belt(slot: int) -> bool:
+	if slot < 0 or slot >= belt:
+		return false
+	belt -= 1
+	revision += 1
+	return true

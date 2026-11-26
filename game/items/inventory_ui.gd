@@ -10,6 +10,7 @@ const Parchment = preload("res://game/ui/parchment.gd")
 const Backpack = preload("res://game/items/backpack_grid.gd")
 signal action(index: int, drop: bool)
 signal moved(index: int, at: Vector2i, split: bool, revision: int)
+signal organize(operation: String, index: int, revision: int)
 var grid: Control
 var selection := -1
 var equipment: HBoxContainer
@@ -21,6 +22,9 @@ var capacity_label: Label
 var state_data: Array = []
 var use_button: Button
 var drop_button: Button
+var rotate_button: Button
+var load_button: Button
+var unload_button: Button
 
 func _ready() -> void:
 	theme = Parchment.build(true)
@@ -57,9 +61,23 @@ func _ready() -> void:
 	grid.selected.connect(select_item)
 	grid.moved.connect(func(index: int, at: Vector2i, split: bool, revision: int): moved.emit(index, at, split, revision))
 	var hint := Label.new()
-	hint.text = "Drag to arrange / merge · Shift-drag to split"
+	hint.text = "Drag / merge · Shift-drag split · R rotate"
 	hint.add_theme_font_size_override("font_size", 12)
 	left.add_child(hint)
+	var tools := HBoxContainer.new()
+	left.add_child(tools)
+	rotate_button = Button.new()
+	rotate_button.text = "Rotate [R]"
+	tools.add_child(rotate_button)
+	rotate_button.pressed.connect(func(): organize_selected("rotate"))
+	var sort_button := Button.new()
+	sort_button.text = "Auto-sort"
+	tools.add_child(sort_button)
+	sort_button.pressed.connect(func(): organize_selected("sort"))
+	unload_button = Button.new()
+	unload_button.text = "Return dose"
+	tools.add_child(unload_button)
+	unload_button.pressed.connect(func(): organize_selected("unload"))
 	var right := VBoxContainer.new()
 	right.custom_minimum_size.x = 328
 	right.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -101,6 +119,11 @@ func _ready() -> void:
 	drop_button.text = "Drop"
 	drop_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	actions.add_child(drop_button)
+	load_button = Button.new()
+	load_button.text = "Belt +1"
+	load_button.tooltip_text = "Move one potion into your four-dose belt"
+	actions.add_child(load_button)
+	load_button.pressed.connect(func(): organize_selected("load"))
 	use_button.pressed.connect(func(): send(false))
 	drop_button.pressed.connect(func(): send(true))
 	update_slots()
@@ -108,10 +131,10 @@ func _ready() -> void:
 	hide()
 
 func equipped(index: int) -> bool:
-	return state_data.size() == 7 and index >= 0 and index in state_data.slice(1, 4)
+	return state_data.size() == 9 and index >= 0 and index in state_data.slice(1, 4)
 
 func item_count() -> int:
-	return state_data[0].size() if state_data.size() == 7 else 0
+	return state_data[0].size() if state_data.size() == 9 else 0
 
 func refresh(data: Array) -> void:
 	if data == state_data:
@@ -137,12 +160,15 @@ func select_item(index: int) -> void:
 
 func update_slots() -> void:
 	grid.refresh(state_data, selection)
-	capacity_label.text = "Backpack · %d / %d cells" % [grid.model.used_cells() if state_data.size() == 7 else 0, Inventory.CAPACITY]
+	capacity_label.text = "Pack %d/%d cells · Belt %d/4" % [grid.model.used_cells() if state_data.size() == 9 else 0, Inventory.CAPACITY, state_data[8] if state_data.size() == 9 else 0]
 	equipment.refresh(state_data, selection)
 
 func update_details() -> void:
 	var valid := selection >= 0 and selection < item_count()
 	use_button.disabled = not valid
+	rotate_button.disabled = not valid or equipped(selection)
+	load_button.disabled = not valid or state_data[0][selection] != "potion" or state_data[8] >= Inventory.BELT_CAPACITY
+	unload_button.disabled = state_data.size() != 9 or state_data[8] == 0
 	drop_button.disabled = not valid or equipped(selection)
 	if not valid:
 		item_picture.texture = null
@@ -204,7 +230,8 @@ func update_details() -> void:
 			use_button.disabled = true
 		_:
 			lines.append("An expedition item.")
-	var extent := Catalog.dimensions(id)
+	var extent := Inventory.footprint(id, state_data[7][selection])
+	rotate_button.disabled = equipped(selection) or extent.x == extent.y
 	lines.append("Size: %d × %d cells" % [extent.x, extent.y])
 	if Catalog.stack_limit(id) > 1:
 		lines.append("Stack: %d / %d" % [state_data[5][selection], Catalog.stack_limit(id)])
@@ -217,3 +244,10 @@ func send(drop: bool) -> void:
 	if selection < 0 or selection >= item_count() or equipped(selection) or (not drop and use_button.disabled):
 		return
 	action.emit(selection, drop)
+
+func organize_selected(operation: String) -> void:
+	if state_data.size() != 9:
+		return
+	if operation == "rotate" and rotate_button.disabled:
+		return
+	organize.emit(operation, selection, state_data[6])

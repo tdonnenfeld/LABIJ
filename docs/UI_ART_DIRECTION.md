@@ -78,3 +78,7 @@ Next: grimoire talent layout and actual 3D item/world pickup models. No external
 ## Spatial satchel revision
 
 Replace the 12 equal slots with 8×5 leather cells. Equipment cards remain outside the grid. Use fixed footprints, quantity counters and drag/drop, Shift-drag to split stacks. Potions/stone/scrolls occupy 1×1; dagger/arrows 1×2; swords/staves 1×3; spears 1×4; shields 2×2; axes/bows/armour 2×3. Stack counts are legible over icons, and selected details show size and quantity. No item weight. The backpack uses server-provided placement and quantity state. Rotation and auto-sort are deferred.
+
+## Backpack expansion
+
+Rotation and compacting are explicit controls in the satchel. A four-dose leather belt appears above the action bar with keys 4–7; use parchment inventory buttons to load/return potions. Companion exchange is a separate parchment window opened with J: clear offered quantities and explicit confirmation status. Current trades exchange one stack per side or gifts. Ground loot uses original procedural low-poly silhouettes (blade, axe, bow, staff, shield, armour, bottle, scroll, stone, arrows) with material colours from the icon palette; no collision added. Meshes are presentation only and remain replaceable with authored glTF assets. Visual and network playtesting still required.
