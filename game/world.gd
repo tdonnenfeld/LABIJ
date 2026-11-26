@@ -308,6 +308,8 @@ func transfer(actor, peer_id: int, actors: Dictionary = {}) -> bool:
 		return true
 	var route := route_at(old, actor.position)
 	if route.is_empty():
+		if interact_door(actor, actors):
+			return true
 		return interact_fixture(actor)
 	if route.get("locked", false):
 		return false
@@ -504,6 +506,11 @@ func move_monster(mob: Dictionary, at: Vector3, delta: float, speed: float) -> v
 		mob.path_key = key
 		mob.path_next = next_cell(level.tiles, start, goal)
 	var next: Vector2i = mob.path_next
+	if mob.kind != "rat":
+		var door = level.doors.get(next, level.doors.get(start))
+		if door and not door.opened and horizontal_distance(node.global_position, door.global_position) <= 1.2:
+			door.set_open(true)
+			sound(mob.floor, door.global_position, 5.0, "impact")
 	var destination := Vector3(next.x * Dungeon.CELL, node.position.y, next.y * Dungeon.CELL)
 	if start == goal:
 		destination = Vector3(at.x, node.position.y, at.z)
@@ -1085,6 +1092,9 @@ func objective_hint(actor, peer: int) -> String:
 		return "E: Escape with the Jewel"
 	if objective.carrier == 0 and objective.guardian_defeated and actor.floor_id == objective.jewel_floor and horizontal_distance(actor.position, objective.jewel_position) <= USE_RADIUS:
 		return "E: Take the Jewel"
+	var door = floors[actor.floor_id].nearby_door(actor.global_position)
+	if door:
+		return "E: Close door" if door.opened else "E: Open door"
 	for fixture in fixtures.values():
 		if not fixture.used and fixture.floor == actor.floor_id and horizontal_distance(actor.position, fixture.at) <= 1.7:
 			return "Attack: Break crate" if fixture.kind == "crate" else ("E: Open chest" if fixture.kind == "chest" else "E: Read inscription")
@@ -1300,6 +1310,8 @@ func secret_state() -> Array:
 	for id in floors:
 		if floors[id].secret_open:
 			result.append(id)
+		for cell in floors[id].doors:
+			result.append(["door", id, cell, floors[id].doors[cell].opened])
 	for id in fixtures:
 		if fixtures[id].used:
 			result.append(["fixture", id])
@@ -1308,7 +1320,9 @@ func secret_state() -> Array:
 func apply_secrets(data: Array) -> void:
 	for id in data:
 		if id is Array:
-			if id.size() == 2 and id[0] == "fixture" and fixtures.has(id[1]):
+			if id.size() == 4 and id[0] == "door" and floors.has(id[1]) and floors[id[1]].doors.has(id[2]):
+				floors[id[1]].doors[id[2]].set_open(bool(id[3]))
+			elif id.size() == 2 and id[0] == "fixture" and fixtures.has(id[1]):
 				mark_fixture_used(fixtures[id[1]])
 		elif floors.has(id):
 			floors[id].reveal_secret()
@@ -1429,3 +1443,27 @@ func cast_beam(actor, peer: int, direction: Vector3, damage: float, reach: float
 		return
 	if not target.is_empty():
 		apply_spell_damage({"owner": peer, "damage": damage, "effect": "shock", "domain": 8, "bonus": 0.0}, target, party if not party.is_empty() else {peer: actor})
+
+func interact_door(actor, actors: Dictionary) -> bool:
+	var door = floors[actor.floor_id].nearby_door(actor.global_position)
+	if not door:
+		return false
+	var direction: Vector3 = door.global_position - actor.global_position
+	direction.y = 0.0
+	var forward := Vector3(-sin(actor.heading), 0, -cos(actor.heading))
+	if direction.length() > 0.3 and forward.dot(direction.normalized()) < 0.15:
+		return false
+	if door.opened:
+		if door.obstructed(actor.global_position):
+			return false
+		for other in actors.values():
+			if other.floor_id == actor.floor_id and door.obstructed(other.global_position):
+				return false
+		for mob in monsters.values():
+			if mob.floor == actor.floor_id and mob.health > 0 and door.obstructed(mob.node.global_position):
+				return false
+	door.set_open(not door.opened)
+	sound(actor.floor_id, door.global_position, 5.0, "impact")
+	emit_noise(actor.floor_id, door.global_position, 5.0)
+	journal.add("Exploration", "%s %s a door" % [actor.display_name, "opens" if door.opened else "closes"])
+	return true
