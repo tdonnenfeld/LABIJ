@@ -29,6 +29,10 @@ var result_shown := false
 const LogPanel = preload("res://game/ui/log_panel.gd")
 const PartyPanel = preload("res://game/ui/party_panel.gd")
 const Feedback = preload("res://game/ui/combat_feedback.gd")
+const CombatFX = preload("res://game/visuals/combat_fx.gd")
+const DamageDirection = preload("res://game/ui/damage_direction.gd")
+var combat_fx: Node3D
+var damage_direction: Control
 var log_panel: PanelContainer
 var party_panel: PanelContainer
 var feedback: Node3D
@@ -283,6 +287,11 @@ func _ready() -> void:
 		feedback = Feedback.new()
 		add_child(feedback)
 		feedback.local_layer = popup_layer
+		combat_fx = CombatFX.new()
+		add_child(combat_fx)
+		damage_direction = DamageDirection.new()
+		layer.add_child(damage_direction)
+		damage_direction.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 		trade_panel = TradeUI.new()
 		layer.add_child(trade_panel)
 		trade_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
@@ -584,6 +593,8 @@ func _failed() -> void:
 		minimap.hide()
 		minimap.reset()
 		feedback.reset()
+		combat_fx.reset()
+		damage_direction.reset()
 		dungeon_audio.reset()
 		environmental_audio.reset()
 		result_screen.hide()
@@ -884,6 +895,7 @@ func _physics_process(delta: float) -> void:
 		var local = actors[local_id]
 		var viewed_floor: int = local.floor_id
 		feedback.viewed_floor = viewed_floor
+		combat_fx.viewed_floor = viewed_floor
 		world.visible_floor(viewed_floor)
 		environmental_audio.update_environment(world.floors[viewed_floor], local, delta)
 		var builder = world.floors[viewed_floor].visual_builder
@@ -899,7 +911,6 @@ func _physics_process(delta: float) -> void:
 			map_timer = 0.15
 		for id in actors:
 			actors[id].visible = id == local_id or (actors[id].floor_id == viewed_floor and actors[id].health > 0)
-		local.update_hands(delta)
 		if inventory_ui:
 			inventory_ui.refresh(local.inventory.state())
 		potion_belt.refresh(local.inventory.belt)
@@ -1081,6 +1092,7 @@ func apply_item_action(actor, index: int, drop: bool) -> void:
 			if amount > 1:
 				title += " ×%d" % amount
 			if world.loot.pickup(actor):
+				world.sound(actor.floor_id, actor.position, 4.0, "pickup")
 				world.journal.add("Loot", "%s picks up %s" % [actor.display_name, title])
 	elif drop:
 		var amount: int = actor.inventory.quantity(index)
@@ -1103,6 +1115,7 @@ func apply_item_action(actor, index: int, drop: bool) -> void:
 			return
 		var before: float = actor.health
 		if actor.use_item(index):
+			world.sound(actor.floor_id, actor.position, 4.0, "scroll" if item.kind == "scroll" else ("potion" if item.kind == "consumable" else "equip"))
 			world.journal.add("Loot", "%s %s %s" % [actor.display_name, "reads" if item.kind == "scroll" else ("uses" if item.kind == "consumable" else "equips"), item.title])
 			if actor.health > before:
 				world.journal.add("Combat", "%s restores %s HP" % [actor.display_name, Numbers.number(actor.health - before)], actor.floor_id, actor.position + Vector3.UP, "+%d" % roundi(actor.health - before), "heal", int(actor.name))
@@ -1193,6 +1206,8 @@ func build_expedition(seed_value: int, size: int) -> void:
 	if log_panel:
 		log_panel.reset()
 		feedback.reset()
+		combat_fx.reset()
+		damage_direction.reset()
 	world = World.new()
 	add_child(world)
 	world.build(seed_value, not dedicated and DisplayServer.get_name() != "headless", size)
@@ -1271,6 +1286,10 @@ func display_events(events: Array) -> void:
 	for event in events:
 		if event.id > last:
 			feedback.show_event(event, local_id)
+			if event.target == local_id and event.style in ["incoming", "blocked"]:
+				damage_direction.hit(event.get("source", Vector3.INF), event.style == "blocked")
+			if DisplayServer.get_name() != "headless" and event.target != local_id:
+				combat_fx.burst(event.position - Vector3.UP * 0.35, event.floor, event.style, event.id)
 
 func update_awareness_hud(local, local_id: int) -> void:
 	var level: float = local.noise_level
@@ -1408,6 +1427,7 @@ func apply_inventory_organize(id: int, operation: String, index: int, revision: 
 		"unload": actor.inventory.unload_belt()
 		"equip":
 			if actor.inventory.equip(index):
+				world.sound(actor.floor_id, actor.position, 4.0, "equip")
 				actor.empowered = ""
 		"unequip":
 			if actor.inventory.unequip(index):
@@ -1426,6 +1446,7 @@ func use_belt(id: int, slot: int) -> void:
 	var actor = actors[id]
 	var before: float = actor.health
 	if actor.drink_belt(slot):
+		world.sound(actor.floor_id, actor.position, 4.0, "potion")
 		world.journal.add("Loot", "%s drinks a belt potion" % actor.display_name)
 		world.journal.add("Combat", "%s restores %s HP" % [actor.display_name, Numbers.number(actor.health - before)], actor.floor_id, actor.position + Vector3.UP, "+%d" % roundi(actor.health - before), "heal", id)
 
@@ -1488,6 +1509,7 @@ func apply_inventory_equip_slot(id: int, index: int, slot: int, revision: int) -
 	var actor = actors[id]
 	if actor.health > 0 and actor.attack_phase == 0 and actor.cast_id == "" and actor.inventory.revision == revision and slot >= 0:
 		if actor.inventory.equip(index, slot):
+			world.sound(actor.floor_id, actor.position, 4.0, "equip")
 			actor.empowered = ""
 
 func _process(delta: float) -> void:
@@ -1498,11 +1520,16 @@ func _process(delta: float) -> void:
 		for actor in actors.values():
 			NetMotion.advance(actor, delta)
 		world.advance_network_motion(delta)
+	world.animate_monsters(delta)
+	for actor in actors.values():
+		if actor.visible:
+			actor.update_hands(delta, settings.view_motion)
 	if actors.has(local_id):
 		var local = actors[local_id]
 		if local.camera:
 			local.rotation.y = yaw
 			local.camera.rotation.x = pitch
+		damage_direction.update_direction(local.position, yaw, delta)
 
 func open_escape_menu() -> void:
 	inventory_ui.hide()

@@ -42,9 +42,12 @@ var wants_block := false
 var attack_phase := 0
 var attack_timer := 0.0
 var hurt_timer := 0.0
+var last_damage_source := Vector3.INF
 var swing_hit := false
-var sword: MeshInstance3D
-var shield: MeshInstance3D
+const ActorRig = preload("res://game/visuals/actor_rig.gd")
+const Hands = preload("res://game/visuals/first_person_hands.gd")
+var character_rig: Node3D
+var hands: Node3D
 var floor_id := 0
 var direction := Vector2.ZERO
 var heading := 0.0
@@ -62,13 +65,10 @@ func setup(local: bool, visual: bool = true) -> void:
 	add_child(collision)
 	if not visual:
 		return
-	var mesh := MeshInstance3D.new()
-	var model := CapsuleMesh.new()
-	model.radius = 0.32
-	model.height = 1.7
-	mesh.mesh = model
-	mesh.visible = not local
-	add_child(mesh)
+	if not local:
+		character_rig = ActorRig.new()
+		add_child(character_rig)
+		character_rig.setup("adventurer", 1.7)
 	if local:
 		camera = Camera3D.new()
 		camera.position.y = 0.55
@@ -79,8 +79,8 @@ func setup(local: bool, visual: bool = true) -> void:
 		light.light_color = Color("#e8dfc5")
 		light.light_energy = 2.5 if "--debug-geometry" in OS.get_cmdline_user_args() else 1.5
 		camera.add_child(light)
-		sword = hand_item(Vector3(0.42, -0.36, -0.85), Vector3(0.10, 0.75, 0.10), Color("#bcb8a9"))
-		shield = hand_item(Vector3(-0.48, -0.38, -0.8), Vector3(0.40, 0.52, 0.12), Color("#78604a"))
+		hands = Hands.new()
+		camera.add_child(hands)
 
 func simulate(delta: float) -> void:
 	if health <= 0.0:
@@ -97,18 +97,6 @@ func simulate(delta: float) -> void:
 	velocity.z = motion.z
 	velocity.y = maxf(velocity.y - 18.0 * delta, -20.0)
 	move_and_slide()
-
-func hand_item(at: Vector3, size: Vector3, color: Color) -> MeshInstance3D:
-	var item := MeshInstance3D.new()
-	var mesh := BoxMesh.new()
-	mesh.size = size
-	item.mesh = mesh
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = color
-	item.material_override = mat
-	camera.add_child(item)
-	item.position = at
-	return item
 
 func begin_attack() -> bool:
 	var weapon = Catalog.get_item(inventory.weapon)
@@ -160,6 +148,7 @@ func advance_combat(delta: float) -> bool:
 func take_damage(amount: float, source: Vector3, magical: bool = false, source_name: String = "Enemy") -> void:
 	if health <= 0:
 		return
+	last_damage_source = source
 	var before := health
 	var blocked := false
 	var parried := false
@@ -194,17 +183,12 @@ func take_damage(amount: float, source: Vector3, magical: bool = false, source_n
 		collision_layer = 0
 		collision_mask = 0
 
-func update_hands(delta: float) -> void:
-	if not sword or not shield:
-		return
-	sword.rotation.x = lerpf(sword.rotation.x, -0.95 if attack_phase == 2 else (0.65 if attack_phase == 1 else 0.0), minf(1.0, delta * 14.0))
-	shield.position.y = lerpf(shield.position.y, -0.12 if blocking else -0.38, minf(1.0, delta * 14.0))
-	var weapon = Catalog.get_item(inventory.weapon)
-	sword.scale.y = 0.22 if inventory.weapon_index < 0 else weapon.reach / 2.4
-	sword.material_override.albedo_color = weapon.tint
-	shield.material_override.albedo_color = Catalog.get_item(inventory.shield).tint
-	sword.visible = health > 0
-	shield.visible = health > 0 and inventory.shield_index >= 0
+func update_hands(delta: float, motion: float = 1.0) -> void:
+	if hands:
+		hands.animate(self, delta, motion)
+	if character_rig:
+		character_rig.equip_inventory(inventory)
+		character_rig.animate(delta, health > 0.0, attack_phase, false, hurt_timer > 0, blocking, cast_id != "")
 
 func use_item(index: int) -> bool:
 	if health <= 0 or attack_phase != 0 or cast_id != "" or index < 0 or index >= inventory.items.size():

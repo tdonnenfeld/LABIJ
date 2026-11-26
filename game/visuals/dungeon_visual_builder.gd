@@ -9,6 +9,8 @@ var batches: Dictionary = {}
 var torches: Array[Vector3] = []
 var lights: Array[OmniLight3D] = []
 var light_timer := 0.0
+var theme_id := 0
+const THEMES := [Color("#ffffff"), Color("#a8b3a2"), Color("#a4a6bc"), Color("#948b80"), Color("#8f9ca6"), Color("#b99580"), Color("#c5b69a")]
 
 func box(id: String, at: Vector3, size: Vector3, angle: float = 0.0) -> void:
 	var chunk := Vector2i(floori(at.x / (CELL * CHUNK)), floori(at.z / (CELL * CHUNK)))
@@ -18,7 +20,8 @@ func box(id: String, at: Vector3, size: Vector3, angle: float = 0.0) -> void:
 	var basis := Basis(Vector3.UP, angle).scaled_local(size)
 	batches[key].transforms.append(Transform3D(basis, at))
 
-func build(tiles: Dictionary, seed_value: int, corridor_blocks: Array = []) -> void:
+func build(tiles: Dictionary, seed_value: int, corridor_blocks: Array = [], floor_theme: int = 0) -> void:
+	theme_id = clampi(floor_theme, 0, THEMES.size() - 1)
 	var narrowed: Dictionary = {}
 	for block in corridor_blocks:
 		var at: Vector3 = block[0]
@@ -43,12 +46,14 @@ func build(tiles: Dictionary, seed_value: int, corridor_blocks: Array = []) -> v
 			if hash_value in [4, 11] and not narrowed.has(cell):
 				box("wall", at - normal * 0.04 + Vector3.UP * 1.5, Vector3(0.34, 3.0, 0.20), angle)
 		add_arch(tiles, cell, origin)
+		if not narrowed.has(cell):
+			decorate_cell(tiles, cell, origin, seed_value)
 	for block in corridor_blocks:
 		box("wall", block[0], block[1])
 	flush_batches()
 	for i in range(LIGHT_LIMIT):
 		var light := OmniLight3D.new()
-		light.light_color = Color("#ffb56a")
+		light.light_color = Color("#ff9766") if theme_id == 5 else (Color("#d5bb8c") if theme_id == 4 else Color("#ffb56a"))
 		light.omni_range = 8.5
 		light.omni_attenuation = 1.4
 		light.light_energy = 1.7
@@ -88,7 +93,7 @@ func flush_batches() -> void:
 	for batch in batches.values():
 		var mesh := BoxMesh.new()
 		mesh.size = Vector3.ONE
-		mesh.material = StoneKit.material(batch.material)
+		mesh.material = StoneKit.tinted(batch.material, THEMES[theme_id]) if batch.material in ["floor", "wall", "ceiling", "trim"] else StoneKit.material(batch.material)
 		var multimesh := MultiMesh.new()
 		multimesh.transform_format = MultiMesh.TRANSFORM_3D
 		multimesh.mesh = mesh
@@ -136,3 +141,31 @@ static func route_marker(parent: Node3D, at: Vector3, color: Color, descending: 
 		rim.material_override = accent
 		step.add_child(rim)
 		rim.position = Vector3(0, 0.033, 0.24)
+
+func decorate_cell(tiles: Dictionary, cell: Vector2i, origin: Vector3, seed_value: int) -> void:
+	if abs(cell.x) + abs(cell.y) <= 2:
+		return
+	var walls: Array[Vector2i] = []
+	for side in SIDES:
+		if not tiles.has(cell + side):
+			walls.append(side)
+	if walls.size() != 2 or walls[0] == -walls[1]:
+		return
+	var variation := posmod(cell.x * 97 + cell.y * 53 + seed_value, 11)
+	var normal := Vector3(walls[0].x, 0, walls[0].y)
+	var across := Vector3(walls[1].x, 0, walls[1].y)
+	var at := origin + (normal + across) * 1.12
+	if variation == 0:
+		box("wood", at + Vector3.UP * 0.27, Vector3(0.46, 0.53, 0.46))
+		for y in [0.11, 0.44]:
+			box("iron", at + Vector3.UP * y, Vector3(0.49, 0.045, 0.49))
+	elif variation == 1:
+		box("wood", at + Vector3.UP * 0.18, Vector3(0.50, 0.35, 0.50))
+		box("wood", at + Vector3.UP * 0.39, Vector3(0.51, 0.08, 0.51))
+		box("iron", at + Vector3.UP * 0.35 - normal * 0.26, Vector3(0.08, 0.10, 0.08))
+	elif variation == 2:
+		box("trim", at + Vector3.UP * 0.18, Vector3(0.45, 0.36, 0.45))
+		box("ember", at + Vector3.UP * 0.43, Vector3(0.055, 0.13, 0.055))
+	elif variation == 3:
+		for i in range(4):
+			box("iron", at + normal * 0.22 + Vector3.UP * (1.1 + i * 0.15), Vector3(0.09, 0.16, 0.08), i * PI / 2.0)

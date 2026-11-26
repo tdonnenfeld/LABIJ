@@ -1,5 +1,6 @@
 extends Node3D
 
+const ActorRig = preload("res://game/visuals/actor_rig.gd")
 const NetMotion = preload("res://game/network/net_motion.gd")
 const Numbers = preload("res://game/ui/numbers.gd")
 const Acoustics = preload("res://game/world/noise.gd")
@@ -63,7 +64,7 @@ func build(seed_value: int, render_geometry: bool, size: int = 1) -> void:
 		add_child(level)
 		level.position.y = -i * SPACING
 		var room_count := (5 if i >= Routes.MAIN_COUNT else 9) + 3 * (clampi(party_size, 1, 8) - 1)
-		level.generate(seed_value + i * 7919, visual, room_count, i >= Routes.MAIN_COUNT)
+		level.generate(seed_value + i * 7919, visual, room_count, i >= Routes.MAIN_COUNT, i)
 		floors[i] = level
 		if i in [2, 3, Routes.SANCTUARY] and not level.side_rooms.is_empty():
 			var cell: Vector2i = level.side_rooms[0]
@@ -140,24 +141,12 @@ func spawn_monster(id: int, floor_id: int, kind: String, at: Vector3, group_size
 	mob.position = at + Vector3.UP * float(stats[11]) * 0.5
 	mob.rotation.y = float(id % 16) * TAU / 16.0
 	if visual:
-		var mesh := MeshInstance3D.new()
-		var shape := CapsuleMesh.new()
-		shape.radius = stats[10]
-		shape.height = stats[11]
-		mesh.mesh = shape
-		var mat := StandardMaterial3D.new()
-		mat.albedo_color = stats[9]
-		mesh.material_override = mat
-		mob.add_child(mesh)
-		var face := MeshInstance3D.new()
-		var face_shape := BoxMesh.new()
-		face_shape.size = Vector3(float(stats[10]) * 1.2, 0.09, 0.09)
-		face.mesh = face_shape
-		var face_material := StandardMaterial3D.new()
-		face_material.albedo_color = Color("#28231d")
-		face.material_override = face_material
-		mesh.add_child(face)
-		face.position = Vector3(0, float(stats[11]) * 0.23, -float(stats[10]))
+		var rig := ActorRig.new()
+		rig.name = "ActorRig"
+		mob.add_child(rig)
+		rig.kind = kind
+		rig.height = float(stats[11])
+		rig.ever_alive = not reserve
 		var label := Label3D.new()
 		label.text = stats[0]
 		label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
@@ -185,7 +174,7 @@ func spawn_monster(id: int, floor_id: int, kind: String, at: Vector3, group_size
 	capsule.height = stats[11]
 	collision.shape = capsule
 	mob.add_child(collision)
-	monsters[id] = {"node": mob, "kind": kind, "floor": floor_id, "target": 0, "threat": {}, "health": 0.0 if reserve else hp, "boss": boss, "reserve": reserve, "rewarded": false, "max_health": hp, "forced_target": 0, "force_timer": 0.0, "phase": 0, "timer": 0.0, "attack_target": 0, "aim": Vector3.ZERO, "hurt": 0.0, "bleed": 0.0, "bleed_damage": 0.0, "bleed_owner": 0, "stun": 0.0, "burn": 0.0, "burn_damage": 0.0, "burn_owner": 0, "slow": 0.0, "poison": 0.0, "poison_damage": 0.0, "poison_owner": 0, "dot_amount": {}, "dot_time": 0.0, "asleep": not boss and not reserve and awareness_rng.randf() < 0.45, "investigate": 0.0, "heard_at": at, "roam_goal": Acoustics.cell(at), "roam_wait": awareness_rng.randf_range(0.5, 3.0), "stealth_seen": {}, "ambush_used": false, "backstab_seen": {}, "step_distance": 0.0}
+	monsters[id] = {"node": mob, "kind": kind, "floor": floor_id, "target": 0, "threat": {}, "health": 0.0 if reserve else hp, "boss": boss, "reserve": reserve, "rewarded": false, "max_health": hp, "forced_target": 0, "force_timer": 0.0, "phase": 0, "timer": 0.0, "attack_target": 0, "aim": Vector3.ZERO, "hurt": 0.0, "bleed": 0.0, "bleed_damage": 0.0, "bleed_owner": 0, "stun": 0.0, "burn": 0.0, "burn_damage": 0.0, "burn_owner": 0, "slow": 0.0, "poison": 0.0, "poison_damage": 0.0, "poison_owner": 0, "dot_amount": {}, "dot_time": 0.0, "asleep": not boss and not reserve and awareness_rng.randf() < 0.45, "investigate": 0.0, "heard_at": at, "roam_goal": Acoustics.cell(at), "roam_wait": awareness_rng.randf_range(0.5, 3.0), "stealth_seen": {}, "ambush_used": false, "backstab_seen": {}, "step_distance": 0.0, "move_speed": 0.0, "moved_last": false, "path_key": [], "path_next": Vector2i.ZERO}
 	mob.visible = not reserve
 
 func marker(level: Node3D, at: Vector3, caption: String, color: Color) -> Label3D:
@@ -266,16 +255,33 @@ func visible_floor(id: int) -> void:
 	for key in floors:
 		floors[key].visible = key == id
 	for mob in monsters.values():
-		mob.node.visible = mob.floor == id and mob.health > 0
+		var rig = mob.node.get_node_or_null("ActorRig")
+		var alive: bool = mob.health > 0
+		if rig:
+			rig.ever_alive = rig.ever_alive or alive
+		mob.node.visible = mob.floor == id and (alive or (rig != null and rig.ever_alive))
 		if visual and mob.node.visible:
-			var mesh: MeshInstance3D = mob.node.get_child(0)
-			mesh.material_override.albedo_color = Color("#ffffff") if mob.hurt > 0 else (Color("#e5a64e") if mob.phase == 1 else (Color("#8aa7e0") if mob.stun > 0 or mob.slow > 0 else (Color("#e96c38") if mob.burn > 0 else Bestiary.stats(mob.kind)[9])))
+			if rig and not rig.model:
+				rig.setup(mob.kind, float(Bestiary.stats(mob.kind)[11]))
 			var label: Label3D = mob.node.get_child(1)
+			label.visible = alive
 			var filled := clampi(ceili(10.0 * mob.health / mob.max_health), 0, 10)
 			label.text = "%s — %s\n%s%s %d/%d%s" % [Bestiary.stats(mob.kind)[0], awareness_name(mob), "█".repeat(filled), "░".repeat(10 - filled), ceili(mob.health), ceili(mob.max_health), status_summary(mob)]
-			mesh.rotation.z = PI * 0.5 if mob.asleep else 0.0
+			label.modulate = Color("#f1c879") if mob.phase == 1 else (Color("#e9a1a1") if mob.hurt > 0 else Color.WHITE)
 			if mob.kind in ["crypt_warden", "jewel_sentinel"]:
-				mob.node.get_child(2).visible = mob.phase == 1 and mob.stun <= 0
+				mob.node.get_child(2).visible = alive and mob.phase == 1 and mob.stun <= 0
+
+func animate_monsters(delta: float) -> void:
+	if not visual:
+		return
+	projectiles.animate_visuals()
+	for mob in monsters.values():
+		if not mob.node.visible:
+			continue
+		var rig = mob.node.get_node_or_null("ActorRig")
+		if rig:
+			rig.animate(delta, mob.health > 0, mob.phase, mob.asleep, mob.hurt > 0)
+
 
 func transfer(actor, peer_id: int, actors: Dictionary = {}) -> bool:
 	if objective.result != "" or actor.health <= 0 or actor.attack_phase != 0 or actor.cast_id != "":
@@ -335,6 +341,9 @@ func simulate(actors: Dictionary, delta: float) -> void:
 			break
 		if mob.health <= 0:
 			continue
+		if not mob.moved_last:
+			mob.move_speed = move_toward(mob.move_speed, 0.0, delta * 9.0)
+		mob.moved_last = false
 		mob.dot_time += delta
 		mob.hurt = maxf(0.0, mob.hurt - delta)
 		mob.force_timer = maxf(0.0, mob.force_timer - delta)
@@ -454,7 +463,11 @@ func move_monster(mob: Dictionary, at: Vector3, delta: float, speed: float) -> v
 	var level = floors[mob.floor]
 	var start := Acoustics.cell(node.position)
 	var goal := Acoustics.cell(at)
-	var next := next_cell(level.tiles, start, goal)
+	var key: Array = [mob.floor, start, goal, level.secret_open]
+	if mob.path_key != key:
+		mob.path_key = key
+		mob.path_next = next_cell(level.tiles, start, goal)
+	var next: Vector2i = mob.path_next
 	var destination := Vector3(next.x * Dungeon.CELL, node.position.y, next.y * Dungeon.CELL)
 	if start == goal:
 		destination = Vector3(at.x, node.position.y, at.z)
@@ -465,9 +478,13 @@ func move_monster(mob: Dictionary, at: Vector3, delta: float, speed: float) -> v
 			destination = Vector3(node.position.x, node.position.y, center.z)
 		elif absf(offset.z) > 0.1 and absf(node.position.x - center.x) > 0.08:
 			destination = Vector3(center.x, node.position.y, node.position.z)
-	face_toward(mob, destination)
+	face_toward(mob, destination, delta)
+	mob.moved_last = true
 	var before := node.position
-	var motion := (destination - node.position).limit_length(delta * speed * (0.5 if mob.slow > 0 else 1.0))
+	var target_speed := speed * (0.5 if mob.slow > 0 else 1.0)
+	var acceleration := 5.0 if mob.kind in ["brute", "guardian", "crypt_warden", "jewel_sentinel"] else 12.0
+	mob.move_speed = move_toward(mob.move_speed, target_speed, delta * acceleration)
+	var motion := (destination - node.position).limit_length(delta * float(mob.move_speed))
 	var hit := node.move_and_collide(motion, false, 0.001)
 	if hit:
 		# Queue at a choke, but slide along other bodies when space permits.
@@ -476,6 +493,8 @@ func move_monster(mob: Dictionary, at: Vector3, delta: float, speed: float) -> v
 		if tangent.length_squared() > 0.000001:
 			node.move_and_collide(tangent, false, 0.001)
 
+	if motion.length_squared() > 0.0001 and horizontal_distance(before, node.position) < motion.length() * 0.2:
+		mob.move_speed = move_toward(mob.move_speed, 0.0, delta * 4.0)
 	mob.step_distance += horizontal_distance(before, node.position)
 	if mob.step_distance >= 1.5:
 		mob.step_distance = fmod(mob.step_distance, 1.5)
@@ -552,7 +571,7 @@ func footsteps(actor, before: Vector3, delta: float) -> void:
 		var radius := Acoustics.QUIET if actor.quiet_walking else (Acoustics.SPRINT if actor.sprinting or actor.dash_timer > 0 else Acoustics.WALK)
 		if actor.inventory.armor_index >= 0:
 			radius *= Catalog.noise_multiplier(actor.inventory.items[actor.inventory.armor_index])
-		player_noise(actor, radius, "quiet" if actor.quiet_walking else ("sprint" if actor.sprinting or actor.dash_timer > 0 else "step"))
+		player_noise(actor, radius, "quiet" if actor.quiet_walking else ("sprint" if actor.sprinting or actor.dash_timer > 0 else ("step_mail" if actor.inventory.armor_index >= 0 and actor.inventory.items[actor.inventory.armor_index] in ["mail", "ward_mail"] else "step")))
 		if actor.quiet_walking:
 			credit_sneak(actor)
 
@@ -989,7 +1008,7 @@ func player_hit(actor, peer: int, amount: float, blocked: bool, parried: bool, s
 	var effect := "Parried" if parried else ("Blocked" if blocked else "")
 	var number := "%0.1f" % amount if amount < 1.0 and amount > 0.0 else str(roundi(amount))
 	var popup := effect if amount == 0 and effect != "" else ("-" + number + (" (" + effect + ")" if effect != "" else ""))
-	journal.add("Combat", "%s hits %s for %s%s" % [source_name, actor.display_name, number, " (" + effect + ")" if effect != "" else ""], actor.floor_id, actor.position + Vector3.UP, popup, "blocked" if blocked else "incoming", peer)
+	journal.add("Combat", "%s hits %s for %s%s" % [source_name, actor.display_name, number, " (" + effect + ")" if effect != "" else ""], actor.floor_id, actor.position + Vector3.UP, popup, "blocked" if blocked else "incoming", peer, actor.last_damage_source)
 	if actor.health <= 0:
 		fail_party(actor.display_name)
 
@@ -1033,11 +1052,12 @@ func distraction_lands(shot: Dictionary, at: Vector3) -> void:
 	sound(shot.floor, at, 14.0 * (1.0 + shot.bonus), "stone")
 	journal.add("Combat", "Noise Stone lands", shot.floor, at, "Noise", "status")
 
-func face_toward(mob: Dictionary, at: Vector3) -> void:
+func face_toward(mob: Dictionary, at: Vector3, delta: float = 0.0) -> void:
 	var node: Node3D = mob.node
 	var offset := at - node.position
 	if Vector2(offset.x, offset.z).length_squared() > 0.0025:
-		node.rotation.y = atan2(-offset.x, -offset.z)
+		var target := atan2(-offset.x, -offset.z)
+		node.rotation.y = lerp_angle(node.rotation.y, target, minf(1.0, delta * 9.0)) if delta > 0.0 else target
 
 func sound(floor_id: int, at: Vector3, radius: float, cue: String) -> void:
 	if radius <= 0:

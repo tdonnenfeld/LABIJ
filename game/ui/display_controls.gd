@@ -6,6 +6,7 @@ var settings: RefCounted
 var mode_select: OptionButton
 var size_select: OptionButton
 var notice: Label
+var motion_slider: HSlider
 
 func _ready() -> void:
 	var mode_label := Label.new()
@@ -22,6 +23,18 @@ func _ready() -> void:
 	for resolution in Settings.RESOLUTIONS:
 		size_select.add_item("%d × %d" % [resolution.x, resolution.y])
 	add_child(size_select)
+	var motion_label := Label.new()
+	motion_label.text = "Weapon bob / motion"
+	add_child(motion_label)
+	motion_slider = HSlider.new()
+	motion_slider.min_value = 0.0
+	motion_slider.max_value = 1.0
+	motion_slider.step = 0.05
+	add_child(motion_slider)
+	motion_slider.value_changed.connect(func(value):
+		settings.view_motion = value
+		settings.save_file()
+		changed.emit())
 	notice = Label.new()
 	notice.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	notice.add_theme_font_size_override("font_size", 12)
@@ -35,6 +48,7 @@ func _ready() -> void:
 	refresh()
 
 func refresh() -> void:
+	motion_slider.set_value_no_signal(settings.view_motion)
 	mode_select.select(settings.display_mode)
 	size_select.select(Settings.RESOLUTIONS.find(settings.resolution))
 	size_select.disabled = settings.display_mode != 0
