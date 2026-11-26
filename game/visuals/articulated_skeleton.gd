@@ -3,6 +3,7 @@ extends Skeleton3D
 var joints: Dictionary = {}
 var attachments: Dictionary = {}
 var rests: Dictionary = {}
+var drivers: Dictionary = {}
 
 func add_joint(id: String, parent_id: String, at: Transform3D) -> int:
 	var index := get_bone_count()
@@ -21,9 +22,13 @@ func attach_part(id: String, part: Node3D) -> void:
 	socket.name = id + "Socket"
 	add_child(socket)
 	socket.bone_name = id
-	part.reparent(socket, false)
-	part.transform = Transform3D.IDENTITY
-	attachments[id] = part
+	drivers[id] = part
+	attachments[id] = socket
+	for child in part.get_children():
+		if child in drivers.values() or child is BoneAttachment3D:
+			continue
+		if child is Node3D and not child.has_meta("bone_driver"):
+			child.reparent(socket, false)
 
 func split_limb(part: Node3D, id: String, length: float) -> Node3D:
 	if not is_instance_valid(part):
@@ -69,15 +74,20 @@ func build(body: Node3D, head: Node3D, arms: Array, legs: Array, tail: Node3D, r
 			parts[upper_id] = limb
 			parts[lower_id] = lower
 	for id in parts:
+		parts[id].set_meta("bone_driver", true)
+	for id in parts:
 		attach_part(id, parts[id])
 
 func sync_parts() -> void:
 	for id in attachments:
-		var part: Node3D = attachments[id]
-		var rest: Transform3D = rests[id]
-		set_bone_pose_position(joints[id], rest.origin + part.position)
-		set_bone_pose_rotation(joints[id], rest.basis.get_rotation_quaternion() * part.quaternion)
-		part.transform = Transform3D.IDENTITY
+		var part: Node3D = drivers[id]
+		var socket: Node3D = attachments[id]
+		for child in part.get_children():
+			if child is Node3D and not child.has_meta("bone_driver"):
+				child.reparent(socket, false)
+		set_bone_pose_position(joints[id], part.position)
+		set_bone_pose_rotation(joints[id], part.quaternion)
+		set_bone_pose_scale(joints[id], part.scale)
 
 func pose_joint(id: String, angle: Vector3) -> void:
 	if joints.has(id):
