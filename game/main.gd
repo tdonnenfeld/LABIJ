@@ -58,6 +58,11 @@ const Catalog = preload("res://game/items/catalog.gd")
 var inventory_ui: PanelContainer
 const PotionBelt = preload("res://game/ui/potion_belt.gd")
 var potion_belt: HBoxContainer
+const Trade = preload("res://game/items/trade.gd")
+const TradeUI = preload("res://game/items/trade_ui.gd")
+var trade_book := Trade.new()
+var trade_views: Dictionary = {}
+var trade_panel: PanelContainer
 var item_requests: Dictionary = {}
 const PORT := 7777
 var expedition_seed := 0
@@ -259,6 +264,14 @@ func _ready() -> void:
 		feedback = Feedback.new()
 		add_child(feedback)
 		feedback.local_layer = popup_layer
+		trade_panel = TradeUI.new()
+		layer.add_child(trade_panel)
+		trade_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+		trade_panel.offset_left = -225
+		trade_panel.offset_right = 225
+		trade_panel.offset_top = -195
+		trade_panel.offset_bottom = 195
+		trade_panel.action.connect(_trade_action)
 		result_screen = CenterContainer.new()
 		layer.add_child(result_screen)
 		result_screen.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -485,6 +498,8 @@ func _connected() -> void:
 func _failed() -> void:
 	multiplayer.multiplayer_peer = null
 	pending_profiles.clear()
+	trade_book.reset()
+	trade_views.clear()
 	active = false
 	result_shown = false
 	if is_instance_valid(world):
@@ -508,6 +523,8 @@ func _failed() -> void:
 		action_bar.hide()
 		potion_belt.hide()
 		potion_belt.refresh(0)
+		trade_panel.hide()
+		trade_panel.refresh_state({"id": 0, "notice": ""})
 		noise_label.hide()
 		noise_meter.hide()
 		noise_meter.update_levels(0.0, 0.0)
@@ -548,6 +565,8 @@ func _spawn(id: int, profile: Array = ["", 0, 0]) -> void:
 		world.journal.add("Party", "%s enters the dungeon" % actor.display_name)
 
 func _remove(id: int) -> void:
+	trade_book.cancel(id, "Companion left.")
+	trade_views.erase(id)
 	if actors.has(id):
 		actors[id].queue_free()
 		actors.erase(id)
@@ -629,8 +648,20 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_L:
 		log_panel.visible = not log_panel.visible
 		return
+	if event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_J:
+		if trade_panel.visible:
+			close_trade()
+			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+		else:
+			inventory_ui.hide()
+			skills_ui.hide()
+			trade_panel.show()
+			trade_panel.move_to_front()
+			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+		return
 	if event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_I:
 		if inventory_ui:
+			close_trade()
 			skills_ui.hide()
 			inventory_ui.visible = not inventory_ui.visible
 			if inventory_ui.visible:
@@ -639,9 +670,15 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_K:
 		if skills_ui:
+			close_trade()
 			inventory_ui.hide()
 			skills_ui.visible = not skills_ui.visible
 			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if skills_ui.visible else Input.MOUSE_MODE_CAPTURED
+		return
+	if trade_panel and trade_panel.visible:
+		if event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE:
+			close_trade()
+			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 		return
 	if skills_ui and skills_ui.visible:
 		if event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE:
@@ -765,6 +802,11 @@ func _physics_process(delta: float) -> void:
 				if multiplayer.has_multiplayer_peer():
 					transition.rpc(tick, id, actors[id].floor_id, actors[id].position, world.monster_snapshot())
 		stair_requests.clear()
+		trade_book.sweep(actors, delta)
+		if world.objective.result == "":
+			publish_trade_views()
+		else:
+			trade_book.reset()
 		if tick % 6 == 0 or world.objective.result != "":
 			flush_events()
 			flush_sounds()
@@ -797,6 +839,8 @@ func _physics_process(delta: float) -> void:
 		if inventory_ui:
 			inventory_ui.refresh(local.inventory.state())
 		potion_belt.refresh(local.inventory.belt)
+		if trade_panel.visible:
+			trade_panel.refresh_inventory(local, local_id, actors)
 		if damage_flash:
 			damage_flash.color.a = minf(0.3, local.hurt_timer)
 		if hp_bar:
@@ -832,7 +876,9 @@ func _physics_process(delta: float) -> void:
 			if local.health <= 0:
 				hud.text += "\nParty defeated"
 			else:
-				hud.text += "\nI: Inventory  ·  K: Talents"
+				hud.text += "\nI: Inventory  ·  K: Talents  ·  J: Trade"
+				if trade_panel.session.get("incoming", false):
+					hud.text += "  ·  Trade invitation!"
 				if Catalog.get_item(local.inventory.weapon).projectile_speed > 0:
 					hud.text += "  ·  Arrows: %d" % local.inventory.count("arrows")
 				var aggro := 0
@@ -1059,6 +1105,8 @@ func build_expedition(seed_value: int, size: int) -> void:
 	expedition_seed = seed_value
 	party_size = size
 	party_names.clear()
+	trade_book.reset()
+	trade_views.clear()
 	voice_tokens.clear()
 	voice_peaks.clear()
 	voice_timer = 0.0
@@ -1106,6 +1154,8 @@ func show_result() -> void:
 	inventory_ui.hide()
 	skills_ui.hide()
 	potion_belt.hide()
+	trade_panel.hide()
+	trade_panel.refresh_state({"id": 0, "notice": ""})
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	result_label.text = "JEWEL RECOVERED\nExpedition victory!" if world.objective.result == "victory" else "EXPEDITION LOST\nA party member has fallen."
 	result_screen.show()
@@ -1289,3 +1339,45 @@ func use_belt(id: int, slot: int) -> void:
 	if actor.drink_belt(slot):
 		world.journal.add("Loot", "%s drinks a belt potion" % actor.display_name)
 		world.journal.add("Combat", "%s restores %s HP" % [actor.display_name, Numbers.number(actor.health - before)], actor.floor_id, actor.position + Vector3.UP, "+%d" % roundi(actor.health - before), "heal", id)
+
+func close_trade() -> void:
+	if trade_panel and trade_panel.visible:
+		if trade_panel.session.get("id", 0) != 0:
+			trade_panel.send("cancel")
+		trade_panel.hide()
+
+func _trade_action(operation: String, value: int, session_id: int, version: int, revision: int) -> void:
+	if multiplayer.is_server():
+		apply_trade(multiplayer.get_unique_id(), operation, value, session_id, version, revision)
+	else:
+		request_trade.rpc_id(1, operation, value, session_id, version, revision)
+
+@rpc("any_peer", "call_remote", "reliable")
+func request_trade(operation: String, value: int, session_id: int, version: int, revision: int) -> void:
+	if multiplayer.is_server():
+		apply_trade(multiplayer.get_remote_sender_id(), operation, value, session_id, version, revision)
+
+func apply_trade(id: int, operation: String, value: int, session_id: int, version: int, revision: int) -> void:
+	if not active or world.objective.result != "" or not actors.has(id):
+		return
+	var previous: Dictionary = trade_book.view(id, actors)
+	var ok := trade_book.operate(id, operation, value, session_id, version, revision, actors)
+	if ok and operation == "confirm" and previous.get("other_confirmed", false):
+		world.journal.add("Party", "%s exchanges items with %s" % [actors[id].display_name, previous.get("name", "a companion")])
+	publish_trade_views()
+
+func publish_trade_views() -> void:
+	for peer in actors:
+		var data := trade_book.view(peer, actors)
+		if trade_views.get(peer, {}) == data:
+			continue
+		trade_views[peer] = data
+		if not dedicated and peer == multiplayer.get_unique_id():
+			receive_trade_view(data)
+		elif multiplayer.has_multiplayer_peer():
+			receive_trade_view.rpc_id(peer, data)
+
+@rpc("authority", "call_remote", "reliable")
+func receive_trade_view(data: Dictionary) -> void:
+	if not dedicated and active and is_instance_valid(trade_panel):
+		trade_panel.refresh_state(data)
