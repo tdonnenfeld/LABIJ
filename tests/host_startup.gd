@@ -68,6 +68,27 @@ func run() -> void:
 			break
 		await process_frame
 	check(host.active and host.actors.size() == 1, "Host continues after guest leaves")
+	check(not guest.active and not guest.connecting, "Guest returns to menu")
+	await process_frame
+	guest._join()
+	for i in range(600):
+		if guest.active and host.ready_peers.size() == 1:
+			break
+		await process_frame
+	check(guest.active and host.ready_peers.size() == 1, "Guest can rejoin open expedition")
+	if guest.active:
+		guest.leave_expedition(false)
+	else:
+		guest._failed()
+	for i in range(60):
+		if host.actors.size() == 1:
+			break
+		await process_frame
+	check(host.actors.size() == 1 and host.ready_peers.is_empty(), "Rejoining does not leak roster entries")
+	guest._join()
+	guest._failed("Connection cancelled.")
+	check(not guest.connecting and not guest.active and not guest.cancel_join_button.visible, "Connection cancellation resets menu")
+	await process_frame
 	host.leave_expedition(false)
 	await process_frame
 	host._solo()
