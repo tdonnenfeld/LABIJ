@@ -106,8 +106,12 @@ func sound_for(kind: String) -> AudioStream:
 	return variants[index]
 
 func play_sound(kind: String, at: Vector3, radius: float) -> void:
+	if DisplayServer.get_name() == "headless":
+		return
 	if voices.size() >= LIMIT:
 		var oldest: AudioStreamPlayer3D = voices.pop_front()
+		oldest.stop()
+		oldest.stream = null
 		oldest.queue_free()
 	var voice := AudioStreamPlayer3D.new()
 	voice.stream = sound_for(kind)
@@ -130,5 +134,7 @@ func play_sound(kind: String, at: Vector3, radius: float) -> void:
 
 func reset() -> void:
 	for voice in voices:
+		voice.stop()
+		voice.stream = null
 		voice.queue_free()
 	voices.clear()
