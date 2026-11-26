@@ -470,7 +470,12 @@ func wake(mob: Dictionary) -> void:
 	if mob.asleep:
 		mob.asleep = false
 		status_event(mob, "Awakened")
-		sound(mob.floor, mob.node.position, 8.0, "wake")
+		var cue := "wake"
+		match mob.kind:
+			"brute": cue = "wake_ogre"
+			"goblin", "jewel_hunter": cue = "wake_beast"
+			"mage": cue = "wake_shade"
+		sound(mob.floor, mob.node.position, 8.0, cue)
 
 func emit_noise(floor_id: int, at: Vector3, radius: float) -> void:
 	if radius <= 0 or not floors.has(floor_id):

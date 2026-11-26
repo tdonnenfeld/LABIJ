@@ -22,3 +22,34 @@ All bundled files below are CC0 1.0 (https://creativecommons.org/publicdomain/ze
 | steps/kenney_09.ogg | 52c39f52c84a4e5b92c0555b05e1c703bad6d93a |
 | impacts/impactMetal_heavy_001.ogg | e510d3eb929c89f58946f9773ae9f0197cd1334f |
 | impacts/impactMining_002.ogg | 5bd4f3582815fe023c5ab347f03f66cedab3c46b |
+
+## Expanded library
+
+Additional files were transferred byte-for-byte from [open-game-sfx-index](https://github.com/Mcamento8/open-game-sfx-index), whose [SOURCES.md](https://github.com/Mcamento8/open-game-sfx-index/blob/main/SOURCES.md) identifies the CC0 upstream packs. The original files are by artisticdude ([RPG Sound Pack](https://opengameart.org/content/rpg-sound-pack)), Ogrebane ([Battle Sound Effects](https://opengameart.org/content/battle-sound-effects), CC0 option), Juhani Junkala/SubspaceAudio ([512 Sound Effects](https://opengameart.org/content/512-sound-effects-8-bit-style)), and Kenney ([RPG Audio](https://kenney.nl/assets/rpg-audio), [Impact Sounds](https://kenney.nl/assets/impact-sounds), [UI Audio](https://kenney.nl/assets/ui-audio)). Local names describe intended use, not necessarily the original recorded action. Samples may be synthesized or recorded; not all have been auditioned.
+
+| Local file | Mirror path under audio/ | Original blob SHA |
+| --- | --- | --- |
+| combat/swing_01.wav | oga-rpg-pack/RPG Sound Pack/battle/swing2.wav | 6d9c38e781a2e687a1ff3040f1c1de4ac525bc36 |
+| combat/swing_02.wav | oga-rpg-pack/RPG Sound Pack/battle/swing3.wav | c631abb81d183a35ce66d28d161f3257aabf37e5 |
+| combat/bow.wav | oga-battle/battle_sound_effects/Bow.wav | 6dcb84b5b3dd8e8a1acaf346f86ee74a9d5b770a |
+| magic/cast.wav | oga-rpg-pack/RPG Sound Pack/battle/magic1.wav | 469284e97a639e40c01828408f909e9a35067378 |
+| creatures/ogre_01.wav | oga-rpg-pack/RPG Sound Pack/NPC/ogre/ogre5.wav | e7c0e41209374f2d12891098f189edbf1628157c |
+| creatures/beast_01.wav | oga-rpg-pack/RPG Sound Pack/NPC/gutteral beast/mnstr1.wav | 9f58934d1c85f8e2d70825640fe0fa4f517a09ee |
+| combat/stone_01.ogg | impact-sounds/impactMining_000.ogg | 3346d1a9c624d31cdb6d4a67f2b0b405110880eb |
+| combat/stone_02.ogg | impact-sounds/impactMining_001.ogg | b5475fad4aedab16084e08e11c6d5a6f6f336b78 |
+| combat/block_02.ogg | impact-sounds/impactMetal_heavy_003.ogg | 970c26411815308929901d60a2afc0d072e83450 |
+| items/chainmail.wav | oga-rpg-pack/RPG Sound Pack/inventory/chainmail1.wav | b74c72e6ff0fb0073d156b23630b8b8df12447a5 |
+| items/potion.wav | oga-rpg-pack/RPG Sound Pack/inventory/bottle.wav | 54ddc33ec5fe2a05876f6fceb996c4f55b5d7a3d |
+| items/coin.ogg | rpg-audio/handleCoins2.ogg | 73d92c5cee6293b9391a8465e75d6bf47be666ff |
+| items/scroll.ogg | rpg-audio/bookFlip2.ogg | f02b05344dadd15b3056cfc8445b585869cc8072 |
+| items/equip.ogg | rpg-audio/drawKnife1.ogg | 4141dbf41af81a4e7013a09692f4ac9000d885eb |
+| world/door_open.ogg | rpg-audio/doorOpen_1.ogg | 7df28265312494fc053380002e551b001dea89ad |
+| world/door_close.ogg | rpg-audio/doorClose_1.ogg | 21021c5f8c13c2fbc74e83de8c5fce5d8709b70b |
+| world/latch.ogg | rpg-audio/metalLatch.ogg | 509c68f75a53b3b1fa7954be8cc854101c76802d |
+| items/cloth.ogg | rpg-audio/cloth2.ogg | 45e783913da1c3022c72a52fdda6e6101f98b8fd |
+| magic/explosion_01.wav | oga-512-retro/The Essential Retro Video Game Sound Effects Collection [512 sounds] By Juhani Junkala/Explosions/Short/sfx_exp_short_hard2.wav | 003700667768aafc667e0e8bd01d698ce4105118 |
+| magic/explosion_02.wav | oga-512-retro/The Essential Retro Video Game Sound Effects Collection [512 sounds] By Juhani Junkala/Explosions/Short/sfx_exp_short_soft1.wav | 6180256b0ed8d8bfa376a76766bd7bc21c195da8 |
+| creatures/shade.wav | oga-rpg-pack/RPG Sound Pack/NPC/shade/shade1.wav | b9b11c471b9b248e563cfe9ed85468c122a7e6bb |
+| creatures/bite.wav | oga-rpg-pack/RPG Sound Pack/NPC/beetle/bite-small.wav | eb29d52fed55e854db45f3507dc023dad6f3fad3 |
+| ui/click.ogg | ui-audio/click1.ogg | 502a729739d22a9effeaf79869f373864acd4ceb |
+| ui/confirm.ogg | ui-audio/switch2.ogg | a38d7756e1602a672dec496d1a8f7804f42e518a |
