@@ -32,7 +32,6 @@ var equipment_rows: VBoxContainer
 var known_filter: OptionButton
 var bag := Inventory.new()
 var bag_state: Array = []
-var trained_count: Label
 var key_labels: Array[String] = ["1", "2", "3"]
 
 func _ready() -> void:
@@ -266,7 +265,7 @@ func rebuild_training() -> void:
 		return
 	clear_rows(training_rows)
 	caption(training_rows, "Ranked by lifetime XP · bars compare training across all schools")
-	var order := range(Skills.TITLES.size())
+	var order: Array = range(Skills.TITLES.size())
 	order.sort_custom(func(a, b): return model.xp[a] > model.xp[b] if model.xp[a] != model.xp[b] else a < b)
 	var maximum := maxf(1.0, model.xp[order[0]])
 	for i in order:
@@ -318,7 +317,7 @@ func rebuild_known() -> void:
 		if not model.learned.has(id):
 			continue
 		var active: bool = node[5] == "active"
-		if known_filter.selected == 1 and not active or known_filter.selected == 2 and active:
+		if (known_filter.selected == 1 and not active) or (known_filter.selected == 2 and active):
 			continue
 		count += 1
 		var row := HBoxContainer.new()
@@ -346,10 +345,10 @@ func rebuild_equipment() -> void:
 	caption(equipment_rows, "Currently equipped")
 	for slot in range(Inventory.SLOT_KINDS.size()):
 		var index := bag.slot_index(slot)
-		var name := Inventory.SLOT_KINDS[slot].capitalize()
+		var slot_name: String = Inventory.SLOT_KINDS[slot].capitalize()
 		if slot >= 7:
-			name += " %d" % (slot - 6)
-		caption(equipment_rows, "%s: %s" % [name, "Empty" if index < 0 else Catalog.get_item(bag.items[index]).title])
+			slot_name += " %d" % (slot - 6)
+		caption(equipment_rows, "%s: %s" % [slot_name, "Empty" if index < 0 else Catalog.get_item(bag.items[index]).title])
 	equipment_rows.add_child(HSeparator.new())
 	caption(equipment_rows, "Available equipment in your bag")
 	var count := 0
