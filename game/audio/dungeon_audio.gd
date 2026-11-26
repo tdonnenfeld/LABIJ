@@ -1,6 +1,7 @@
 extends Node3D
 
 const Acoustics = preload("res://game/world/noise.gd")
+const Mix = preload("res://game/audio/audio_mix.gd")
 const RATE := 22050
 const LIMIT := 24
 const SOUNDS := ["step", "quiet", "sprint", "melee", "bow", "magic", "impact", "block", "explosion", "stone", "enemy_step", "wake"]
@@ -110,6 +111,7 @@ func play_sound(kind: String, at: Vector3, radius: float) -> void:
 		oldest.queue_free()
 	var voice := AudioStreamPlayer3D.new()
 	voice.stream = sound_for(kind)
+	voice.bus = Mix.EFFECTS
 	voice.unit_size = maxf(1.0, radius * 0.35)
 	voice.max_distance = maxf(1.5, radius)
 	match kind:

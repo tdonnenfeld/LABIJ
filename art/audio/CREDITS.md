@@ -53,3 +53,15 @@ Additional files were transferred byte-for-byte from [open-game-sfx-index](https
 | creatures/bite.wav | oga-rpg-pack/RPG Sound Pack/NPC/beetle/bite-small.wav | eb29d52fed55e854db45f3507dc023dad6f3fad3 |
 | ui/click.ogg | ui-audio/click1.ogg | 502a729739d22a9effeaf79869f373864acd4ceb |
 | ui/confirm.ogg | ui-audio/switch2.ogg | a38d7756e1602a672dec496d1a8f7804f42e518a |
+
+## Environmental audio (individual licenses)
+
+The following files are exceptions to the preceding blanket CC0 statement where indicated. Only the named individual clips were copied; no dataset or other collection was bundled.
+
+| Local file | Author / original source | License | Redistribution and SHA |
+| --- | --- | --- | --- |
+| world/fire_loop.ogg | Iwan “qubodup” Gabovitch, [Fire Loop](https://opengameart.org/content/fire-loop) | [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/) | [emberdelve](https://github.com/tapiwamakandigona/emberdelve/blob/main/assets/audio/sfx/ember_ambience_loop.ogg), gain adjusted by that project, original seamless loop preserved; 12e97ceccd16d5a3b15c6ec1c28f5c71fa334105 |
+| world/drip.wav | Adam_N, [Water_dripping_echoing.wav](https://freesound.org/people/Adam_N/sounds/166326/) | CC0 (individual clip) | ESC-50 3-166326-A-15.wav, five-second excerpt; b26272fc060f935ec4060ff9754a57eb3105d519 |
+| world/wind.wav | klangfabrik, [winter wind 01a.aiff](https://freesound.org/people/klangfabrik/sounds/117504/) | CC0 (individual clip) | ESC-50 3-117504-A-16.wav, five-second excerpt; 90eabb00443845ec43d9df8974bd88517372651a |
+
+See [emberdelve provenance](https://github.com/tapiwamakandigona/emberdelve/blob/main/PROVENANCE.md) and [ESC-50 individual clip licensing](https://github.com/karolpiczak/ESC-50/blob/master/LICENSE). ESC-50's collection-level license is CC BY-NC; only two separately identified CC0 source recordings are used, not the collection. Fire attribution is also displayed in the game menu. No audio is downloaded at runtime.
