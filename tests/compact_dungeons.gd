@@ -62,6 +62,14 @@ func run() -> void:
 			if a != b:
 				check(actors[a].position.distance_to(actors[b].position) >= 0.74, "No overlapping arrivals")
 	for floor_id in world.floors:
+		var level = world.floors[floor_id]
+		for room in level.rooms:
+			var at: Vector3 = level.position + Vector3(room.x * Dungeon.CELL, 0, room.y * Dungeon.CELL)
+			for i in range(12):
+				var follower := world.follower_arrival(floor_id, at, "brute", i)
+				for x in [-0.55, 0.55]:
+					for z in [-0.55, 0.55]:
+						check(level.room_tiles.has(World.Acoustics.cell(follower + Vector3(x, 0, z))), "Follower lands inside room")
 		var count := 0
 		for mob in world.monsters.values():
 			if mob.floor == floor_id and not mob.boss and not mob.reserve:
@@ -85,4 +93,27 @@ func run() -> void:
 	check(hit != null and hit.get_collider() == second, "Players physically block one another")
 	first.free()
 	second.free()
+	var level := Dungeon.new()
+	root.add_child(level)
+	level.generate(123, false, 5)
+	var narrow_cell := Vector2i.ZERO
+	for cell in level.corridor_widths:
+		if level.corridor_widths[cell].width == Dungeon.SINGLE_FILE:
+			narrow_cell = cell
+			break
+	var axis: Vector2i = level.corridor_widths[narrow_cell].axis
+	var across := Vector3(-axis.y, 0, axis.x)
+	var center := Vector3(narrow_cell.x * Dungeon.CELL, 1, narrow_cell.y * Dungeon.CELL)
+	var walker := Player.new()
+	root.add_child(walker)
+	walker.setup(false, false)
+	walker.position = center
+	await physics_frame
+	await physics_frame
+	var wall_hit := walker.move_and_collide(across, true)
+	check(wall_hit != null and wall_hit.get_collider() is StaticBody3D, "Narrow corridor physically blocks lateral movement")
+	if wall_hit != null:
+		check(wall_hit.get_travel().length() < 0.4, "Single-file clearance matches width")
+	walker.free()
+	level.free()
 	quit(0 if failures == 0 else 1)

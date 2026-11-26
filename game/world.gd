@@ -284,7 +284,7 @@ func transfer(actor, peer_id: int, actors: Dictionary = {}) -> bool:
 		mob.asleep = false
 		mob.investigate = 0.0
 		mob.roam_goal = Acoustics.cell(arrival)
-		mob.node.position = arrival + Vector3(1.0 + float(i % 3) * 0.6, float(Bestiary.stats(mob.kind)[11]) * 0.5, float(floori(float(i) / 3.0)) * 0.6)
+		mob.node.position = follower_arrival(destination, arrival, mob.kind, i)
 	return true
 
 func simulate(actors: Dictionary, delta: float) -> void:
@@ -1056,3 +1056,16 @@ func arrival_position(floor_id: int, center: Vector3, actors: Dictionary, arrivi
 		if clear:
 			return at
 	return Vector3.INF
+
+func follower_arrival(floor_id: int, arrival: Vector3, kind: String, index: int) -> Vector3:
+	var stats := Bestiary.stats(kind)
+	var clearance: float = float(stats[10]) + 0.12
+	var at := arrival + Vector3(1.0 + float(index % 3) * 0.6, float(stats[11]) * 0.5, float(floori(float(index) / 3.0)) * 0.6)
+	var cell := Acoustics.cell(arrival)
+	for bounds in floors[floor_id].room_bounds:
+		if not bounds.has_point(cell):
+			continue
+		at.x = clampf(at.x, (bounds.position.x - 0.5) * Dungeon.CELL + clearance, (bounds.end.x - 0.5) * Dungeon.CELL - clearance)
+		at.z = clampf(at.z, (bounds.position.y - 0.5) * Dungeon.CELL + clearance, (bounds.end.y - 0.5) * Dungeon.CELL - clearance)
+		break
+	return at
