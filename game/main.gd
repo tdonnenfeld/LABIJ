@@ -855,6 +855,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif settings.matches(event, "discover"):
 		_talent_action("discover", "", 0)
 	elif settings.matches(event, "attack"):
+		set_local_trigger(true, false)
 		return
 	elif event is InputEventMouseMotion:
 		yaw -= event.relative.x * 0.002 * settings.sensitivity
@@ -879,6 +880,17 @@ func _unhandled_input(event: InputEvent) -> void:
 					_talent_action("activate", "", i)
 				return
 
+func set_local_trigger(held: bool, cancel: bool) -> void:
+	if local_trigger == held:
+		return
+	local_trigger = held
+	if multiplayer.is_server():
+		var actor = actors.get(multiplayer.get_unique_id())
+		if actor != null:
+			actor.set_trigger(held, cancel)
+	else:
+		request_trigger.rpc_id(1, held, cancel)
+
 func _physics_process(delta: float) -> void:
 	if not active:
 		return
@@ -900,11 +912,7 @@ func _physics_process(delta: float) -> void:
 		var block := enabled and settings.pressed("block")
 		var held := enabled and settings.pressed("attack")
 		if held != local_trigger:
-			local_trigger = held
-			if multiplayer.is_server():
-				actor.set_trigger(held, not enabled)
-			else:
-				request_trigger.rpc_id(1, held, not enabled)
+			set_local_trigger(held, not enabled)
 		var sprint := enabled and settings.pressed("sprint")
 		var quiet := enabled and settings.pressed("quiet")
 		if multiplayer.is_server():
@@ -1174,7 +1182,7 @@ func request_trigger(held: bool, cancel: bool) -> void:
 func request_attack() -> void:
 	if remote_gameplay_ready(multiplayer.get_remote_sender_id()):
 		var id := multiplayer.get_remote_sender_id()
-		if actors.has(id):
+		if actors.has(id) and not actors[id].ranged_mode():
 			attack_requests[id] = true
 
 func _inventory_action(index: int, drop: bool) -> void:
