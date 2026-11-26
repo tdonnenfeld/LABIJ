@@ -180,3 +180,7 @@ The grimoire opens on a training overview ranked by lifetime XP. Comparative bar
 ## Dungeon visual variety
 
 Four floor patterns and four wall patterns mix deterministic stone dimensions and tones within each floor's existing palette. Main rooms, optional pockets and secret chambers receive seeded decorative identities: crypt, storeroom, library, shrine, prison, cistern, armory or ruins. Wall shelves, books, pots, weapon racks, barred panels, reliefs, banners, moss and drains combine with corner skulls, candles, crates, crystals and rubble. Floor borders, inlays and scattered debris break up repeated tiles. Props are cosmetic, batched through the existing chunked MultiMesh renderer, and kept off narrowed corridors. Layout, collision and loot are unchanged; these are not new interactive rooms or destructible props. Native visual/performance testing is still needed.
+
+## Interactive doors
+
+Selected corridor entrances contain seeded wooden doors or iron portcullises. Face a nearby door and press E to toggle it. Closed doors block movement and projectiles; open doors clear collision immediately and animate locally. Closing is refused when a player or living enemy occupies the doorway. Non-rat enemies can open doors while pursuing a path. Door state is replicated with the existing world state, including late joins. Doors are unlocked, not destructible, and have no crushing damage.
