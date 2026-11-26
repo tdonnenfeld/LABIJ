@@ -1,6 +1,11 @@
 extends RefCounted
 
 const ICONS := {
+	"iron_helm": preload("res://art/ui/icons/items/iron_helm.svg"),
+	"leather_gloves": preload("res://art/ui/icons/items/leather_gloves.svg"),
+	"iron_boots": preload("res://art/ui/icons/items/iron_boots.svg"),
+	"ward_amulet": preload("res://art/ui/icons/items/ward_amulet.svg"),
+	"ward_ring": preload("res://art/ui/icons/items/ward_ring.svg"),
 	"arrows": preload("res://art/ui/icons/items/arrows.svg"),
 	"sword": preload("res://art/ui/icons/items/sword.svg"),
 	"axe": preload("res://art/ui/icons/items/axe.svg"),

@@ -726,7 +726,7 @@ func reward_kill(mob: Dictionary, killer, party: Dictionary) -> void:
 		killer.gain_xp(reward)
 		killer.skills.credit(0, 10)
 		killer.health = minf(killer.max_health(), killer.health + killer.skills.bonus("heal_kill"))
-	var choices := ["potion", "potion", "noise_stone", "noise_stone", "axe", "spear", "iron_shield", "leather", "mail", "staff", "bow", "venom_dagger", "ward_mail", "scroll_firebolt", "scroll_frostbolt", "scroll_spark", "scroll_stonebolt"]
+	var choices := ["potion", "potion", "noise_stone", "noise_stone", "axe", "spear", "iron_shield", "leather", "mail", "staff", "bow", "venom_dagger", "ward_mail", "scroll_firebolt", "scroll_frostbolt", "scroll_spark", "scroll_stonebolt", "iron_helm", "leather_gloves", "iron_boots", "ward_amulet", "ward_ring"]
 	if mob.floor >= 1:
 		choices.append_array(["longbow", "ember_staff", "scroll_fireball", "scroll_freeze", "scroll_thunder", "scroll_boulder"])
 	var at: Vector3 = mob.node.position
