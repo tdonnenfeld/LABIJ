@@ -56,6 +56,8 @@ var noise_label: Label
 var target_label: Label
 const Catalog = preload("res://game/items/catalog.gd")
 var inventory_ui: PanelContainer
+const PotionBelt = preload("res://game/ui/potion_belt.gd")
+var potion_belt: HBoxContainer
 var item_requests: Dictionary = {}
 const PORT := 7777
 var expedition_seed := 0
@@ -146,6 +148,7 @@ func _ready() -> void:
 		inventory_ui.offset_bottom = 222
 		inventory_ui.action.connect(_inventory_action)
 		inventory_ui.moved.connect(_inventory_move)
+		inventory_ui.organize.connect(_inventory_organize)
 		skills_ui = SkillsUI.new()
 		layer.add_child(skills_ui)
 		skills_ui.position = Vector2(160, 24)
@@ -200,6 +203,14 @@ func _ready() -> void:
 			action_bar.add_child(slot)
 			action_slots.append(slot)
 		action_bar.hide()
+		potion_belt = PotionBelt.new()
+		layer.add_child(potion_belt)
+		potion_belt.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
+		potion_belt.offset_left = -80
+		potion_belt.offset_right = 85
+		potion_belt.offset_top = -118
+		potion_belt.offset_bottom = -70
+		potion_belt.hide()
 		noise_label = Label.new()
 		noise_label.position = Vector2(16, 184)
 		Parchment.plate(noise_label, 12)
@@ -425,6 +436,7 @@ func _start() -> void:
 			log_panel.show()
 			party_panel.show()
 			action_bar.show()
+			potion_belt.show()
 			noise_label.show()
 			noise_meter.show()
 			voice_label.show()
@@ -494,6 +506,8 @@ func _failed() -> void:
 		log_panel.reset()
 		party_panel.hide()
 		action_bar.hide()
+		potion_belt.hide()
+		potion_belt.refresh(0)
 		noise_label.hide()
 		noise_meter.hide()
 		noise_meter.update_levels(0.0, 0.0)
@@ -635,6 +649,9 @@ func _unhandled_input(event: InputEvent) -> void:
 			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 		return
 	if inventory_ui and inventory_ui.visible:
+		if event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_R:
+			inventory_ui.organize_selected("rotate")
+			return
 		if event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE:
 			inventory_ui.hide()
 			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
@@ -651,6 +668,11 @@ func _unhandled_input(event: InputEvent) -> void:
 			item_requests[multiplayer.get_unique_id()] = [-1, false]
 		else:
 			request_item.rpc_id(1, -1, false)
+	elif event is InputEventKey and event.pressed and not event.echo and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and event.physical_keycode in [KEY_4, KEY_5, KEY_6, KEY_7]:
+		if multiplayer.is_server():
+			use_belt(multiplayer.get_unique_id(), event.physical_keycode - KEY_4)
+		else:
+			request_belt.rpc_id(1, event.physical_keycode - KEY_4)
 	elif event is InputEventKey and event.pressed and not event.echo and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and event.physical_keycode in [KEY_1, KEY_2, KEY_3, KEY_T, KEY_G, KEY_H]:
 		if event.physical_keycode == KEY_H:
 			_talent_action("throw_stone", "", 0)
@@ -774,6 +796,7 @@ func _physics_process(delta: float) -> void:
 		local.update_hands(delta)
 		if inventory_ui:
 			inventory_ui.refresh(local.inventory.state())
+		potion_belt.refresh(local.inventory.belt)
 		if damage_flash:
 			damage_flash.color.a = minf(0.3, local.hurt_timer)
 		if hp_bar:
@@ -1082,6 +1105,7 @@ func show_result() -> void:
 	environmental_audio.reset()
 	inventory_ui.hide()
 	skills_ui.hide()
+	potion_belt.hide()
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	result_label.text = "JEWEL RECOVERED\nExpedition victory!" if world.objective.result == "victory" else "EXPEDITION LOST\nA party member has fallen."
 	result_screen.show()
@@ -1228,3 +1252,40 @@ func receive_voice(peer: int, at: Vector3, floor_id: int, radius: float, data: P
 	var id := multiplayer.get_unique_id()
 	if actors.has(id) and actors.has(peer) and actors[id].floor_id == floor_id and actors[peer].floor_id == floor_id:
 		voice_chat.receive(peer, at, floor_id, radius, data)
+
+func _inventory_organize(operation: String, index: int, revision: int) -> void:
+	if multiplayer.is_server():
+		apply_inventory_organize(multiplayer.get_unique_id(), operation, index, revision)
+	else:
+		request_inventory_organize.rpc_id(1, operation, index, revision)
+
+@rpc("any_peer", "call_remote", "reliable")
+func request_inventory_organize(operation: String, index: int, revision: int) -> void:
+	if multiplayer.is_server():
+		apply_inventory_organize(multiplayer.get_remote_sender_id(), operation, index, revision)
+
+func apply_inventory_organize(id: int, operation: String, index: int, revision: int) -> void:
+	if not active or world.objective.result != "" or not actors.has(id):
+		return
+	var actor = actors[id]
+	if actor.health <= 0 or actor.attack_phase != 0 or actor.cast_id != "" or actor.inventory.revision != revision:
+		return
+	match operation:
+		"rotate": actor.inventory.rotate_item(index)
+		"sort": actor.inventory.sort_items()
+		"load": actor.inventory.load_belt(index)
+		"unload": actor.inventory.unload_belt()
+
+@rpc("any_peer", "call_remote", "reliable")
+func request_belt(slot: int) -> void:
+	if multiplayer.is_server():
+		use_belt(multiplayer.get_remote_sender_id(), slot)
+
+func use_belt(id: int, slot: int) -> void:
+	if not active or world.objective.result != "" or not actors.has(id):
+		return
+	var actor = actors[id]
+	var before: float = actor.health
+	if actor.drink_belt(slot):
+		world.journal.add("Loot", "%s drinks a belt potion" % actor.display_name)
+		world.journal.add("Combat", "%s restores %s HP" % [actor.display_name, Numbers.number(actor.health - before)], actor.floor_id, actor.position + Vector3.UP, "+%d" % roundi(actor.health - before), "heal", id)

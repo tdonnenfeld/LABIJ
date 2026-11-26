@@ -17,7 +17,7 @@ func _ready() -> void:
 	mouse_exited.connect(func(): hovered = -1; queue_redraw())
 
 func refresh(data: Array, index: int) -> void:
-	ready_data = data.size() == 7
+	ready_data = data.size() == 9
 	if ready_data:
 		model.apply(data)
 	chosen = index
@@ -45,7 +45,7 @@ func _get_tooltip(at_position: Vector2) -> String:
 	if index < 0:
 		return ""
 	var id := model.items[index]
-	var extent := Catalog.dimensions(id)
+	var extent := Inventory.footprint(id, model.rotated[index])
 	return "%s · %d×%d · ×%d" % [Catalog.get_item(id).title, extent.x, extent.y, model.quantity(index)]
 
 func _get_drag_data(at_position: Vector2) -> Variant:
@@ -59,7 +59,7 @@ func _get_drag_data(at_position: Vector2) -> Variant:
 	preview.texture = Icons.texture(model.items[index])
 	preview.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	preview.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	preview.size = Vector2(Catalog.dimensions(model.items[index])) * CELL
+	preview.size = Vector2(Inventory.footprint(model.items[index], model.rotated[index])) * CELL
 	preview.modulate.a = 0.8
 	set_drag_preview(preview)
 	return {"index": index, "offset": at - model.positions[index], "split": Input.is_physical_key_pressed(KEY_SHIFT), "revision": model.revision}
@@ -88,13 +88,18 @@ func _draw() -> void:
 		if model.is_equipped(i):
 			continue
 		var id := model.items[i]
-		var area := Rect2(Vector2(model.positions[i]) * CELL, Vector2(Catalog.dimensions(id)) * CELL).grow(-2)
+		var area := Rect2(Vector2(model.positions[i]) * CELL, Vector2(Inventory.footprint(id, model.rotated[i])) * CELL).grow(-2)
 		var active := i == chosen or i == hovered
 		draw_rect(area, Color("#88704a") if active else Color("#66523b"))
 		draw_rect(area, Color("#efcf85") if active else Color("#b39962"), false, 2.0)
 		var icon_size := minf(area.size.x, area.size.y) - 5.0
 		var icon_area := Rect2(area.get_center() - Vector2.ONE * icon_size * 0.5, Vector2.ONE * icon_size)
-		draw_texture_rect(Icons.texture(id), icon_area, false)
+		if model.rotated[i]:
+			draw_set_transform(area.get_center(), PI / 2.0)
+			draw_texture_rect(Icons.texture(id), Rect2(-Vector2.ONE * icon_size * 0.5, Vector2.ONE * icon_size), false)
+			draw_set_transform(Vector2.ZERO)
+		else:
+			draw_texture_rect(Icons.texture(id), icon_area, false)
 		if model.quantities[i] > 1:
 			var text := str(model.quantities[i])
 			draw_string_outline(font, area.end - Vector2(23, 4), text, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, 4, Color("#261c15"))

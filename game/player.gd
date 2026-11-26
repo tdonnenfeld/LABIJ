@@ -368,3 +368,11 @@ func decay_noise(delta: float) -> void:
 	var falling_time := maxf(0.0, delta - noise_hold)
 	noise_hold = maxf(0.0, noise_hold - delta)
 	noise_peak = maxf(noise_level, noise_peak - falling_time * 2.0)
+
+func drink_belt(slot: int) -> bool:
+	if health <= 0 or health >= max_health() or attack_phase != 0 or cast_id != "":
+		return false
+	if not inventory.consume_belt(slot):
+		return false
+	health = minf(max_health(), health + Catalog.get_item("potion").heal)
+	return true

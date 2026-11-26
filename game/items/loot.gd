@@ -1,5 +1,6 @@
 extends Node3D
 
+const Models = preload("res://game/items/loot_models.gd")
 const Catalog = preload("res://game/items/catalog.gd")
 var drops: Dictionary = {}
 var next_id := 1
@@ -15,16 +16,7 @@ func create_drop(drop_id: int, id: String, floor_id: int, at: Vector3, amount: i
 	add_child(node)
 	node.position = at
 	if visual:
-		var mesh := MeshInstance3D.new()
-		var box := BoxMesh.new()
-		box.size = Vector3(0.35, 0.35, 0.35)
-		mesh.mesh = box
-		var mat := StandardMaterial3D.new()
-		mat.albedo_color = Catalog.get_item(id).tint
-		mat.emission_enabled = true
-		mat.emission = mat.albedo_color * 0.3
-		mesh.material_override = mat
-		node.add_child(mesh)
+		Models.build(id, node)
 		var label := Label3D.new()
 		label.text = Catalog.get_item(id).title + (" ×%d" % amount if amount > 1 else "")
 		label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
