@@ -53,7 +53,7 @@ var camera: Camera3D
 
 func setup(local: bool, visual: bool = true) -> void:
 	collision_layer = 2
-	collision_mask = 3
+	collision_mask = 7
 	var collision := CollisionShape3D.new()
 	var capsule := CapsuleShape3D.new()
 	capsule.radius = 0.32

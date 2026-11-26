@@ -27,6 +27,8 @@ func refresh(world, actor, actors: Dictionary, angle: float) -> void:
 	for branch in world.branch_entries:
 		if world.Routes.PARENTS[branch] == floor_id:
 			markers[Acoustics.cell(world.branch_entries[branch])] = "B"
+	if world.escape_entries.has(floor_id):
+		markers[Acoustics.cell(world.escape_entries[floor_id])] = "X" if world.objective.started else "L"
 	party.clear()
 	for other in actors.values():
 		if other != actor and other.floor_id == floor_id and other.health > 0:

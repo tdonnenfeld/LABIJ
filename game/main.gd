@@ -802,7 +802,7 @@ func _physics_process(delta: float) -> void:
 			if world.objective.result == "" and actors.has(id) and stair_cooldowns.get(id, 0.0) <= 0.0 and world.transfer(actors[id], id, actors):
 				stair_cooldowns[id] = 0.75
 				if multiplayer.has_multiplayer_peer():
-					transition.rpc(tick, id, actors[id].floor_id, actors[id].position, world.monster_snapshot())
+					transition.rpc(tick, id, actors[id].floor_id, actors[id].position, world.monster_snapshot(), world.secret_state())
 		stair_requests.clear()
 		trade_book.sweep(actors, delta)
 		if world.objective.result == "":
@@ -817,7 +817,7 @@ func _physics_process(delta: float) -> void:
 			var states := {}
 			for id in actors:
 				states[id] = [actors[id].position, actors[id].heading, actors[id].floor_id, actors[id].health, actors[id].stamina, actors[id].blocking, actors[id].attack_phase, actors[id].hurt_timer, actors[id].swing_hit, actors[id].inventory.state(), actors[id].skills.state(), actors[id].combat_timer, actors[id].mana, actors[id].sprinting, actors[id].cast_id, actors[id].noise_level, actors[id].quiet_walking, actors[id].noise_peak]
-			snapshot.rpc(tick, states, world.monster_snapshot(), world.loot.state(), world.projectiles.state(), world.hazards.state(), world.objective.state())
+			snapshot.rpc(tick, states, world.monster_snapshot(), world.loot.state(), world.projectiles.state(), world.hazards.state(), world.objective.state(), world.secret_state())
 			if world.objective.result != "":
 				finish_remote.rpc(world.objective.state())
 	if not dedicated and actors.has(local_id):
@@ -871,6 +871,8 @@ func _physics_process(delta: float) -> void:
 			hud.text = World.Routes.NAMES[local.floor_id]
 			if not route.is_empty() and local.health > 0:
 				hud.text += "  |  " + ("" if route.get("locked", false) else "E: ") + route.label
+			if world.secret_near(local):
+				hud.text += "  |  E: Inspect loose masonry"
 			var hint: String = world.objective_hint(local, local_id)
 			if hint != "":
 				hud.text += "  |  " + hint
@@ -908,7 +910,7 @@ func submit_input(move: Vector2, angle: float, block: bool, sprint: bool, quiet:
 		actors[id].wants_quiet = quiet
 
 @rpc("authority", "call_remote", "unreliable_ordered")
-func snapshot(sequence: int, states: Dictionary, mobs: Dictionary, drops: Dictionary, shots: Dictionary, traps: Dictionary, objective_data: Dictionary) -> void:
+func snapshot(sequence: int, states: Dictionary, mobs: Dictionary, drops: Dictionary, shots: Dictionary, traps: Dictionary, objective_data: Dictionary, secrets: Array = []) -> void:
 	if not is_instance_valid(world) or sequence < received_tick:
 		return
 	received_tick = sequence
@@ -917,6 +919,7 @@ func snapshot(sequence: int, states: Dictionary, mobs: Dictionary, drops: Dictio
 	world.projectiles.apply(shots)
 	world.hazards.apply(traps)
 	world.objective.apply(objective_data)
+	world.apply_secrets(secrets)
 	for id in states:
 		if actors.has(id):
 			actors[id].position = states[id][0]
@@ -947,7 +950,7 @@ func request_stairs() -> void:
 			stair_requests[id] = true
 
 @rpc("authority", "call_remote", "reliable")
-func transition(sequence: int, id: int, floor_id: int, at: Vector3, mobs: Dictionary) -> void:
+func transition(sequence: int, id: int, floor_id: int, at: Vector3, mobs: Dictionary, secrets: Array = []) -> void:
 	if sequence < received_tick:
 		return
 	received_tick = sequence
@@ -955,6 +958,7 @@ func transition(sequence: int, id: int, floor_id: int, at: Vector3, mobs: Dictio
 		actors[id].floor_id = floor_id
 		actors[id].position = at
 	world.apply_monsters(mobs)
+	world.apply_secrets(secrets)
 
 @rpc("any_peer", "call_remote", "reliable")
 func request_attack() -> void:
