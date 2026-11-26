@@ -6,8 +6,9 @@ var floor_material: StandardMaterial3D
 var wall_material: StandardMaterial3D
 var visual := true
 var end_cell := Vector2i.ZERO
+var rooms: Array[Vector2i] = []
 
-func generate(seed_value: int, render_geometry: bool = true) -> void:
+func generate(seed_value: int, render_geometry: bool = true, room_count: int = 9) -> void:
 	visual = render_geometry
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed_value
@@ -18,10 +19,11 @@ func generate(seed_value: int, render_geometry: bool = true) -> void:
 		wall_material.albedo_color = Color("#77705e")
 	var previous := Vector2i(0, 0)
 	var heading := Vector2i.RIGHT
-	for i in range(9):
+	for i in range(room_count):
 		var center := previous + heading * rng.randi_range(7, 11) + Vector2i(-heading.y, heading.x) * rng.randi_range(-4, 4)
 		if i == 0:
 			center = Vector2i.ZERO
+		rooms.append(center)
 		var size := Vector2i(rng.randi_range(3, 5), rng.randi_range(3, 5))
 		for x in range(-size.x, size.x + 1):
 			for y in range(-size.y, size.y + 1):

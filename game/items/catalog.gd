@@ -22,8 +22,43 @@ const ITEMS := {
 	"longbow": preload("res://content/items/longbow.tres"),
 	"venom_dagger": preload("res://content/items/venom_dagger.tres"),
 	"ember_staff": preload("res://content/items/ember_staff.tres"),
-	"ward_mail": preload("res://content/items/ward_mail.tres")
+	"ward_mail": preload("res://content/items/ward_mail.tres"),
+	"warden_shield": preload("res://content/items/warden_shield.tres"),
+	"oracle_staff": preload("res://content/items/oracle_staff.tres")
 }
 
+const AFFIXES := ["keen", "swift", "venom"]
+static var variants: Dictionary = {}
+
 static func get_item(id: String) -> Resource:
-	return ITEMS.get(id)
+	if ITEMS.has(id):
+		return ITEMS[id]
+	if variants.has(id):
+		return variants[id]
+	var parts := id.split(":")
+	if parts.size() != 2 or not ITEMS.has(parts[0]) or not parts[1] in AFFIXES:
+		return null
+	var base = ITEMS[parts[0]]
+	if base.kind != "weapon":
+		return null
+	var item = base.duplicate()
+	match parts[1]:
+		"keen":
+			item.title += " of Precision"
+			item.damage *= 1.2
+		"swift":
+			item.title += " of Haste"
+			item.windup *= 0.85
+			item.recovery *= 0.85
+		"venom":
+			item.title += " of Venom"
+			item.poison += 2.0
+	variants[id] = item
+	return item
+
+static func enchant(id: String, rng: RandomNumberGenerator) -> String:
+	var item = ITEMS.get(id)
+	if item == null or item.kind != "weapon":
+		return id
+	var choices := ["keen", "swift"] if item.projectile_speed > 0 else AFFIXES
+	return id + ":" + choices[rng.randi_range(0, choices.size() - 1)]

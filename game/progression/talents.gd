@@ -63,7 +63,9 @@ const NODES := [["vitality",0,"Vitality",25,"","hp",15,"+15 max HP",false],
 	["venom_arrow",10,"Venom Arrow",65,"aim","poison_arrow",1,"Arrows poison for 5s",false],
 	["pierce_arrow",10,"Piercing Arrow",65,"quickshot","pierce",0.6,"Ignore 60% armour",false],
 	["steady",10,"Steady Hand",50,"quickshot","cost",0.25,"25% less bow stamina",false],
-	["protector",4,"Protector",50,"guard","threat",0.5,"Generate 50% more threat from damage",false]]
+	["protector",4,"Protector",50,"guard","threat",0.5,"Generate 50% more threat from damage",false],
+	["taunt",4,"Challenge",65,"protector","active",0,"Taunt aimed enemy for 3s (12s)",false],
+	["fade",5,"Fade",65,"evasion","active",0,"Halve your threat on this floor (20s)",false]]
 
 static func find(id: String) -> Array:
 	for node in NODES:

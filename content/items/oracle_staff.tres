@@ -1,0 +1,14 @@
+[gd_resource type="Resource" load_steps=2 format=3]
+[ext_resource type="Script" path="res://game/items/item_definition.gd" id="1"]
+[resource]
+script = ExtResource("1")
+title = "Oracle's Ember"
+kind = "weapon"
+damage = 18.0
+reach = 2.8
+stamina_cost = 12.0
+windup = 0.35
+recovery = 0.6
+mana_bonus = 0.5
+spell_power = 0.35
+tint = Color(0.8, 0.65, 0.3, 1)

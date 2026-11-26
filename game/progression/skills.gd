@@ -40,7 +40,7 @@ func gain(amount: int) -> void:
 			credit(i, float(amount) * priorities[i] / weights)
 
 func weapon_domain(id: String) -> int:
-	match id:
+	match id.get_slice(":", 0):
 		"axe": return 2
 		"spear": return 3
 		"bow", "longbow": return 10

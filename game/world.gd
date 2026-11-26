@@ -3,6 +3,10 @@ extends Node3D
 const Dungeon = preload("res://game/dungeon.gd")
 const Combat = preload("res://game/combat.gd")
 const Threat = preload("res://game/combat/threat.gd")
+const Routes = preload("res://game/world/routes.gd")
+const Hazards = preload("res://game/world/hazards.gd")
+var hazards := Hazards.new()
+var branch_entries: Dictionary = {}
 const Bestiary = preload("res://game/monsters/bestiary.gd")
 const Spells = preload("res://game/combat/spells.gd")
 const Projectiles = preload("res://game/combat/projectiles.gd")
@@ -13,7 +17,7 @@ var loot := Loot.new()
 var loot_rng := RandomNumberGenerator.new()
 var tablet_position := Vector3.ZERO
 var secret_id := ""
-const COUNT := 4
+const COUNT := Routes.COUNT
 const SPACING := 30.0
 const USE_RADIUS := 2.5
 const FOLLOW_RADIUS := 3.0
@@ -23,6 +27,8 @@ var visual := false
 
 func build(seed_value: int, render_geometry: bool, party_size: int = 1) -> void:
 	visual = render_geometry
+	hazards.visual = visual
+	add_child(hazards)
 	projectiles.visual = visual
 	add_child(projectiles)
 	loot.visual = visual
@@ -36,33 +42,44 @@ func build(seed_value: int, render_geometry: bool, party_size: int = 1) -> void:
 		var level := Dungeon.new()
 		add_child(level)
 		level.position.y = -i * SPACING
-		level.generate(seed_value + i * 7919, visual)
+		level.generate(seed_value + i * 7919, visual, 5 if i >= Routes.MAIN_COUNT else 9)
 		floors[i] = level
 		if i == 1:
 			tablet_position = level.position + Vector3(6, 0, 0)
 			if visual:
 				marker(level, Vector3(6, 0, 0), "ANCIENT TABLET [T]", Color("#8ab8a0"))
+		for branch in Routes.PARENTS:
+			if Routes.PARENTS[branch] == i:
+				var entry: Vector2i = level.rooms[rng.randi_range(2, level.rooms.size() - 3)]
+				branch_entries[branch] = level.position + Vector3(entry.x * Dungeon.CELL, 0, entry.y * Dungeon.CELL)
+				if visual:
+					marker(level, branch_entries[branch] - level.position, Routes.NAMES[branch] + " [E]", Color("#b98ddb"))
 		if visual:
 			if i > 0:
-				marker(level, Vector3.ZERO, "UP [E]", Color("#67a8de"))
-			if i < COUNT - 1:
+				marker(level, Vector3.ZERO, "RETURN [E]" if i >= Routes.MAIN_COUNT else "UP [E]", Color("#67a8de"))
+			if i < Routes.MAIN_COUNT - 1:
 				var end: Vector2i = level.end_cell
 				marker(level, Vector3(end.x * Dungeon.CELL, 0, end.y * Dungeon.CELL), "DOWN [E]", Color("#d3ae55"))
 		var cells: Array[Vector2i] = []
 		for cell in level.tiles:
-			if Vector2(cell).length() >= 7.0 and Vector2(cell - level.end_cell).length() >= 2.0:
+			if Vector2(cell).length() >= 7.0 and Vector2(cell - level.end_cell).length() >= 2.0 and not near_branch_entry(i, level.position + Vector3(cell.x * Dungeon.CELL, 0, cell.y * Dungeon.CELL)):
 				cells.append(cell)
 		cells.sort()
 		var count := mini(cells.size(), encounter_count(i, party_size))
+		if i >= Routes.MAIN_COUNT:
+			count += 1
 		for j in range(count):
 			var pool: Array = Bestiary.ENCOUNTERS[i]
-			var kind: String = pool[rng.randi_range(0, pool.size() - 1)]
+			var boss := i >= Routes.MAIN_COUNT and j == count - 1
+			var kind: String = Routes.BOSSES[i] if boss else pool[rng.randi_range(0, pool.size() - 1)]
 			var stats := Bestiary.stats(kind)
 			var mob := Node3D.new()
 			add_child(mob)
-			var pick := rng.randi_range(0, cells.size() - 1)
-			var cell: Vector2i = cells[pick]
-			cells.remove_at(pick)
+			var cell: Vector2i = level.end_cell
+			if not boss:
+				var pick := rng.randi_range(0, cells.size() - 1)
+				cell = cells[pick]
+				cells.remove_at(pick)
 			mob.position = level.position + Vector3(cell.x * Dungeon.CELL, float(stats[11]) * 0.5, cell.y * Dungeon.CELL)
 			if visual:
 				var mesh := MeshInstance3D.new()
@@ -79,7 +96,12 @@ func build(seed_value: int, render_geometry: bool, party_size: int = 1) -> void:
 				label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 				label.position.y = float(stats[11]) * 0.5 + 0.3
 				mob.add_child(label)
-			monsters[i * 1000 + j] = {"node": mob, "kind": kind, "floor": i, "target": 0, "threat": {}, "health": float(stats[1]), "phase": 0, "timer": 0.0, "attack_target": 0, "aim": Vector3.ZERO, "hurt": 0.0, "bleed": 0.0, "bleed_damage": 0.0, "bleed_owner": 0, "stun": 0.0, "burn": 0.0, "burn_damage": 0.0, "burn_owner": 0, "slow": 0.0, "poison": 0.0, "poison_damage": 0.0, "poison_owner": 0}
+			monsters[i * 1000 + j] = {"node": mob, "kind": kind, "floor": i, "target": 0, "threat": {}, "health": float(stats[1]) * (1.0 + 0.35 * (clampi(party_size, 1, 8) - 1) if boss else 1.0), "boss": boss, "max_health": float(stats[1]) * (1.0 + 0.35 * (clampi(party_size, 1, 8) - 1) if boss else 1.0), "forced_target": 0, "force_timer": 0.0, "phase": 0, "timer": 0.0, "attack_target": 0, "aim": Vector3.ZERO, "hurt": 0.0, "bleed": 0.0, "bleed_damage": 0.0, "bleed_owner": 0, "stun": 0.0, "burn": 0.0, "burn_damage": 0.0, "burn_owner": 0, "slow": 0.0, "poison": 0.0, "poison_damage": 0.0, "poison_owner": 0}
+		for j in range(mini(cells.size(), 2 + Routes.depth(i))):
+			var pick := rng.randi_range(0, cells.size() - 1)
+			var cell: Vector2i = cells[pick]
+			cells.remove_at(pick)
+			hazards.add_trap(i * 1000 + j, i, level.position + Vector3(cell.x * Dungeon.CELL, 0.06, cell.y * Dungeon.CELL), "spike" if rng.randf() < 0.5 else "fire")
 
 func marker(level: Node3D, at: Vector3, caption: String, color: Color) -> void:
 	var mesh := MeshInstance3D.new()
@@ -110,14 +132,29 @@ func stair_position(id: int, down: bool) -> Vector3:
 func horizontal_distance(a: Vector3, b: Vector3) -> float:
 	return Vector2(a.x - b.x, a.z - b.z).length()
 
+func near_branch_entry(floor_id: int, at: Vector3) -> bool:
+	for branch in branch_entries:
+		if Routes.PARENTS[branch] == floor_id and horizontal_distance(at, branch_entries[branch]) < 6.0:
+			return true
+	return false
+
+func route_at(id: int, at: Vector3) -> Dictionary:
+	if id >= Routes.MAIN_COUNT and horizontal_distance(at, stair_position(id, false)) <= USE_RADIUS:
+		return {"destination": Routes.PARENTS[id], "arrival": branch_entries[id], "entry": stair_position(id, false), "label": "Return", "step": -1}
+	for branch in branch_entries:
+		if Routes.PARENTS[branch] == id and horizontal_distance(at, branch_entries[branch]) <= USE_RADIUS:
+			return {"destination": branch, "arrival": stair_position(branch, false), "entry": branch_entries[branch], "label": Routes.NAMES[branch], "step": 1}
+	if id > 0 and id < Routes.MAIN_COUNT and horizontal_distance(at, stair_position(id, false)) <= USE_RADIUS:
+		return {"destination": id - 1, "arrival": stair_position(id - 1, true), "entry": stair_position(id, false), "label": "Ascend", "step": -1}
+	if id < Routes.MAIN_COUNT - 1 and horizontal_distance(at, stair_position(id, true)) <= USE_RADIUS:
+		return {"destination": id + 1, "arrival": stair_position(id + 1, false), "entry": stair_position(id, true), "label": "Descend", "step": 1}
+	return {}
+
 func stair_at(id: int, at: Vector3) -> int:
-	if id > 0 and horizontal_distance(at, stair_position(id, false)) <= USE_RADIUS:
-		return -1
-	if id < COUNT - 1 and horizontal_distance(at, stair_position(id, true)) <= USE_RADIUS:
-		return 1
-	return 0
+	return route_at(id, at).get("step", 0)
 
 func visible_floor(id: int) -> void:
+	hazards.visible_floor(id)
 	loot.visible_floor(id)
 	projectiles.visible_floor(id)
 	for key in floors:
@@ -132,14 +169,14 @@ func transfer(actor, peer_id: int) -> bool:
 	if actor.health <= 0 or actor.attack_phase != 0 or actor.cast_id != "":
 		return false
 	var old: int = actor.floor_id
-	var step := stair_at(old, actor.position)
-	if step == 0:
+	var route := route_at(old, actor.position)
+	if route.is_empty():
 		return false
-	var destination := old + step
-	var arrival := stair_position(destination, step < 0)
+	var destination: int = route.destination
+	var arrival: Vector3 = route.arrival
 	var followers: Array = []
 	for mob in monsters.values():
-		if mob.health > 0 and mob.floor == old and mob.target == peer_id and horizontal_distance(mob.node.position, actor.position) <= FOLLOW_RADIUS and horizontal_distance(mob.node.position, stair_position(old, step > 0)) <= FOLLOW_RADIUS:
+		if not mob.boss and mob.health > 0 and mob.floor == old and mob.target == peer_id and horizontal_distance(mob.node.position, actor.position) <= FOLLOW_RADIUS and horizontal_distance(mob.node.position, route.entry) <= FOLLOW_RADIUS:
 			followers.append(mob)
 	actor.floor_id = destination
 	actor.position = arrival + Vector3(0, 1, 0)
@@ -150,15 +187,18 @@ func transfer(actor, peer_id: int) -> bool:
 		mob.phase = 0
 		mob.timer = 0.0
 		mob.threat = {peer_id: maxf(Threat.PULL, mob.threat.get(peer_id, 0.0))}
+		mob.force_timer = 0.0
 		mob.floor = destination
 		mob.node.position = arrival + Vector3(1.0 + float(i % 3) * 0.6, float(Bestiary.stats(mob.kind)[11]) * 0.5, float(i / 3) * 0.6)
 	return true
 
 func simulate(actors: Dictionary, delta: float) -> void:
+	hazards.step(actors, delta)
 	for mob in monsters.values():
 		if mob.health <= 0:
 			continue
 		mob.hurt = maxf(0.0, mob.hurt - delta)
+		mob.force_timer = maxf(0.0, mob.force_timer - delta)
 		var stats := Bestiary.stats(mob.kind)
 		mob.slow = maxf(0.0, mob.slow - delta)
 		if mob.burn > 0:
@@ -216,7 +256,15 @@ func simulate(actors: Dictionary, delta: float) -> void:
 			if mob.timer <= 0:
 				if mob.phase == 1:
 					var victim = actors.get(mob.attack_target)
-					if mob.kind in ["archer", "mage"]:
+					if mob.kind == "crypt_warden":
+						for actor in actors.values():
+							if actor.health > 0 and actor.floor_id == mob.floor and horizontal_distance(actor.position, node.position) <= 3.2 and Combat.clear_path(node, actor.position):
+								actor.take_damage(float(stats[2]), node.position)
+					elif mob.kind == "ember_oracle":
+						var direction: Vector3 = mob.aim - node.position
+						for angle in [-0.24, 0.0, 0.24]:
+							projectiles.launch(mob.floor, node.position, direction.rotated(Vector3.UP, angle), 10.0, float(stats[3]), float(stats[2]), Color("#ef864b"), 0, true, "hex", -1)
+					elif mob.kind in ["archer", "mage"]:
 						var direction: Vector3 = mob.aim - node.position
 						projectiles.launch(mob.floor, node.position, direction, 14.0 if mob.kind == "archer" else 9.0, float(stats[3]), float(stats[2]), Color("#d8c7a0") if mob.kind == "archer" else Color("#cf73e8"), 0, true, "hex" if mob.kind == "mage" else "", -1)
 					elif victim != null and victim.health > 0 and victim.floor_id == mob.floor and horizontal_distance(victim.position, node.position) <= float(stats[3]) and Combat.clear_path(node, victim.position):
@@ -333,7 +381,7 @@ func hit_monster(actor, mob: Dictionary, party: Dictionary) -> void:
 	var stats := Bestiary.stats(mob.kind)
 	var domain: int = actor.skills.weapon_domain(actor.inventory.weapon)
 	var damage: float = actor.attack_damage()
-	if mob.health <= float(stats[1]) * 0.3:
+	if mob.health <= float(mob.get("max_health", stats[1])) * 0.3:
 		damage *= 1.0 + actor.skills.bonus("execute")
 	if mob.phase == 2:
 		damage *= 1.0 + actor.skills.bonus("precision", domain)
@@ -367,7 +415,7 @@ func reward_kill(mob: Dictionary, killer, party: Dictionary) -> void:
 	mob.target = 0
 	mob.threat.clear()
 	mob.bleed = 0.0
-	var reward: int = int(Bestiary.stats(mob.kind)[8]) + mob.floor * 25
+	var reward: int = int(Bestiary.stats(mob.kind)[8]) + Routes.depth(mob.floor) * 25
 	for teammate in party.values():
 		if teammate == killer or teammate.health <= 0 or teammate.floor_id != mob.floor:
 			continue
@@ -382,7 +430,12 @@ func reward_kill(mob: Dictionary, killer, party: Dictionary) -> void:
 		choices.append_array(["longbow", "ember_staff", "scroll_fireball", "scroll_freeze", "scroll_thunder", "scroll_boulder"])
 	var at: Vector3 = mob.node.position
 	at.y = floors[mob.floor].position.y + 0.3
-	loot.spawn(choices[loot_rng.randi_range(0, choices.size() - 1)], mob.floor, at)
+	var item_id: String = choices[loot_rng.randi_range(0, choices.size() - 1)]
+	if mob.boss:
+		item_id = Routes.REWARDS[mob.kind]
+	elif loot_rng.randf() < 0.12:
+		item_id = Catalog.enchant(item_id, loot_rng)
+	loot.spawn(item_id, mob.floor, at)
 
 func safe(actor) -> bool:
 	if actor.health <= 0 or actor.attack_phase != 0 or actor.cast_id != "" or actor.combat_timer > 0:
@@ -427,6 +480,11 @@ func apply_spell_damage(shot: Dictionary, mob: Dictionary, actors: Dictionary) -
 	if shot.effect in ["slow", "freeze"] and mob.burn > 0:
 		damage *= 1.25
 		mob.burn = 0.0
+	if shot.effect.begins_with("arrow"):
+		damage *= 1.0 - float(Bestiary.stats(mob.kind)[7]) * (1.0 - shot.bonus)
+	else:
+		damage *= 1.0 - Bestiary.resistance(mob.kind, shot.domain)
+	Threat.add(mob, shot.owner, minf(mob.health, damage) * (1.0 + (owner.skills.bonus("threat") if owner != null else 0.0)))
 	mob.health = maxf(0.0, mob.health - damage)
 	mob.hurt = 0.18
 	if owner != null and owner.health > 0:
@@ -452,4 +510,31 @@ func apply_spell_damage(shot: Dictionary, mob: Dictionary, actors: Dictionary) -
 			mob.stun = maxf(mob.stun, 0.5)
 
 static func encounter_count(floor_id: int, party_size: int) -> int:
-	return ceili((6.0 + floor_id * 2.0) * (1.0 + 0.65 * (clampi(party_size, 1, 8) - 1)))
+	return ceili((6.0 + Routes.depth(floor_id) * 2.0) * (1.0 + 0.65 * (clampi(party_size, 1, 8) - 1)))
+
+func threat_ability(actor, peer: int, ability: String) -> bool:
+	if actor.health <= 0 or actor.attack_phase != 0 or actor.cast_id != "" or not actor.skills.learned.has(ability) or actor.skills.cooldowns.get(ability, 0.0) > 0:
+		return false
+	var changed := false
+	if ability == "taunt":
+		var chosen = null
+		var best := 8.0
+		for mob in monsters.values():
+			if mob.health <= 0 or mob.floor != actor.floor_id:
+				continue
+			var distance := horizontal_distance(actor.position, mob.node.position)
+			if distance <= best and Combat.can_hit(actor.position, mob.node.position, actor.heading, 8.0) and Combat.clear_path(actor, mob.node.position):
+				chosen = mob
+				best = distance
+		if chosen != null:
+			Threat.taunt(chosen, peer)
+			changed = true
+	elif ability == "fade":
+		for mob in monsters.values():
+			if mob.health > 0 and mob.floor == actor.floor_id:
+				if Threat.reduce(mob, peer):
+					changed = true
+	if changed:
+		actor.combat_timer = 5.0
+		actor.skills.cooldowns[ability] = 12.0 if ability == "taunt" else 20.0
+	return changed
