@@ -453,7 +453,8 @@ func simulate(actors: Dictionary, delta: float) -> void:
 				idle_move(mob, delta)
 			continue
 		if closest <= float(stats[3]) and Combat.clear_path(node, actors[target].position):
-			face_toward(mob, actors[target].position)
+			face_toward(mob, actors[target].position, delta)
+			mob.move_speed = 0.0
 			mob.phase = 1
 			mob.timer = float(stats[5])
 			mob.attack_target = target
@@ -485,6 +486,8 @@ func move_monster(mob: Dictionary, at: Vector3, delta: float, speed: float) -> v
 	mob.moved_last = true
 	var before := node.position
 	var target_speed := speed * (0.5 if mob.slow > 0 else 1.0)
+	var remaining := horizontal_distance(node.position, destination)
+	target_speed *= clampf(remaining / 0.45, 0.25, 1.0)
 	var acceleration := 5.0 if mob.kind in ["brute", "guardian", "crypt_warden", "jewel_sentinel"] else 12.0
 	mob.move_speed = move_toward(mob.move_speed, target_speed, delta * acceleration)
 	var motion := (destination - node.position).limit_length(delta * float(mob.move_speed))
