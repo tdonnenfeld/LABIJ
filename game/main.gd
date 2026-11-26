@@ -899,7 +899,6 @@ func _physics_process(delta: float) -> void:
 			map_timer = 0.15
 		for id in actors:
 			actors[id].visible = id == local_id or (actors[id].floor_id == viewed_floor and actors[id].health > 0)
-		local.update_hands(delta)
 		if inventory_ui:
 			inventory_ui.refresh(local.inventory.state())
 		potion_belt.refresh(local.inventory.belt)
@@ -1498,6 +1497,10 @@ func _process(delta: float) -> void:
 		for actor in actors.values():
 			NetMotion.advance(actor, delta)
 		world.advance_network_motion(delta)
+	world.animate_monsters(delta)
+	for actor in actors.values():
+		if actor.visible:
+			actor.update_hands(delta, settings.view_motion)
 	if actors.has(local_id):
 		var local = actors[local_id]
 		if local.camera:

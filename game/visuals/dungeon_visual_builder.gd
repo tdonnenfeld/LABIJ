@@ -43,6 +43,8 @@ func build(tiles: Dictionary, seed_value: int, corridor_blocks: Array = []) -> v
 			if hash_value in [4, 11] and not narrowed.has(cell):
 				box("wall", at - normal * 0.04 + Vector3.UP * 1.5, Vector3(0.34, 3.0, 0.20), angle)
 		add_arch(tiles, cell, origin)
+		if not narrowed.has(cell):
+			decorate_cell(tiles, cell, origin, seed_value)
 	for block in corridor_blocks:
 		box("wall", block[0], block[1])
 	flush_batches()
@@ -136,3 +138,31 @@ static func route_marker(parent: Node3D, at: Vector3, color: Color, descending: 
 		rim.material_override = accent
 		step.add_child(rim)
 		rim.position = Vector3(0, 0.033, 0.24)
+
+func decorate_cell(tiles: Dictionary, cell: Vector2i, origin: Vector3, seed_value: int) -> void:
+	if abs(cell.x) + abs(cell.y) <= 2:
+		return
+	var walls: Array[Vector2i] = []
+	for side in SIDES:
+		if not tiles.has(cell + side):
+			walls.append(side)
+	if walls.size() != 2 or walls[0] == -walls[1]:
+		return
+	var variation := posmod(cell.x * 97 + cell.y * 53 + seed_value, 11)
+	var normal := Vector3(walls[0].x, 0, walls[0].y)
+	var across := Vector3(walls[1].x, 0, walls[1].y)
+	var at := origin + (normal + across) * 1.12
+	if variation == 0:
+		box("wood", at + Vector3.UP * 0.27, Vector3(0.46, 0.53, 0.46))
+		for y in [0.11, 0.44]:
+			box("iron", at + Vector3.UP * y, Vector3(0.49, 0.045, 0.49))
+	elif variation == 1:
+		box("wood", at + Vector3.UP * 0.18, Vector3(0.50, 0.35, 0.50))
+		box("wood", at + Vector3.UP * 0.39, Vector3(0.51, 0.08, 0.51))
+		box("iron", at + Vector3.UP * 0.35 - normal * 0.26, Vector3(0.08, 0.10, 0.08))
+	elif variation == 2:
+		box("trim", at + Vector3.UP * 0.18, Vector3(0.45, 0.36, 0.45))
+		box("ember", at + Vector3.UP * 0.43, Vector3(0.055, 0.13, 0.055))
+	elif variation == 3:
+		for i in range(4):
+			box("iron", at + normal * 0.22 + Vector3.UP * (1.1 + i * 0.15), Vector3(0.09, 0.16, 0.08), i * PI / 2.0)
