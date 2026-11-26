@@ -9,6 +9,9 @@ var skills := Skills.new()
 var combat_timer := 0.0
 var fortify_timer := 0.0
 var dash_timer := 0.0
+var escape_timer := 0.0
+var last_block := 0.0
+var block_age := 1.0
 var empowered := ""
 var empower_timer := 0.0
 
@@ -99,6 +102,8 @@ func advance_combat(delta: float) -> bool:
 	combat_timer = maxf(0.0, combat_timer - delta)
 	fortify_timer = maxf(0.0, fortify_timer - delta)
 	dash_timer = maxf(0.0, dash_timer - delta)
+	escape_timer = maxf(0.0, escape_timer - delta)
+	last_block = maxf(0.0, last_block - delta)
 	empower_timer = maxf(0.0, empower_timer - delta)
 	if empower_timer == 0 and attack_phase == 0:
 		empowered = ""
@@ -106,9 +111,12 @@ func advance_combat(delta: float) -> bool:
 		skills.cooldowns[id] = maxf(0.0, skills.cooldowns[id] - delta)
 	if health <= 0:
 		return false
+	var was_blocking := blocking
 	blocking = wants_block and attack_phase == 0 and stamina > 0
+	if blocking:
+		block_age = block_age + delta if was_blocking else 0.0
 	if not blocking and attack_phase == 0:
-		stamina = minf(Combat.MAX_STAMINA, stamina + delta * 18.0)
+		stamina = minf(Combat.MAX_STAMINA, stamina + delta * (18.0 + skills.bonus("regen")))
 	if attack_phase == 0:
 		return false
 	attack_timer -= delta
@@ -128,8 +136,12 @@ func take_damage(amount: float, source: Vector3) -> void:
 		stamina -= block_cost()
 		amount *= 1.0 - minf(0.95, Catalog.get_item(inventory.shield).reduction + skills.bonus("reduction"))
 		skills.credit(4, 5)
+		last_block = 3.0
+		stamina = minf(Combat.MAX_STAMINA, stamina + skills.bonus("block_restore"))
+		if skills.bonus("parry") > 0 and block_age <= 0.25:
+			amount = 0.0
 	combat_timer = 5.0
-	amount *= (1.0 - skills.bonus("mitigation")) * (0.5 if fortify_timer > 0 else 1.0)
+	amount *= (1.0 - skills.bonus("mitigation")) * (0.5 if fortify_timer > 0 else 1.0) * (0.25 if escape_timer > 0 else 1.0)
 	health = maxf(0.0, health - amount)
 	hurt_timer = 0.25
 	if health == 0:
@@ -183,6 +195,8 @@ func attack_damage() -> float:
 	var multiplier := 1.0
 	if empowered == "flurry":
 		multiplier = 1.6
+	elif empowered == "riposte":
+		multiplier = 2.0
 	elif empowered == "rage":
 		multiplier = 1.8
 	return Catalog.get_item(inventory.weapon).damage * (1.0 + skills.bonus("weapon", skills.weapon_domain(inventory.weapon)) + skills.bonus("damage")) * multiplier
@@ -214,13 +228,20 @@ func activate(slot: int) -> bool:
 			cooldown = 18.0
 		"dash":
 			dash_timer = 1.0
-		"flurry", "rage", "lunge":
+		"escape":
+			escape_timer = 2.0
+			cooldown = 15.0
+		"flurry", "rage", "lunge", "riposte", "cleave", "impale", "bash":
+			if id == "riposte" and last_block <= 0:
+				return false
 			if empowered != "":
 				return false
 			empowered = id
 			empower_timer = 5.0
-			if id == "rage":
+			if id in ["rage", "impale", "bash"]:
 				cooldown = 12.0
+			elif id in ["riposte", "cleave"]:
+				cooldown = 10.0
 		_: return false
 	skills.cooldowns[id] = cooldown
 	return true
@@ -239,4 +260,5 @@ func refund_talents(domain: int) -> bool:
 	empowered = ""
 	fortify_timer = 0.0
 	dash_timer = 0.0
+	escape_timer = 0.0
 	return true

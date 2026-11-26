@@ -1,6 +1,12 @@
 extends PanelContainer
 
 const Skills = preload("res://game/progression/skills.gd")
+const TreeCanvas = preload("res://game/progression/tree_canvas.gd")
+var tree: Control
+var selected_id := ""
+var details: Label
+var learn: Button
+var equip_buttons: Array[Button] = []
 signal priority_changed(index: int, value: int)
 signal talent_action(action: String, id: String, index: int)
 var model := Skills.new()
@@ -16,7 +22,7 @@ var previous: Array = []
 
 func _ready() -> void:
 	var column := VBoxContainer.new()
-	column.custom_minimum_size = Vector2(560, 0)
+	column.custom_minimum_size = Vector2(620, 0)
 	add_child(column)
 	heading = Label.new()
 	column.add_child(heading)
@@ -30,8 +36,26 @@ func _ready() -> void:
 		priority.add_item(title)
 	column.add_child(priority)
 	priority.item_selected.connect(func(i): priority_changed.emit(domain, i))
-	nodes = VBoxContainer.new()
-	column.add_child(nodes)
+	var scroll := ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(620, 240)
+	column.add_child(scroll)
+	tree = TreeCanvas.new()
+	scroll.add_child(tree)
+	tree.selected.connect(select_talent)
+	details = Label.new()
+	column.add_child(details)
+	learn = Button.new()
+	learn.text = "Learn selected talent"
+	column.add_child(learn)
+	learn.pressed.connect(func(): talent_action.emit("buy", selected_id, 0))
+	var equip_row := HBoxContainer.new()
+	column.add_child(equip_row)
+	for i in range(Skills.SLOT_COUNT):
+		var equip := Button.new()
+		equip.text = "Assign to %d" % (i + 1)
+		equip_row.add_child(equip)
+		equip_buttons.append(equip)
+		equip.pressed.connect(func(): talent_action.emit("slot", selected_id, i))
 	slots_label = Label.new()
 	column.add_child(slots_label)
 	var clear_row := HBoxContainer.new()
@@ -49,6 +73,7 @@ func _ready() -> void:
 
 func select_domain(index: int) -> void:
 	domain = index
+	selected_id = ""
 	rebuild()
 
 func refresh(data: Array, can_train: bool, at_shrine: bool) -> void:
@@ -68,29 +93,14 @@ func refresh(data: Array, can_train: bool, at_shrine: bool) -> void:
 func rebuild() -> void:
 	heading.text = "%s — %.1f XP available / %.1f lifetime [K]%s" % [Skills.TITLES[domain], model.wallet[domain], model.xp[domain], "" if safe_now else " — In combat"]
 	priority.select(model.priorities[domain])
-	for child in nodes.get_children():
-		nodes.remove_child(child)
-		child.queue_free()
-	for node in Skills.Talents.NODES:
-		if node[1] != domain or not model.visible(node):
-			continue
-		var row := HBoxContainer.new()
-		nodes.add_child(row)
-		var button := Button.new()
-		button.text = ("%s%s — %d XP" % ["    ↳ " if node[4] != "" else "", node[2], node[3]]) + (" [learned]" if model.learned.has(node[0]) else "")
-		button.tooltip_text = node[7]
-		button.disabled = not safe_now or not model.can_buy(node[0])
-		row.add_child(button)
-		var id: String = node[0]
-		button.pressed.connect(func(): talent_action.emit("buy", id, 0))
-		var description := Label.new()
-		description.text = node[7]
-		row.add_child(description)
-		if node[5] == "active" and model.learned.has(id):
-			for i in range(Skills.SLOT_COUNT):
-				var slot := Button.new()
-				slot.text = str(i + 1)
-				slot.disabled = not safe_now
-				row.add_child(slot)
-				slot.pressed.connect(func(): talent_action.emit("slot", id, i))
+	tree.build(model, domain, selected_id)
+	var node := Skills.Talents.find(selected_id)
+	details.text = "Select a talent to inspect it" if node.is_empty() else "%s — %s" % [node[2], node[7]]
+	learn.disabled = not safe_now or not model.can_buy(selected_id)
+	for button in equip_buttons:
+		button.disabled = not safe_now or node.is_empty() or not model.learned.has(selected_id) or node[5] != "active"
 	refund.disabled = not safe_now or not shrine_now
+
+func select_talent(id: String) -> void:
+	selected_id = id
+	rebuild()
