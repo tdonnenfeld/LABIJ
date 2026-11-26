@@ -3,6 +3,7 @@ extends Node3D
 const Numbers = preload("res://game/ui/numbers.gd")
 const Acoustics = preload("res://game/world/noise.gd")
 const Vision = preload("res://game/monsters/vision.gd")
+const VoiceCodec = preload("res://game/audio/voice_codec.gd")
 var sounds: Array = []
 var awareness_rng := RandomNumberGenerator.new()
 
@@ -975,3 +976,28 @@ func drain_sounds() -> Array:
 	var events := sounds
 	sounds = []
 	return events
+
+func voice_noise(actor, peer: int, radius: float) -> void:
+	if objective.result != "" or actor.health <= 0 or radius <= 0.0:
+		return
+	radius = minf(radius, 18.0)
+	actor.register_noise(radius)
+	emit_noise(actor.floor_id, actor.position, radius)
+	if radius < VoiceCodec.SHOUT_RADIUS:
+		return
+	var distances := Acoustics.reach(floors[actor.floor_id].tiles, actor.position, radius)
+	for mob in monsters.values():
+		if mob.health <= 0 or mob.floor != actor.floor_id or mob.target != 0 or not mob.threat.is_empty() or mob.boss:
+			continue
+		if Acoustics.audible(distances, actor.position, mob.node.position, radius):
+			wake(mob)
+			Threat.add(mob, peer, Threat.PULL)
+			mob.target = peer
+			mob.investigate = 0.0
+			journal.add("Combat", "%s hears %s's shout" % [Bestiary.stats(mob.kind)[0], actor.display_name])
+
+func voice_audible(speaker, listener, radius: float) -> bool:
+	if speaker.floor_id != listener.floor_id or listener.health <= 0:
+		return false
+	var distances := Acoustics.reach(floors[speaker.floor_id].tiles, speaker.position, radius)
+	return Acoustics.audible(distances, speaker.position, listener.position, radius)
