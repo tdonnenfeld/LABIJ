@@ -24,7 +24,10 @@ func show_event(event: Dictionary, local_id: int) -> void:
 		var tween := screen_label.create_tween().set_parallel(true)
 		tween.tween_property(screen_label, "position:y", screen_label.position.y - 65, 1.1)
 		tween.tween_property(screen_label, "modulate:a", 0.0, 0.45).set_delay(0.65)
-		tween.chain().tween_callback(screen_label.queue_free)
+		screen_label.set_meta("feedback_tween", tween)
+		tween.chain().tween_callback(func():
+			screen_label.remove_meta("feedback_tween")
+			screen_label.queue_free())
 		return
 	if texts.size() >= 64:
 		var old: Dictionary = texts.pop_front()
@@ -57,4 +60,9 @@ func reset() -> void:
 	texts.clear()
 	if local_layer:
 		for child in local_layer.get_children():
+			if child.has_meta("feedback_tween"):
+				var tween: Tween = child.get_meta("feedback_tween")
+				tween.kill()
+				child.remove_meta("feedback_tween")
 			child.queue_free()
+	screen_count = 0
