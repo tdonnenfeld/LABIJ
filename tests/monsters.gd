@@ -14,7 +14,7 @@ func run() -> void:
 	var actor := Player.new()
 	root.add_child(actor)
 	actor.setup(false, false)
-	var ok := world.monsters.size() == 16 and Bestiary.stats("brute")[1] > Bestiary.stats("rat")[1]
+	var ok: bool = world.monsters.size() == 16 and Bestiary.stats("brute")[1] > Bestiary.stats("rat")[1]
 	actor.skills.credit(1, 200)
 	ok = ok and actor.buy_talent("sword") and actor.buy_talent("quick") and actor.buy_talent("keen")
 	var mob: Dictionary = world.monsters[0]
