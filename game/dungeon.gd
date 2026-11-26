@@ -351,6 +351,8 @@ func build_doors(seed_value: int) -> void:
 		door.name = "Door_%d_%d" % [cell.x, cell.y]
 		add_child(door)
 		door.setup(Vector3(cell.x * CELL, 0, cell.y * CELL), axis, data.width, "wood" if posmod(cell.x + cell.y + seed_value, 3) != 0 else "iron", visual)
+		door.locked = posmod(cell.x * 13 + cell.y * 23 + seed_value, 4) == 0
+		door.trapped = posmod(cell.x * 19 + cell.y * 31 + seed_value, 7) == 0
 		door.set_open(false)
 		doors[cell] = door
 

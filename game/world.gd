@@ -43,6 +43,7 @@ var floors: Dictionary = {}
 var monsters: Dictionary = {}
 var visual := false
 var fixtures: Dictionary = {}
+var floor_keys: Dictionary = {}
 
 func build(seed_value: int, render_geometry: bool, size: int = 1) -> void:
 	party_size = size
@@ -101,6 +102,17 @@ func build(seed_value: int, render_geometry: bool, size: int = 1) -> void:
 				if near_branch_entry(i, at) or (escape_entries.has(i) and horizontal_distance(at, escape_entries[i]) < 3.0):
 					continue
 				add_fixture(i * 10 + n, i, at, ["chest", "crate", "inscription"][n - 1])
+		if not level.doors.is_empty():
+			add_fixture(10000 + i * 10, i, level.position + Vector3(2.3, 0, 2.0), "key")
+			if level.rooms.size() > 3:
+				var room: Vector2i = level.rooms[1]
+				add_fixture(10001 + i * 10, i, level.position + Vector3(room.x * Dungeon.CELL - 1.0, 0, room.y * Dungeon.CELL - 1.0), "lever")
+		if level.rooms.size() >= 5:
+			for n in range(2, 4):
+				var room: Vector2i = level.rooms[n]
+				add_fixture(11000 + i * 10 + n, i, level.position + Vector3(room.x * Dungeon.CELL - 1.0, 0, room.y * Dungeon.CELL - 1.0), "seal")
+			var chamber: Vector2i = level.rooms[4]
+			add_fixture(11004 + i * 10, i, level.position + Vector3(chamber.x * Dungeon.CELL - 1.0, 0, chamber.y * Dungeon.CELL - 1.0), "sealed_chest")
 		if i == Routes.SANCTUARY:
 			objective.jewel_position = stair_position(i, true)
 		var cells: Array[Vector2i] = []
@@ -183,7 +195,7 @@ func spawn_monster(id: int, floor_id: int, kind: String, at: Vector3, group_size
 	capsule.height = stats[11]
 	collision.shape = capsule
 	mob.add_child(collision)
-	monsters[id] = {"node": mob, "kind": kind, "floor": floor_id, "target": 0, "threat": {}, "health": 0.0 if reserve else hp, "boss": boss, "reserve": reserve, "rewarded": false, "max_health": hp, "forced_target": 0, "force_timer": 0.0, "phase": 0, "timer": 0.0, "attack_target": 0, "aim": Vector3.ZERO, "hurt": 0.0, "bleed": 0.0, "bleed_damage": 0.0, "bleed_owner": 0, "stun": 0.0, "burn": 0.0, "burn_damage": 0.0, "burn_owner": 0, "slow": 0.0, "poison": 0.0, "poison_damage": 0.0, "poison_owner": 0, "dot_amount": {}, "dot_time": 0.0, "asleep": not boss and not reserve and awareness_rng.randf() < 0.45, "investigate": 0.0, "heard_at": at, "roam_goal": Acoustics.cell(at), "roam_wait": awareness_rng.randf_range(0.5, 3.0), "stealth_seen": {}, "ambush_used": false, "backstab_seen": {}, "step_distance": 0.0, "move_speed": 0.0, "moved_last": false, "path_key": [], "path_next": Vector2i.ZERO}
+	monsters[id] = {"node": mob, "kind": kind, "floor": floor_id, "target": 0, "threat": {}, "health": 0.0 if reserve else hp, "boss": boss, "reserve": reserve, "rewarded": false, "max_health": hp, "forced_target": 0, "force_timer": 0.0, "phase": 0, "timer": 0.0, "attack_target": 0, "aim": Vector3.ZERO, "hurt": 0.0, "bleed": 0.0, "bleed_damage": 0.0, "bleed_owner": 0, "stun": 0.0, "burn": 0.0, "burn_damage": 0.0, "burn_owner": 0, "slow": 0.0, "poison": 0.0, "poison_damage": 0.0, "poison_owner": 0, "dot_amount": {}, "dot_time": 0.0, "asleep": not boss and not reserve and awareness_rng.randf() < 0.45, "investigate": 0.0, "heard_at": at, "roam_goal": Acoustics.cell(at), "roam_wait": awareness_rng.randf_range(0.5, 3.0), "stealth_seen": {}, "ambush_used": false, "backstab_seen": {}, "step_distance": 0.0, "move_speed": 0.0, "moved_last": false, "path_key": [], "path_next": Vector2i.ZERO, "home": Acoustics.cell(at), "alerted": false, "rage_phase": false}
 	mob.visible = not reserve
 
 func marker(level: Node3D, at: Vector3, caption: String, color: Color) -> Label3D:
@@ -308,7 +320,7 @@ func transfer(actor, peer_id: int, actors: Dictionary = {}) -> bool:
 		return true
 	var route := route_at(old, actor.position)
 	if route.is_empty():
-		if interact_door(actor, actors):
+		if interact_door(actor, actors) or disarm_trap(actor):
 			return true
 		return interact_fixture(actor)
 	if route.get("locked", false):
@@ -435,6 +447,16 @@ func simulate(actors: Dictionary, delta: float) -> void:
 			mob.roam_goal = Acoustics.cell(node.position)
 		if target != mob.target and target != 0 and actors.has(target):
 			journal.add("Combat", "%s targets %s" % [stats[0], actors[target].display_name])
+		if target != 0 and not mob.alerted and mob.kind in ["goblin", "guardian", "jewel_hunter"]:
+			mob.alerted = true
+			for ally in monsters.values():
+				if ally != mob and ally.floor == mob.floor and ally.health > 0 and horizontal_distance(ally.node.position, node.position) <= 7.0 and Combat.clear_path(node, ally.node.position):
+					wake(ally)
+					Threat.add(ally, target, Threat.PULL * 0.5)
+			journal.add("Combat", "%s calls for help" % stats[0])
+		if mob.boss and not mob.rage_phase and mob.health <= mob.max_health * 0.5:
+			mob.rage_phase = true
+			journal.add("Combat", "%s enters its final phase" % stats[0])
 		mob.target = target
 		if target != 0:
 			closest = distances[target]
@@ -458,18 +480,18 @@ func simulate(actors: Dictionary, delta: float) -> void:
 								actor.take_damage(float(stats[2]), node.position, false, stats[0])
 					elif mob.kind == "ember_oracle":
 						var direction: Vector3 = mob.aim - node.position
-						for angle in [-0.24, 0.0, 0.24]:
+						for angle in ([-0.48, -0.24, 0.0, 0.24, 0.48] if mob.rage_phase else [-0.24, 0.0, 0.24]):
 							projectiles.launch(mob.floor, node.position, direction.rotated(Vector3.UP, angle), 10.0, float(stats[3]), float(stats[2]), Color("#ef864b"), 0, true, "hex", -1)
 					elif mob.kind in ["archer", "mage"]:
 						var direction: Vector3 = mob.aim - node.position
 						projectiles.launch(mob.floor, node.position, direction, 14.0 if mob.kind == "archer" else 9.0, float(stats[3]), float(stats[2]), Color("#d8c7a0") if mob.kind == "archer" else Color("#cf73e8"), 0, true, "hex" if mob.kind == "mage" else "", -1)
 					elif victim != null and victim.health > 0 and victim.floor_id == mob.floor and horizontal_distance(victim.position, node.position) <= float(stats[3]) and Combat.clear_path(node, victim.position):
-						victim.take_damage(float(stats[2]), node.position, false, stats[0])
+						guarded_hit(victim, float(stats[2]), node.position, stats[0], actors)
 					elif victim != null and victim.health > 0 and victim.floor_id == mob.floor and horizontal_distance(victim.position, node.position) <= 4.0:
 						victim.skills.credit(5, 4)
 						journal.add("Combat", "%s dodges %s" % [victim.display_name, stats[0]], victim.floor_id, victim.position + Vector3.UP, "Dodged", "blocked", int(victim.name) if str(victim.name).is_valid_int() else 0)
 					mob.phase = 2
-					mob.timer = float(stats[6])
+					mob.timer = float(stats[6]) * (0.72 if mob.rage_phase else 1.0)
 				else:
 					mob.phase = 0
 			continue
@@ -477,11 +499,14 @@ func simulate(actors: Dictionary, delta: float) -> void:
 			if not mob.asleep and occupied.has(mob.floor):
 				idle_move(mob, delta)
 			continue
+		if mob.kind in ["archer", "mage"] and closest < 3.0 and mob.health < mob.max_health * 0.5:
+			retreat_monster(mob, actors[target].position, delta, float(stats[4]))
+			continue
 		if closest <= float(stats[3]) + float(tactics[0]) and Combat.clear_path(node, actors[target].position):
 			face_toward(mob, actors[target].position)
 			mob.move_speed = 0.0
 			mob.phase = 1
-			mob.timer = float(stats[5])
+			mob.timer = float(stats[5]) * (0.82 if mob.rage_phase else 1.0)
 			mob.attack_target = target
 			mob.aim = actors[target].position
 			if mob.kind in ["goblin", "guardian", "jewel_hunter"]:
@@ -508,7 +533,7 @@ func move_monster(mob: Dictionary, at: Vector3, delta: float, speed: float) -> v
 	var next: Vector2i = mob.path_next
 	if mob.kind != "rat":
 		var door = level.doors.get(next, level.doors.get(start))
-		if door and not door.opened and horizontal_distance(node.global_position, door.global_position) <= 1.2:
+		if door and not door.opened and not door.locked and not door.trapped and horizontal_distance(node.global_position, door.global_position) <= 1.2:
 			door.set_open(true)
 			sound(mob.floor, door.global_position, 5.0, "impact")
 	var destination := Vector3(next.x * Dungeon.CELL, node.position.y, next.y * Dungeon.CELL)
@@ -571,7 +596,7 @@ func idle_move(mob: Dictionary, delta: float) -> void:
 	var tiles: Dictionary = floors[mob.floor].tiles
 	for offset in [Vector2i.UP, Vector2i.DOWN, Vector2i.LEFT, Vector2i.RIGHT]:
 		var cell: Vector2i = goal + offset
-		if tiles.has(cell):
+		if tiles.has(cell) and Vector2(cell - Vector2i(mob.home)).length() <= 3.0:
 			candidates.append(cell)
 	if not candidates.is_empty():
 		mob.roam_goal = candidates[awareness_rng.randi_range(0, candidates.size() - 1)]
@@ -752,7 +777,7 @@ func strike(actor, party: Dictionary = {}) -> bool:
 			nearest = mob
 			best = distance
 	if nearest == null:
-		if break_fixture(actor):
+		if break_door(actor) or break_fixture(actor):
 			player_noise(actor, radius, "impact")
 			actor.empowered = ""
 			return true
@@ -867,7 +892,7 @@ func reward_kill(mob: Dictionary, killer, party: Dictionary) -> void:
 	var item_id: String = choices[loot_rng.randi_range(0, choices.size() - 1)]
 	if mob.boss:
 		item_id = Routes.REWARDS[mob.kind]
-	elif loot_rng.randf() < 0.12:
+	elif loot_rng.randf() < minf(0.35, 0.12 + Routes.depth(mob.floor) * 0.035):
 		item_id = Catalog.enchant(item_id, loot_rng)
 	if not mob.boss and mob.kind == "archer":
 		loot.spawn("arrows", mob.floor, at, 12)
@@ -1093,11 +1118,17 @@ func objective_hint(actor, peer: int) -> String:
 	if objective.carrier == 0 and objective.guardian_defeated and actor.floor_id == objective.jewel_floor and horizontal_distance(actor.position, objective.jewel_position) <= USE_RADIUS:
 		return "E: Take the Jewel"
 	var door = floors[actor.floor_id].nearby_door(actor.global_position)
-	if door:
+	if door and not door.broken:
+		if door.locked:
+			return "E: Unlock door | Attack: Break wood"
 		return "E: Close door" if door.opened else "E: Open door"
 	for fixture in fixtures.values():
 		if not fixture.used and fixture.floor == actor.floor_id and horizontal_distance(actor.position, fixture.at) <= 1.7:
-			return "Attack: Break crate" if fixture.kind == "crate" else ("E: Open chest" if fixture.kind == "chest" else "E: Read inscription")
+			return {"crate":"Attack: Break crate", "chest":"E: Open chest", "key":"E: Take floor key", "lever":"E: Pull lever", "seal":"E: Activate seal", "sealed_chest":"E: Open sealed cache", "inscription":"E: Read inscription"}.get(fixture.kind, "E: Interact")
+	if actor.skills.bonus("disarm") > 0:
+		for trap in hazards.traps.values():
+			if trap.floor == actor.floor_id and trap.phase < 2 and horizontal_distance(actor.position, trap.node.position) <= 1.8:
+				return "E: Disarm pressure plate"
 	if objective.carrier == peer:
 		return "G: Drop Jewel for teammate"
 	return ""
@@ -1311,7 +1342,11 @@ func secret_state() -> Array:
 		if floors[id].secret_open:
 			result.append(id)
 		for cell in floors[id].doors:
-			result.append(["door", id, cell, floors[id].doors[cell].opened])
+			var door = floors[id].doors[cell]
+			result.append(["door", id, cell, door.opened])
+			result.append(["door_detail", id, cell, door.locked, door.trapped, door.broken, door.durability])
+		if floor_keys.get(id, false):
+			result.append(["key", id])
 	for id in fixtures:
 		if fixtures[id].used:
 			result.append(["fixture", id])
@@ -1322,6 +1357,16 @@ func apply_secrets(data: Array) -> void:
 		if id is Array:
 			if id.size() == 4 and id[0] == "door" and floors.has(id[1]) and floors[id[1]].doors.has(id[2]):
 				floors[id[1]].doors[id[2]].set_open(bool(id[3]))
+			elif id.size() == 7 and id[0] == "door_detail" and floors.has(id[1]) and floors[id[1]].doors.has(id[2]):
+				var door = floors[id[1]].doors[id[2]]
+				door.locked = bool(id[3])
+				door.trapped = bool(id[4])
+				door.broken = bool(id[5])
+				door.durability = float(id[6])
+				if door.broken:
+					door.set_open(true)
+			elif id.size() == 2 and id[0] == "key":
+				floor_keys[id[1]] = true
 			elif id.size() == 2 and id[0] == "fixture" and fixtures.has(id[1]):
 				mark_fixture_used(fixtures[id[1]])
 		elif floors.has(id):
@@ -1350,7 +1395,8 @@ func add_fixture(id: int, floor_id: int, at: Vector3, kind: String) -> void:
 	mesh.material_override = mat
 	prop.add_child(mesh)
 	mesh.position.y = box.size.y * 0.5
-	marker(prop, Vector3.ZERO, "CHEST [E]" if kind == "chest" else ("CRATE" if kind == "crate" else "INSCRIPTION [E]"), Color("#d3ae76"))
+	var labels := {"chest":"CHEST [E]", "crate":"CRATE", "inscription":"INSCRIPTION [E]", "key":"FLOOR KEY [E]", "lever":"GATE LEVER [E]", "seal":"RUNE SEAL [E]", "sealed_chest":"SEALED CACHE [E]"}
+	marker(prop, Vector3.ZERO, labels.get(kind, kind.to_upper()), Color("#d3ae76"))
 	entry.node = prop
 
 func mark_fixture_used(entry: Dictionary) -> void:
@@ -1364,8 +1410,38 @@ func interact_fixture(actor) -> bool:
 			continue
 		if not Combat.clear_path(actor, entry.at + Vector3.UP * 0.5):
 			continue
+		if entry.kind == "sealed_chest":
+			var base: int = 11000 + entry.floor * 10
+			if not fixtures[base + 2].used or not fixtures[base + 3].used:
+				journal.add("Exploration", "Activate both rune seals to unlock this cache")
+				return true
 		mark_fixture_used(entry)
+		if entry.kind == "seal":
+			journal.add("Party", "A rune seal resonates through the dungeon")
+			return true
+		if entry.kind == "sealed_chest":
+			var choice: String = ["sword:runic", "mail:warded", "ward_ring:vital"][entry.floor % 3]
+			loot.spawn(choice, entry.floor, entry.at + Vector3.UP * 0.3)
+			journal.add("Loot", "The party opens a runebound cache")
+			return true
+		if entry.kind == "key":
+			floor_keys[entry.floor] = true
+			journal.add("Exploration", "Party found the floor key")
+			return true
+		if entry.kind == "lever":
+			for door in floors[entry.floor].doors.values():
+				if door.style == "iron":
+					door.locked = false
+					door.set_open(true)
+			journal.add("Exploration", "The floor portcullises rise")
+			return true
 		if entry.kind == "chest":
+			if posmod(int(entry.at.x) + int(entry.at.z), 5) == 0:
+				if actor.skills.bonus("disarm") > 0:
+					actor.skills.credit(11, 8)
+					journal.add("Exploration", "Chest trap disarmed")
+				else:
+					actor.take_damage(12.0, entry.at + Vector3.UP, false, "Chest trap")
 			loot.spawn("potion", entry.floor, entry.at + Vector3.UP * 0.3)
 			journal.add("Loot", "%s opens a forgotten chest" % actor.display_name)
 			sound(entry.floor, entry.at, 4.0, "pickup")
@@ -1446,13 +1522,30 @@ func cast_beam(actor, peer: int, direction: Vector3, damage: float, reach: float
 
 func interact_door(actor, actors: Dictionary) -> bool:
 	var door = floors[actor.floor_id].nearby_door(actor.global_position)
-	if not door:
+	if not door or door.broken:
 		return false
 	var direction: Vector3 = door.global_position - actor.global_position
 	direction.y = 0.0
 	var forward := Vector3(-sin(actor.heading), 0, -cos(actor.heading))
 	if direction.length() > 0.3 and forward.dot(direction.normalized()) < 0.15:
 		return false
+	if door.locked:
+		if floor_keys.get(actor.floor_id, false) or actor.skills.bonus("lockpick") > 0:
+			door.locked = false
+			if actor.skills.bonus("lockpick") > 0:
+				actor.skills.credit(11, 10)
+		else:
+			journal.add("Exploration", "Locked: find the floor key or use Lockpicking.")
+			return true
+	if door.trapped and not door.opened:
+		door.trapped = false
+		if actor.skills.bonus("disarm") > 0:
+			actor.skills.credit(11, 8)
+			journal.add("Exploration", "Door trap disarmed")
+		else:
+			actor.take_damage(15.0, door.global_position, false, "Door trap")
+			if actor.health <= 0:
+				return true
 	if door.opened:
 		if door.obstructed(actor.global_position):
 			return false
@@ -1467,3 +1560,45 @@ func interact_door(actor, actors: Dictionary) -> bool:
 	emit_noise(actor.floor_id, door.global_position, 5.0)
 	journal.add("Exploration", "%s %s a door" % [actor.display_name, "opens" if door.opened else "closes"])
 	return true
+
+func break_door(actor) -> bool:
+	if not floors.has(actor.floor_id):
+		return false
+	var door = floors[actor.floor_id].nearby_door(actor.global_position, actor.attack_reach() + 0.3)
+	if not door or not Combat.can_hit(actor.position, door.global_position + Vector3.UP, actor.heading, actor.attack_reach()):
+		return false
+	if not door.damage(actor.attack_damage()):
+		return false
+	emit_noise(actor.floor_id, door.global_position, 12.0)
+	if door.broken:
+		journal.add("Exploration", "Wooden door shattered")
+	return true
+
+func disarm_trap(actor) -> bool:
+	if actor.skills.bonus("disarm") <= 0:
+		return false
+	for trap in hazards.traps.values():
+		if trap.floor == actor.floor_id and trap.phase < 2 and horizontal_distance(actor.position, trap.node.position) <= 1.8:
+			trap.phase = 2
+			actor.skills.credit(11, 10)
+			journal.add("Exploration", "Pressure plate disarmed")
+			return true
+	return false
+
+func guarded_hit(victim, damage: float, source: Vector3, source_name: String, actors: Dictionary) -> void:
+	var guard = null
+	var reduction := 0.0
+	for ally in actors.values():
+		if ally == victim or ally.health <= 0 or ally.floor_id != victim.floor_id or not ally.blocking:
+			continue
+		if horizontal_distance(ally.position, victim.position) > 2.0 or not Combat.facing(ally.heading, source - ally.position):
+			continue
+		var bonus: float = ally.skills.bonus("bodyguard")
+		if bonus > reduction and ally.stamina >= 5.0:
+			guard = ally
+			reduction = bonus
+	if guard != null:
+		guard.stamina -= 5.0
+		guard.skills.credit(4, 4)
+		journal.add("Party", "%s protects %s" % [guard.display_name, victim.display_name])
+	victim.take_damage(damage * (1.0 - reduction), source, false, source_name)

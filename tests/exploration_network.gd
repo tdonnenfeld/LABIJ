@@ -77,6 +77,21 @@ func run() -> void:
 		tested = true
 		break
 	check(tested, "Door replication exercised")
+	world.floor_keys[0] = true
+	replica.apply_secrets(world.secret_state())
+	check(replica.floor_keys.get(0, false), "Shared floor key replicated")
+	for floor_id in world.floors:
+		var level = world.floors[floor_id]
+		if level.doors.is_empty():
+			continue
+		var cell: Vector2i = level.doors.keys()[0]
+		var door = level.doors[cell]
+		door.style = "wood"
+		door.locked = true
+		check(door.damage(100.0) and door.broken and door.opened and not door.locked, "Wood door can be destroyed")
+		replica.apply_secrets(world.secret_state())
+		check(replica.floors[floor_id].doors[cell].broken, "Broken door replicated")
+		break
 	replica.free()
 	check(not world.escape_entries.is_empty(), "Escape shaft exists")
 	for floor_id in world.escape_entries:
