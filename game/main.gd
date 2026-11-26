@@ -1150,6 +1150,9 @@ func apply_snapshot(sequence: int, states: Dictionary, mobs: Dictionary, drops: 
 				actor.aiming = states[id][20]
 				actor.bow_charge = states[id][21]
 				actor.bow_drawing = states[id][22]
+			if states[id].size() > 24:
+				actor.attack_timer = states[id][23]
+				actor.cast_timer = states[id][24]
 			actors[id].collision_layer = 2 if actors[id].health > 0 else 0
 			actors[id].collision_mask = 7 if actors[id].health > 0 else 0
 
@@ -1701,7 +1704,7 @@ func _process(delta: float) -> void:
 	world.animate_monsters(delta)
 	for actor in actors.values():
 		if actor.visible:
-			actor.update_hands(delta, settings.view_motion)
+			actor.update_hands(delta, settings.view_motion, not multiplayer.is_server())
 	if actors.has(local_id):
 		var local = actors[local_id]
 		if local.camera:
@@ -1818,7 +1821,7 @@ func reserved_slots() -> int:
 func player_states() -> Dictionary:
 	var states := {}
 	for id in actors:
-		states[id] = [actors[id].position, actors[id].heading, actors[id].floor_id, actors[id].health, actors[id].stamina, actors[id].blocking, actors[id].attack_phase, actors[id].hurt_timer, actors[id].swing_hit, actors[id].inventory.state(), actors[id].skills.state(), actors[id].combat_timer, actors[id].mana, actors[id].sprinting, actors[id].cast_id, actors[id].noise_level, actors[id].quiet_walking, actors[id].noise_peak, actors[id].look_pitch, actors[id].selected_spell, actors[id].aiming, actors[id].bow_charge, actors[id].bow_drawing]
+		states[id] = [actors[id].position, actors[id].heading, actors[id].floor_id, actors[id].health, actors[id].stamina, actors[id].blocking, actors[id].attack_phase, actors[id].hurt_timer, actors[id].swing_hit, actors[id].inventory.state(), actors[id].skills.state(), actors[id].combat_timer, actors[id].mana, actors[id].sprinting, actors[id].cast_id, actors[id].noise_level, actors[id].quiet_walking, actors[id].noise_peak, actors[id].look_pitch, actors[id].selected_spell, actors[id].aiming, actors[id].bow_charge, actors[id].bow_drawing, actors[id].attack_timer, actors[id].cast_timer]
 
 	return states
 
