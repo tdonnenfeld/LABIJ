@@ -4,6 +4,10 @@ const Dungeon = preload("res://game/dungeon.gd")
 const Combat = preload("res://game/combat.gd")
 const Threat = preload("res://game/combat/threat.gd")
 const Routes = preload("res://game/world/routes.gd")
+const Objective = preload("res://game/world/objective.gd")
+var objective := Objective.new()
+var jewel_marker: Node3D
+var gate_label: Label3D
 const Hazards = preload("res://game/world/hazards.gd")
 var hazards := Hazards.new()
 var branch_entries: Dictionary = {}
@@ -50,16 +54,22 @@ func build(seed_value: int, render_geometry: bool, party_size: int = 1) -> void:
 				marker(level, Vector3(6, 0, 0), "ANCIENT TABLET [T]", Color("#8ab8a0"))
 		for branch in Routes.PARENTS:
 			if Routes.PARENTS[branch] == i:
-				var entry := branch_cell(level, rng)
+				var entry: Vector2i = level.end_cell if branch == Routes.SANCTUARY else branch_cell(level, rng)
 				branch_entries[branch] = level.position + Vector3(entry.x * Dungeon.CELL, 0, entry.y * Dungeon.CELL)
 				if visual:
-					marker(level, branch_entries[branch] - level.position, Routes.NAMES[branch] + " [E]", Color("#b98ddb"))
+					var label := marker(level, branch_entries[branch] - level.position, Routes.NAMES[branch] + " [E]", Color("#b98ddb"))
+					if branch == Routes.SANCTUARY:
+						gate_label = label
 		if visual:
+			if i == 0:
+				marker(level, Vector3.ZERO, "SURFACE EXIT — JEWEL REQUIRED", Color("#d9d19a"))
 			if i > 0:
 				marker(level, Vector3.ZERO, "RETURN [E]" if i >= Routes.MAIN_COUNT else "UP [E]", Color("#67a8de"))
 			if i < Routes.MAIN_COUNT - 1:
 				var end: Vector2i = level.end_cell
 				marker(level, Vector3(end.x * Dungeon.CELL, 0, end.y * Dungeon.CELL), "DOWN [E]", Color("#d3ae55"))
+		if i == Routes.SANCTUARY:
+			objective.jewel_position = stair_position(i, true)
 		var cells: Array[Vector2i] = []
 		for cell in level.tiles:
 			if Vector2(cell).length() >= 7.0 and Vector2(cell - level.end_cell).length() >= 2.0 and not near_branch_entry(i, level.position + Vector3(cell.x * Dungeon.CELL, 0, cell.y * Dungeon.CELL)):
@@ -72,53 +82,71 @@ func build(seed_value: int, render_geometry: bool, party_size: int = 1) -> void:
 			var pool: Array = Bestiary.ENCOUNTERS[i]
 			var boss := i >= Routes.MAIN_COUNT and j == count - 1
 			var kind: String = Routes.BOSSES[i] if boss else pool[rng.randi_range(0, pool.size() - 1)]
-			var stats := Bestiary.stats(kind)
-			var mob := Node3D.new()
-			add_child(mob)
 			var cell: Vector2i = level.end_cell
 			if not boss:
 				var pick := rng.randi_range(0, cells.size() - 1)
 				cell = cells[pick]
 				cells.remove_at(pick)
-			mob.position = level.position + Vector3(cell.x * Dungeon.CELL, float(stats[11]) * 0.5, cell.y * Dungeon.CELL)
-			if visual:
-				var mesh := MeshInstance3D.new()
-				var shape := CapsuleMesh.new()
-				shape.radius = stats[10]
-				shape.height = stats[11]
-				mesh.mesh = shape
-				var mat := StandardMaterial3D.new()
-				mat.albedo_color = stats[9]
-				mesh.material_override = mat
-				mob.add_child(mesh)
-				var label := Label3D.new()
-				label.text = stats[0]
-				label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-				label.position.y = float(stats[11]) * 0.5 + 0.3
-				mob.add_child(label)
-				if kind == "crypt_warden":
-					var ring := MeshInstance3D.new()
-					var disc := CylinderMesh.new()
-					disc.top_radius = 3.2
-					disc.bottom_radius = 3.2
-					disc.height = 0.03
-					ring.mesh = disc
-					var warning := StandardMaterial3D.new()
-					warning.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-					warning.albedo_color = Color(1.0, 0.35, 0.08, 0.28)
-					warning.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-					ring.material_override = warning
-					mob.add_child(ring)
-					ring.position.y = 0.04 - float(stats[11]) * 0.5
-					ring.hide()
-			monsters[i * 1000 + j] = {"node": mob, "kind": kind, "floor": i, "target": 0, "threat": {}, "health": float(stats[1]) * (1.0 + 0.35 * (clampi(party_size, 1, 8) - 1) if boss else 1.0), "boss": boss, "rewarded": false, "max_health": float(stats[1]) * (1.0 + 0.35 * (clampi(party_size, 1, 8) - 1) if boss else 1.0), "forced_target": 0, "force_timer": 0.0, "phase": 0, "timer": 0.0, "attack_target": 0, "aim": Vector3.ZERO, "hurt": 0.0, "bleed": 0.0, "bleed_damage": 0.0, "bleed_owner": 0, "stun": 0.0, "burn": 0.0, "burn_damage": 0.0, "burn_owner": 0, "slow": 0.0, "poison": 0.0, "poison_damage": 0.0, "poison_owner": 0}
+			spawn_monster(i * 1000 + j, i, kind, level.position + Vector3(cell.x * Dungeon.CELL, 0, cell.y * Dungeon.CELL), party_size, boss)
+
 		for j in range(mini(cells.size(), 2 + Routes.depth(i))):
 			var pick := rng.randi_range(0, cells.size() - 1)
 			var cell: Vector2i = cells[pick]
 			cells.remove_at(pick)
 			hazards.add_trap(i * 1000 + j, i, level.position + Vector3(cell.x * Dungeon.CELL, 0.06, cell.y * Dungeon.CELL), "spike" if rng.randf() < 0.5 else "fire")
+		if i < Routes.MAIN_COUNT:
+			for j in range(mini(cells.size(), ceili(clampi(party_size, 1, 8) / 2.0))):
+				var pick := rng.randi_range(0, cells.size() - 1)
+				var cell: Vector2i = cells[pick]
+				cells.remove_at(pick)
+				spawn_monster(i * 1000 + 900 + j, i, "jewel_hunter", level.position + Vector3(cell.x * Dungeon.CELL, 0, cell.y * Dungeon.CELL), party_size, false, true)
+	if visual:
+		jewel_marker = Node3D.new()
+		add_child(jewel_marker)
+		marker(jewel_marker, Vector3.ZERO, "THE JEWEL [E]", Color("#e9c96d"))
+		jewel_marker.hide()
 
-func marker(level: Node3D, at: Vector3, caption: String, color: Color) -> void:
+func spawn_monster(id: int, floor_id: int, kind: String, at: Vector3, party_size: int, boss: bool, reserve: bool = false) -> void:
+	var stats := Bestiary.stats(kind)
+	var mob := Node3D.new()
+	add_child(mob)
+	var hp: float = float(stats[1]) * (1.0 + 0.35 * (clampi(party_size, 1, 8) - 1) if boss else 1.0)
+	mob.position = at + Vector3.UP * float(stats[11]) * 0.5
+	if visual:
+		var mesh := MeshInstance3D.new()
+		var shape := CapsuleMesh.new()
+		shape.radius = stats[10]
+		shape.height = stats[11]
+		mesh.mesh = shape
+		var mat := StandardMaterial3D.new()
+		mat.albedo_color = stats[9]
+		mesh.material_override = mat
+		mob.add_child(mesh)
+		var label := Label3D.new()
+		label.text = stats[0]
+		label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		label.position.y = float(stats[11]) * 0.5 + 0.3
+		mob.add_child(label)
+		if kind in ["crypt_warden", "jewel_sentinel"]:
+			var ring := MeshInstance3D.new()
+			var disc := CylinderMesh.new()
+			disc.top_radius = float(stats[3])
+			disc.bottom_radius = float(stats[3])
+			disc.height = 0.03
+			ring.mesh = disc
+			var warning := StandardMaterial3D.new()
+			warning.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+			warning.albedo_color = Color(1.0, 0.35, 0.08, 0.28)
+			warning.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+			ring.material_override = warning
+			mob.add_child(ring)
+			ring.position.y = 0.04 - float(stats[11]) * 0.5
+			ring.hide()
+
+	monsters[id] = {"node": mob, "kind": kind, "floor": floor_id, "target": 0, "threat": {}, "health": 0.0 if reserve else hp, "boss": boss, "reserve": reserve, "rewarded": false, "max_health": hp, "forced_target": 0, "force_timer": 0.0, "phase": 0, "timer": 0.0, "attack_target": 0, "aim": Vector3.ZERO, "hurt": 0.0, "bleed": 0.0, "bleed_damage": 0.0, "bleed_owner": 0, "stun": 0.0, "burn": 0.0, "burn_damage": 0.0, "burn_owner": 0, "slow": 0.0, "poison": 0.0, "poison_damage": 0.0, "poison_owner": 0}
+	mob.visible = not reserve
+
+func marker(level: Node3D, at: Vector3, caption: String, color: Color) -> Label3D:
 	var mesh := MeshInstance3D.new()
 	var shape := CylinderMesh.new()
 	shape.top_radius = 0.85
@@ -138,6 +166,7 @@ func marker(level: Node3D, at: Vector3, caption: String, color: Color) -> void:
 	label.position = at + Vector3.UP * 1.5
 	label.modulate = color
 	level.add_child(label)
+	return label
 
 func stair_position(id: int, down: bool) -> Vector3:
 	var level = floors[id]
@@ -158,6 +187,8 @@ func route_at(id: int, at: Vector3) -> Dictionary:
 		return {"destination": Routes.PARENTS[id], "arrival": branch_entries[id], "entry": stair_position(id, false), "label": "Return", "step": -1}
 	for branch in branch_entries:
 		if Routes.PARENTS[branch] == id and horizontal_distance(at, branch_entries[branch]) <= USE_RADIUS:
+			if branch == Routes.SANCTUARY and not objective.gate_open():
+				return {"locked": true, "label": "Sanctuary locked — %d/2 runes" % objective.runes.size(), "step": 0}
 			return {"destination": branch, "arrival": stair_position(branch, false), "entry": branch_entries[branch], "label": Routes.NAMES[branch], "step": 1}
 	if id > 0 and id < Routes.MAIN_COUNT and horizontal_distance(at, stair_position(id, false)) <= USE_RADIUS:
 		return {"destination": id - 1, "arrival": stair_position(id - 1, true), "entry": stair_position(id, false), "label": "Ascend", "step": -1}
@@ -170,6 +201,11 @@ func stair_at(id: int, at: Vector3) -> int:
 
 func visible_floor(id: int) -> void:
 	hazards.visible_floor(id)
+	if jewel_marker:
+		jewel_marker.position = objective.jewel_position
+		jewel_marker.visible = objective.guardian_defeated and objective.carrier == 0 and objective.result == "" and objective.jewel_floor == id
+	if gate_label:
+		gate_label.text = "JEWEL SANCTUARY [E]" if objective.gate_open() else "SANCTUARY LOCKED — %d/2 RUNES" % objective.runes.size()
 	loot.visible_floor(id)
 	projectiles.visible_floor(id)
 	for key in floors:
@@ -182,15 +218,17 @@ func visible_floor(id: int) -> void:
 			if mob.boss:
 				var label: Label3D = mob.node.get_child(1)
 				label.text = "%s %d/%d HP" % [Bestiary.stats(mob.kind)[0], ceili(mob.health), ceili(mob.max_health)]
-				if mob.kind == "crypt_warden":
+				if mob.kind in ["crypt_warden", "jewel_sentinel"]:
 					mob.node.get_child(2).visible = mob.phase == 1 and mob.stun <= 0
 
 func transfer(actor, peer_id: int) -> bool:
-	if actor.health <= 0 or actor.attack_phase != 0 or actor.cast_id != "":
+	if objective.result != "" or actor.health <= 0 or actor.attack_phase != 0 or actor.cast_id != "":
 		return false
+	if interact_objective(actor, peer_id):
+		return true
 	var old: int = actor.floor_id
 	var route := route_at(old, actor.position)
-	if route.is_empty():
+	if route.is_empty() or route.get("locked", false):
 		return false
 	var destination: int = route.destination
 	var arrival: Vector3 = route.arrival
@@ -250,7 +288,7 @@ func simulate(actors: Dictionary, delta: float) -> void:
 			mob.stun = maxf(0.0, mob.stun - delta)
 			continue
 		var node: Node3D = mob.node
-		var closest := 12.0
+		var closest := 12.0 + objective.pressure() * 3.0
 		var seen := 0
 		var eligible := {}
 		var distances := {}
@@ -265,6 +303,9 @@ func simulate(actors: Dictionary, delta: float) -> void:
 				closest = distance
 				seen = id
 		var target := Threat.choose(mob, eligible, distances)
+		if target == 0 and mob.reserve and eligible.has(objective.carrier):
+			Threat.add(mob, objective.carrier, Threat.PULL)
+			target = objective.carrier
 		if target == 0 and seen != 0:
 			Threat.add(mob, seen, Threat.PULL)
 			target = seen
@@ -276,9 +317,9 @@ func simulate(actors: Dictionary, delta: float) -> void:
 			if mob.timer <= 0:
 				if mob.phase == 1:
 					var victim = actors.get(mob.attack_target)
-					if mob.kind == "crypt_warden":
+					if mob.kind in ["crypt_warden", "jewel_sentinel"]:
 						for actor in actors.values():
-							if actor.health > 0 and actor.floor_id == mob.floor and horizontal_distance(actor.position, node.position) <= 3.2 and Combat.clear_path(node, actor.position):
+							if actor.health > 0 and actor.floor_id == mob.floor and horizontal_distance(actor.position, node.position) <= float(stats[3]) and Combat.clear_path(node, actor.position):
 								actor.take_damage(float(stats[2]), node.position)
 					elif mob.kind == "ember_oracle":
 						var direction: Vector3 = mob.aim - node.position
@@ -319,7 +360,7 @@ func simulate(actors: Dictionary, delta: float) -> void:
 				destination = Vector3(node.position.x, node.position.y, center.z)
 			elif absf(offset.z) > 0.1 and absf(node.position.x - center.x) > 0.08:
 				destination = Vector3(center.x, node.position.y, node.position.z)
-		node.position = node.position.move_toward(destination, delta * float(stats[4]) * (0.5 if mob.slow > 0 else 1.0))
+		node.position = node.position.move_toward(destination, delta * float(stats[4]) * (1.0 + 0.08 * objective.pressure()) * (0.5 if mob.slow > 0 else 1.0))
 
 func next_cell(tiles: Dictionary, start: Vector2i, goal: Vector2i) -> Vector2i:
 	if start == goal or not tiles.has(start) or not tiles.has(goal):
@@ -440,6 +481,10 @@ func reward_kill(mob: Dictionary, killer, party: Dictionary) -> void:
 	mob.target = 0
 	mob.threat.clear()
 	mob.bleed = 0.0
+	if mob.reserve:
+		return
+	if mob.boss:
+		objective.boss_defeated(mob.kind)
 	var reward: int = int(Bestiary.stats(mob.kind)[8]) + Routes.depth(mob.floor) * 25
 	for teammate in party.values():
 		if teammate == killer or teammate.health <= 0 or teammate.floor_id != mob.floor:
@@ -577,3 +622,47 @@ func branch_cell(level, rng: RandomNumberGenerator) -> Vector2i:
 				candidates.append(cell)
 		candidates.sort()
 	return candidates[rng.randi_range(0, candidates.size() - 1)] if not candidates.is_empty() else Vector2i(2, 2)
+
+func interact_objective(actor, peer: int) -> bool:
+	if objective.result != "" or actor.health <= 0 or actor.attack_phase != 0 or actor.cast_id != "":
+		return false
+	if actor.floor_id == 0 and horizontal_distance(actor.position, stair_position(0, false)) <= USE_RADIUS and objective.carrier == peer:
+		return objective.escape(peer)
+	if objective.carrier != 0 or not objective.guardian_defeated or actor.floor_id != objective.jewel_floor or horizontal_distance(actor.position, objective.jewel_position) > USE_RADIUS:
+		return false
+	var first := not objective.started
+	if not objective.claim(peer):
+		return false
+	if first:
+		for mob in monsters.values():
+			if mob.reserve and not mob.rewarded:
+				mob.health = mob.max_health
+	return true
+
+func release_jewel(actor, peer: int) -> bool:
+	var at: Vector3 = actor.position
+	at.y = floors[actor.floor_id].position.y
+	return objective.drop(peer, actor.floor_id, at)
+
+func update_objective(actors: Dictionary, delta: float) -> void:
+	if objective.result != "":
+		return
+	if objective.started:
+		objective.elapsed += delta
+		var owner = actors.get(objective.carrier)
+		if owner != null and owner.health <= 0:
+			release_jewel(owner, objective.carrier)
+	if not actors.is_empty():
+		for actor in actors.values():
+			if actor.health > 0:
+				return
+		objective.result = "defeat"
+
+func objective_hint(actor, peer: int) -> String:
+	if objective.carrier == peer and actor.floor_id == 0 and horizontal_distance(actor.position, stair_position(0, false)) <= USE_RADIUS:
+		return "E: Escape with the Jewel"
+	if objective.carrier == 0 and objective.guardian_defeated and actor.floor_id == objective.jewel_floor and horizontal_distance(actor.position, objective.jewel_position) <= USE_RADIUS:
+		return "E: Take the Jewel"
+	if objective.carrier == peer:
+		return "G: Drop Jewel for teammate"
+	return ""

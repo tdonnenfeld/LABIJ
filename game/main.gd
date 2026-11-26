@@ -8,6 +8,10 @@ var skills_ui: PanelContainer
 var talent_requests: Dictionary = {}
 var xp_label: Label
 var mana_bar: ProgressBar
+var objective_label: Label
+var result_screen: CenterContainer
+var result_label: Label
+var result_shown := false
 const Catalog = preload("res://game/items/catalog.gd")
 var inventory_ui: PanelContainer
 var item_requests: Dictionary = {}
@@ -94,6 +98,30 @@ func _ready() -> void:
 		xp_label.position = Vector2(16, 160)
 		layer.add_child(xp_label)
 		xp_label.hide()
+		objective_label = Label.new()
+		objective_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		layer.add_child(objective_label)
+		objective_label.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
+		objective_label.offset_left = -340
+		objective_label.offset_right = -16
+		objective_label.offset_top = 16
+		objective_label.hide()
+		result_screen = CenterContainer.new()
+		layer.add_child(result_screen)
+		result_screen.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		var panel := PanelContainer.new()
+		result_screen.add_child(panel)
+		var column := VBoxContainer.new()
+		column.custom_minimum_size.x = 320
+		panel.add_child(column)
+		result_label = Label.new()
+		result_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		column.add_child(result_label)
+		var back := Button.new()
+		back.text = "Return to menu"
+		column.add_child(back)
+		back.pressed.connect(_failed)
+		result_screen.hide()
 
 func make_bar(layer: CanvasLayer, at: Vector2, color: Color) -> ProgressBar:
 	var bar := ProgressBar.new()
@@ -150,6 +178,7 @@ func _start() -> void:
 			mana_bar.show()
 			crosshair.show()
 			xp_label.show()
+			objective_label.show()
 
 func _solo() -> void:
 	party_size = 1
@@ -190,6 +219,7 @@ func _connected() -> void:
 func _failed() -> void:
 	multiplayer.multiplayer_peer = null
 	active = false
+	result_shown = false
 	if is_instance_valid(world):
 		remove_child(world)
 		world.queue_free()
@@ -204,6 +234,8 @@ func _failed() -> void:
 		inventory_ui.hide()
 		skills_ui.hide()
 		xp_label.hide()
+		objective_label.hide()
+		result_screen.hide()
 		damage_flash.color.a = 0.0
 	spectating = false
 	for id in actors.keys():
@@ -211,7 +243,7 @@ func _failed() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	if menu:
 		menu.show()
-		status.text = "Disconnected"
+		status.text = "Choose Solo, Host or Join"
 
 func _spawn(id: int) -> void:
 	if actors.has(id):
@@ -236,7 +268,7 @@ func _remove(id: int) -> void:
 func _peer_joined(id: int) -> void:
 	if not multiplayer.is_server():
 		return
-	if actors.size() >= party_size:
+	if world.objective.started or world.objective.result != "" or actors.size() >= party_size:
 		multiplayer.multiplayer_peer.disconnect_peer(id)
 		return
 	initialize_expedition.rpc_id(id, expedition_seed, party_size)
@@ -247,7 +279,11 @@ func _peer_joined(id: int) -> void:
 
 func _peer_left(id: int) -> void:
 	if multiplayer.is_server():
+		if is_instance_valid(world) and actors.has(id):
+			world.release_jewel(actors[id], id)
 		_remove(id)
+		if is_instance_valid(world) and actors.is_empty() and world.objective.started and world.objective.result == "":
+			world.objective.result = "defeat"
 		remove_remote.rpc(id)
 
 @rpc("authority", "call_remote", "reliable")
@@ -261,7 +297,7 @@ func remove_remote(id: int) -> void:
 	_remove(id)
 
 func _unhandled_input(event: InputEvent) -> void:
-	if not active or dedicated:
+	if not active or dedicated or world.objective.result != "":
 		return
 	if event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_I:
 		if inventory_ui:
@@ -297,8 +333,10 @@ func _unhandled_input(event: InputEvent) -> void:
 			item_requests[multiplayer.get_unique_id()] = [-1, false]
 		else:
 			request_item.rpc_id(1, -1, false)
-	elif event is InputEventKey and event.pressed and not event.echo and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and event.physical_keycode in [KEY_1, KEY_2, KEY_3, KEY_T]:
-		if event.physical_keycode == KEY_T:
+	elif event is InputEventKey and event.pressed and not event.echo and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and event.physical_keycode in [KEY_1, KEY_2, KEY_3, KEY_T, KEY_G]:
+		if event.physical_keycode == KEY_G:
+			_talent_action("drop_jewel", "", 0)
+		elif event.physical_keycode == KEY_T:
 			_talent_action("discover", "", 0)
 		else:
 			_talent_action("activate", "", event.physical_keycode - KEY_1)
@@ -316,6 +354,9 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func _physics_process(delta: float) -> void:
 	if not active:
+		return
+	if world.objective.result != "":
+		show_result()
 		return
 	var local_id := multiplayer.get_unique_id()
 	if not dedicated and actors.has(local_id):
@@ -355,6 +396,7 @@ func _physics_process(delta: float) -> void:
 				world.cast(actors[id], id, spell_id)
 		world.simulate(actors, delta)
 		world.projectiles.step(world, actors, delta)
+		world.update_objective(actors, delta)
 		for id in talent_requests:
 			if actors.has(id):
 				apply_talent(actors[id], talent_requests[id])
@@ -362,17 +404,19 @@ func _physics_process(delta: float) -> void:
 		for id in stair_cooldowns.keys():
 			stair_cooldowns[id] = maxf(0.0, stair_cooldowns[id] - delta)
 		for id in stair_requests.keys():
-			if actors.has(id) and stair_cooldowns.get(id, 0.0) <= 0.0 and world.transfer(actors[id], id):
+			if world.objective.result == "" and actors.has(id) and stair_cooldowns.get(id, 0.0) <= 0.0 and world.transfer(actors[id], id):
 				stair_cooldowns[id] = 0.75
 				if multiplayer.has_multiplayer_peer():
 					transition.rpc(tick, id, actors[id].floor_id, actors[id].position, world.monster_snapshot())
 		stair_requests.clear()
 		tick += 1
-		if tick % 3 == 0 and multiplayer.has_multiplayer_peer():
+		if (tick % 3 == 0 or world.objective.result != "") and multiplayer.has_multiplayer_peer():
 			var states := {}
 			for id in actors:
 				states[id] = [actors[id].position, actors[id].heading, actors[id].floor_id, actors[id].health, actors[id].stamina, actors[id].blocking, actors[id].attack_phase, actors[id].hurt_timer, actors[id].swing_hit, actors[id].inventory.state(), actors[id].skills.state(), actors[id].combat_timer, actors[id].mana, actors[id].sprinting, actors[id].cast_id]
-			snapshot.rpc(tick, states, world.monster_snapshot(), world.loot.state(), world.projectiles.state(), world.hazards.state())
+			snapshot.rpc(tick, states, world.monster_snapshot(), world.loot.state(), world.projectiles.state(), world.hazards.state(), world.objective.state())
+			if world.objective.result != "":
+				finish_remote.rpc(world.objective.state())
 	if not dedicated and actors.has(local_id):
 		var local = actors[local_id]
 		var viewed_floor: int = local.floor_id
@@ -416,7 +460,11 @@ func _physics_process(delta: float) -> void:
 			var route: Dictionary = world.route_at(local.floor_id, local.position)
 			hud.text = World.Routes.NAMES[local.floor_id]
 			if not route.is_empty() and local.health > 0:
-				hud.text += "  |  E: " + route.label
+				hud.text += "  |  " + ("" if route.get("locked", false) else "E: ") + route.label
+			var hint: String = world.objective_hint(local, local_id)
+			if hint != "":
+				hud.text += "  |  " + hint
+			update_objective_hud(local_id)
 			if local.health <= 0:
 				hud.text += "\n" + ("Dead — spectating" if spectating else "Party defeated — restart to try again")
 			else:
@@ -443,7 +491,7 @@ func submit_input(move: Vector2, angle: float, block: bool, sprint: bool) -> voi
 		actors[id].wants_sprint = sprint
 
 @rpc("authority", "call_remote", "unreliable_ordered")
-func snapshot(sequence: int, states: Dictionary, mobs: Dictionary, drops: Dictionary, shots: Dictionary, traps: Dictionary) -> void:
+func snapshot(sequence: int, states: Dictionary, mobs: Dictionary, drops: Dictionary, shots: Dictionary, traps: Dictionary, objective_data: Dictionary) -> void:
 	if not is_instance_valid(world) or sequence < received_tick:
 		return
 	received_tick = sequence
@@ -451,6 +499,7 @@ func snapshot(sequence: int, states: Dictionary, mobs: Dictionary, drops: Dictio
 	world.loot.apply(drops)
 	world.projectiles.apply(shots)
 	world.hazards.apply(traps)
+	world.objective.apply(objective_data)
 	for id in states:
 		if actors.has(id):
 			actors[id].position = states[id][0]
@@ -526,7 +575,7 @@ func apply_item_action(actor, index: int, drop: bool) -> void:
 func _skill_action(index: int, value: int) -> void:
 	if multiplayer.is_server():
 		var id := multiplayer.get_unique_id()
-		if actors.has(id) and actors[id].health > 0:
+		if is_instance_valid(world) and world.objective.result == "" and actors.has(id) and actors[id].health > 0:
 			actors[id].skills.set_priority(index, value)
 	else:
 		request_skill.rpc_id(1, index, value)
@@ -548,7 +597,7 @@ func _talent_action(action: String, id: String, index: int) -> void:
 func request_talent(action: String, id: String, index: int) -> void:
 	if multiplayer.is_server():
 		var peer := multiplayer.get_remote_sender_id()
-		if actors.has(peer) and id.length() <= 64 and action in ["buy", "slot", "activate", "discover"]:
+		if actors.has(peer) and id.length() <= 64 and action in ["buy", "slot", "activate", "discover", "drop_jewel"]:
 			talent_requests[peer] = [action, id, index]
 
 func apply_talent(actor, request: Array) -> void:
@@ -565,6 +614,11 @@ func apply_talent(actor, request: Array) -> void:
 				world.threat_ability(actor, peer, ability)
 		else:
 			actor.activate(slot)
+		return
+	if request[0] == "drop_jewel":
+		var peer = actors.find_key(actor)
+		if peer != null:
+			world.release_jewel(actor, peer)
 		return
 	if request[0] == "discover":
 		world.discover(actor)
@@ -593,3 +647,34 @@ func build_expedition(seed_value: int, size: int) -> void:
 func initialize_expedition(seed_value: int, size: int) -> void:
 	build_expedition(seed_value, size)
 	_start()
+
+func update_objective_hud(local_id: int) -> void:
+	var goal = world.objective
+	var message := "Runes: %d/2" % goal.runes.size()
+	if not goal.gate_open():
+		message += "\nDefeat the branch bosses"
+	elif not goal.guardian_defeated:
+		message += "\nEnter the Jewel Sanctuary"
+	elif not goal.started:
+		message += "\nClaim the Jewel"
+	else:
+		message = "ESCAPE — Pursuit %d/3" % goal.pressure()
+		message += "\n" + ("You carry the Jewel" if goal.carrier == local_id else ("Jewel carried by a teammate" if goal.carrier != 0 else "Jewel dropped: " + World.Routes.NAMES[goal.jewel_floor]))
+		message += "\nReturn to Dungeon 1 exit [E]"
+	objective_label.text = message
+
+@rpc("authority", "call_remote", "reliable")
+func finish_remote(data: Dictionary) -> void:
+	if is_instance_valid(world):
+		world.objective.apply(data)
+		show_result()
+
+func show_result() -> void:
+	if dedicated or result_shown:
+		return
+	result_shown = true
+	inventory_ui.hide()
+	skills_ui.hide()
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	result_label.text = "JEWEL RECOVERED\nExpedition victory!" if world.objective.result == "victory" else "EXPEDITION LOST\nThe party has fallen."
+	result_screen.show()

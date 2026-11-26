@@ -2,7 +2,7 @@
 
 Single Godot 4.7.2 stable project, typed GDScript, Compatibility renderer, ENet UDP. Dedicated and listen servers share authoritative simulation. Clients submit movement intentions and receive state snapshots. Prototype snapshots snap directly to positions; prediction, interpolation, input timeout and reconnect are future work.
 
-World graph -> logical floor -> geometry. Prototype generates four main floors and two optional branch floors, each with its own seed and tile map. Floors are spatially isolated in the shared physics world, with only the local floor rendered. All are retained in memory. Stair requests are validated by the server; players and nearby pursuing monsters transfer to paired stair locations. Empty floors have no monster targets and remain static. Later add room templates, unloading and disk saves. Keep gameplay definitions as Resources and mutable runtime state separate.
+World graph -> logical floor -> geometry. Prototype generates four main floors, two rune branches and one sanctuary, each with its own seed and tile map. Floors are spatially isolated in the shared physics world, with only the local floor rendered. All are retained in memory. Stair requests are validated by the server; players and nearby pursuing monsters transfer to paired stair locations. Empty floors have no monster targets and remain static. Later add room templates, unloading and disk saves. Keep gameplay definitions as Resources and mutable runtime state separate.
 
 Combat uses authoritative player and monster timers, stamina, frontal block checks and wall occlusion rays. Clients receive health, stamina and attack phases in snapshots. Dead actors cannot move, attack or use stairs. Placeholder monsters have no physical body and do not attack one another. Spectating follows the first living teammate. No audio assets yet.
 
@@ -10,7 +10,7 @@ Items are immutable Godot Resources in content/items; inventory stores item IDs 
 
 Progression is server-authoritative. XP is shared at full value with nearby living teammates; weighted training allocates it to eleven domain wallets; usage XP is credited separately. Talents have costs, prerequisite IDs and explicit gameplay effects. Purchases and loadout changes require no enemy within 12 m and no recent combat (5 seconds). A server-selected secret tablet is placed in the prototype; respec is disabled. Three active slots have independent cooldowns. Character level is derived from total XP. Training priorities, wallets, learned talents, discoveries, cooldowns and lifetime domain XP are replicated in player snapshots. Dodging is deterministic damage mitigation for now; species aptitudes and true avoidance are future work.
 
-Next milestones: species and backgrounds; Jewel retrieval and escape; saves, resurrection and eight-player tests.
+Next milestones: species and backgrounds; saves, resurrection and eight-player tests.
 
 Monster definitions and encounter rosters live in game/monsters/bestiary.gd. Per-monster runtime state includes health, aim, attack timers, bleed and stun. Bleed uses the same kill reward path as direct hits. Talent UI lays out prerequisite nodes by depth; the server remains authoritative for all effects.
 
@@ -19,3 +19,5 @@ Projectile state is authoritative and replicated as visual snapshots; swept segm
 Expedition seed and expected party size are server-selected and transmitted reliably before actor spawn. Generation uses seeded RNG and sorted candidate tiles; monster IDs are stable across peers. Population is fixed once generated. Talent purchases are permanent and spells are learned through scrolls gated by lifetime school XP. Inventory tracks armour by exact slot as for weapons and shields.
 
 Routes are resolved by explicit paired entry coordinates, not consecutive floor IDs. Branch bosses are unique, stay in their branch, and use a guarded common kill-reward path. Trap phases are server-authoritative and replicated independently. Enchanted item IDs combine base ID and affix; the catalog caches duplicated Resource definitions without mutating base items. Threat tables remain server-side; taunts lock target selection temporarily, while damage attribution uses post-resistance damage.
+
+The server owns an expedition objective state (shared runes, guardian defeat, single Jewel carrier or ground position, escape time and terminal result). Objective snapshots replicate alongside world state; terminal outcomes are also sent reliably. The sanctuary route requires both runes. Dormant hunter records are generated with the world, activated once on first claim and never respawned. Terminal results stop simulation; no late joins after claim. Disconnecting carriers drop the Jewel before actor removal.
