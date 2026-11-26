@@ -67,6 +67,11 @@ func generate(seed_value: int, render_geometry: bool = true, room_count: int = 9
 				var dimensions := Vector3(0.2, height, CELL) if d.x != 0 else Vector3(CELL, height, 0.2)
 				add_box(origin + offset + Vector3.UP * height * 0.5, dimensions, wall_material)
 
+	for feature in architecture:
+		if feature.kind == "dais":
+			# Shallow corner steps do not alter the navigation centreline.
+			for i in range(3):
+				add_box(feature.at + Vector3.UP * (0.05 + i * 0.09), Vector3(0.62 - i * 0.12, 0.10, 0.62 - i * 0.12), floor_material)
 	for block in corridor_blocks:
 		var at: Vector3 = block[0]
 		var cell := Vector2i(roundi(at.x / CELL), roundi(at.z / CELL))
