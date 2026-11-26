@@ -3,6 +3,8 @@ extends SceneTree
 const World = preload("res://game/world.gd")
 const Player = preload("res://game/player.gd")
 const Journal = preload("res://game/world/journal.gd")
+const InventoryUI = preload("res://game/items/inventory_ui.gd")
+const Catalog = preload("res://game/items/catalog.gd")
 
 func _initialize() -> void:
 	call_deferred("run")
@@ -24,6 +26,8 @@ func run() -> void:
 	actor.take_damage(20.0, actor.position + Vector3(0, 0, -2), false, "Goblin")
 	var event: Dictionary = world.journal.history.back()
 	var ok: bool = event.floating.contains("Blocked") and event.target == 1 and is_equal_approx(actor.health, 96.0)
+	actor.skills.credit(4, 2.5)
+	ok = ok and world.journal.history.back().message == "Player 1 gains 2.5 Shields XP"
 	actor.gain_xp(100)
 	ok = ok and world.journal.history.back().category == "XP"
 	var mob: Dictionary = world.monsters[0]
@@ -38,6 +42,19 @@ func run() -> void:
 	for i in range(220):
 		j.add("Party", str(i))
 	ok = ok and j.history.size() == 200 and j.drain().size() == 220 and j.drain().is_empty()
+	var ui := InventoryUI.new()
+	root.add_child(ui)
+	for id in Catalog.ITEMS:
+		ui.refresh([["sword", "shield", id], 0, 1, -1])
+		ui.list.select(2)
+		ui.update_details()
+		ok = ok and not ui.details.text.is_empty() and not ui.details.text.contains("%g")
+		if id == "spear":
+			ok = ok and ui.details.text.contains("3.4 m")
+		if id == "ward_mail":
+			ok = ok and ui.details.text.contains("15%") and ui.details.text.contains("30%")
+		if id == "potion":
+			ok = ok and ui.details.text == "Restores 35 HP"
 	if not ok:
 		push_error("Party defeat or combat journal test failed")
 	quit(0 if ok else 1)

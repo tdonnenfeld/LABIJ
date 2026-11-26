@@ -58,23 +58,23 @@ func update_details() -> void:
 	use_button.text = "Equip / use"
 	match item.kind:
 		"weapon":
-			details.text = "Damage %g | Reach %g m | Stamina %g" % [item.damage, item.reach, item.stamina_cost]
+			details.text = "Damage %s | Reach %s m | Stamina %s" % [String.num(item.damage, 2), String.num(item.reach, 2), String.num(item.stamina_cost, 2)]
 			if item.projectile_speed > 0:
 				details.text += " | Ranged"
 			if item.poison > 0:
-				details.text += " | Poison %g/s" % item.poison
+				details.text += " | Poison %s/s" % String.num(item.poison, 2)
 			if item.spell_power > 0:
-				details.text += " | Spell power +%g%%" % (item.spell_power * 100)
+				details.text += " | Spell power +%s%%" % String.num(item.spell_power * 100, 2)
 		"scroll":
 			var node := Skills.Talents.find(item.spell_id)
 			details.text = "Read to learn permanently | %s mastery %d" % [Skills.TITLES[node[1]], Skills.SCROLL_REQUIREMENTS[item.spell_id]]
 			use_button.text = "Read scroll"
 		"armor":
-			details.text = "Damage reduction: %g%% | Magic resist: %g%%" % [item.armor * 100, item.magic_resistance * 100]
+			details.text = "Damage reduction: %s%% | Magic resist: %s%%" % [String.num(item.armor * 100, 2), String.num(item.magic_resistance * 100, 2)]
 		"shield":
-			details.text = "Damage blocked: %g%%" % (item.reduction * 100)
+			details.text = "Damage blocked: %s%%" % String.num(item.reduction * 100, 2)
 		_:
-			details.text = "Restores %g HP" % item.heal
+			details.text = "Restores %s HP" % String.num(item.heal, 2)
 
 func send(drop: bool) -> void:
 	var selected := list.get_selected_items()

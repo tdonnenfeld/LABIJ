@@ -110,11 +110,11 @@ func build(seed_value: int, render_geometry: bool, size: int = 1) -> void:
 		marker(jewel_marker, Vector3.ZERO, "THE JEWEL [E]", Color("#e9c96d"))
 		jewel_marker.hide()
 
-func spawn_monster(id: int, floor_id: int, kind: String, at: Vector3, party_size: int, boss: bool, reserve: bool = false) -> void:
+func spawn_monster(id: int, floor_id: int, kind: String, at: Vector3, group_size: int, boss: bool, reserve: bool = false) -> void:
 	var stats := Bestiary.stats(kind)
 	var mob := Node3D.new()
 	add_child(mob)
-	var hp: float = float(stats[1]) * (1.0 + 0.35 * (clampi(party_size, 1, 8) - 1) if boss else 1.0)
+	var hp: float = float(stats[1]) * (1.0 + 0.35 * (clampi(group_size, 1, 8) - 1) if boss else 1.0)
 	mob.position = at + Vector3.UP * float(stats[11]) * 0.5
 	if visual:
 		var mesh := MeshInstance3D.new()
@@ -251,7 +251,7 @@ func transfer(actor, peer_id: int) -> bool:
 		mob.threat = {peer_id: maxf(Threat.PULL, mob.threat.get(peer_id, 0.0))}
 		mob.force_timer = 0.0
 		mob.floor = destination
-		mob.node.position = arrival + Vector3(1.0 + float(i % 3) * 0.6, float(Bestiary.stats(mob.kind)[11]) * 0.5, float(i / 3) * 0.6)
+		mob.node.position = arrival + Vector3(1.0 + float(i % 3) * 0.6, float(Bestiary.stats(mob.kind)[11]) * 0.5, float(floori(float(i) / 3.0)) * 0.6)
 	return true
 
 func simulate(actors: Dictionary, delta: float) -> void:
@@ -426,10 +426,10 @@ func strike(actor, party: Dictionary = {}) -> bool:
 		return false
 	var weapon = Catalog.get_item(actor.inventory.weapon)
 	if weapon.projectile_speed > 0:
-		var owner = party.find_key(actor)
+		var source_peer = party.find_key(actor)
 		var direction := Vector3(-sin(actor.heading), 0, -cos(actor.heading))
 		var effect := "arrow_poison" if actor.skills.learned.has("venom_arrow") else "arrow"
-		projectiles.launch(actor.floor_id, actor.position, direction, weapon.projectile_speed, actor.attack_reach(), actor.attack_damage(), weapon.tint, 0 if owner == null else owner, false, effect, 10, actor.skills.bonus("pierce", 10))
+		projectiles.launch(actor.floor_id, actor.position, direction, weapon.projectile_speed, actor.attack_reach(), actor.attack_damage(), weapon.tint, 0 if source_peer == null else source_peer, false, effect, 10, actor.skills.bonus("pierce", 10))
 		actor.empowered = ""
 		return false
 	var hits: Array = []
@@ -483,8 +483,8 @@ func hit_monster(actor, mob: Dictionary, party: Dictionary) -> void:
 			status_event(mob, "Bleeding")
 		mob.bleed = 4.0
 		mob.bleed_damage = bleed
-		var owner = party.find_key(actor)
-		mob.bleed_owner = 0 if owner == null else owner
+		var source_peer = party.find_key(actor)
+		mob.bleed_owner = 0 if source_peer == null else source_peer
 	mob.stun = maxf(mob.stun, actor.skills.bonus("stagger", domain))
 	if Catalog.get_item(actor.inventory.weapon).poison > 0:
 		if mob.poison <= 0:
@@ -549,12 +549,12 @@ func discover(actor) -> bool:
 	actor.skills.discovered.append(secret_id)
 	return true
 
-func cast(actor, owner: int, id: String) -> void:
+func cast(actor, source_peer: int, id: String) -> void:
 	var stats := Spells.get_spell(id)
 	var direction := Vector3(-sin(actor.heading), 0, -cos(actor.heading))
 	var damage: float = stats[2] * (1.0 + actor.skills.bonus("spell_damage", stats[0]) + Catalog.get_item(actor.inventory.weapon).spell_power)
 	var bonus: float = actor.skills.bonus("burn_bonus", stats[0]) + actor.skills.bonus("slow_bonus", stats[0])
-	projectiles.launch(actor.floor_id, actor.position, direction, stats[3], stats[4], damage, stats[6], owner, false, stats[7], stats[0], bonus)
+	projectiles.launch(actor.floor_id, actor.position, direction, stats[3], stats[4], damage, stats[6], source_peer, false, stats[7], stats[0], bonus)
 
 func spell_hit(shot: Dictionary, mob: Dictionary, actors: Dictionary) -> void:
 	if shot.effect == "blast":
@@ -572,7 +572,7 @@ func spell_blast(shot: Dictionary, at: Vector3, actors: Dictionary) -> void:
 func apply_spell_damage(shot: Dictionary, mob: Dictionary, actors: Dictionary) -> void:
 	if mob.health <= 0:
 		return
-	var owner = actors.get(shot.owner)
+	var caster = actors.get(shot.owner)
 	var damage: float = shot.damage
 	if shot.effect in ["burn", "blast"] and mob.slow > 0:
 		damage *= 1.25
@@ -584,14 +584,14 @@ func apply_spell_damage(shot: Dictionary, mob: Dictionary, actors: Dictionary) -
 		damage *= 1.0 - float(Bestiary.stats(mob.kind)[7]) * (1.0 - shot.bonus)
 	else:
 		damage *= 1.0 - Bestiary.resistance(mob.kind, shot.domain)
-	Threat.add(mob, shot.owner, minf(mob.health, damage) * (1.0 + (owner.skills.bonus("threat") if owner != null else 0.0)))
-	log_monster_hit(mob, owner.display_name if owner != null else "Projectile", minf(mob.health, damage), "damage" if shot.effect.begins_with("arrow") else "magic")
+	Threat.add(mob, shot.owner, minf(mob.health, damage) * (1.0 + (caster.skills.bonus("threat") if caster != null else 0.0)))
+	log_monster_hit(mob, caster.display_name if caster != null else "Projectile", minf(mob.health, damage), "damage" if shot.effect.begins_with("arrow") else "magic")
 	mob.health = maxf(0.0, mob.health - damage)
 	mob.hurt = 0.18
-	if owner != null and owner.health > 0:
-		owner.skills.credit(shot.domain, 8)
+	if caster != null and caster.health > 0:
+		caster.skills.credit(shot.domain, 8)
 	if mob.health <= 0:
-		reward_kill(mob, owner, actors)
+		reward_kill(mob, caster, actors)
 		return
 	match shot.effect:
 		"arrow_poison":
@@ -618,8 +618,8 @@ func apply_spell_damage(shot: Dictionary, mob: Dictionary, actors: Dictionary) -
 			status_event(mob, "Staggered")
 			mob.stun = maxf(mob.stun, 0.5)
 
-static func encounter_count(floor_id: int, party_size: int) -> int:
-	return ceili((6.0 + Routes.depth(floor_id) * 2.0) * (1.0 + 0.65 * (clampi(party_size, 1, 8) - 1)))
+static func encounter_count(floor_id: int, group_size: int) -> int:
+	return ceili((6.0 + Routes.depth(floor_id) * 2.0) * (1.0 + 0.65 * (clampi(group_size, 1, 8) - 1)))
 
 func threat_ability(actor, peer: int, ability: String) -> bool:
 	if actor.health <= 0 or actor.attack_phase != 0 or actor.cast_id != "" or not actor.skills.learned.has(ability) or actor.skills.cooldowns.get(ability, 0.0) > 0:
@@ -711,7 +711,7 @@ func objective_hint(actor, peer: int) -> String:
 func watch_player(actor, peer: int) -> void:
 	actor.damage_event.connect(func(amount, blocked, parried, source_name): player_hit(actor, peer, amount, blocked, parried, source_name))
 	actor.xp_event.connect(func(amount): journal.add("XP", "%s gains %d XP" % [actor.display_name, amount], actor.floor_id, actor.position + Vector3.UP, "+%d XP" % amount, "xp", peer))
-	actor.skills.usage_xp.connect(func(domain, amount): journal.add("XP", "%s gains %g %s XP" % [actor.display_name, amount, actor.Skills.TITLES[domain]]))
+	actor.skills.usage_xp.connect(func(domain, amount): journal.add("XP", "%s gains %s %s XP" % [actor.display_name, String.num(amount, 2), actor.Skills.TITLES[domain]]))
 
 func player_hit(actor, peer: int, amount: float, blocked: bool, parried: bool, source_name: String) -> void:
 	var effect := "Parried" if parried else ("Blocked" if blocked else "")
