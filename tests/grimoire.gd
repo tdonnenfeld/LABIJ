@@ -38,9 +38,12 @@ func run() -> void:
 			for b in range(a + 1, nodes.size()):
 				check(not area.intersects(nodes[b].get_rect()), "Talent nodes do not overlap")
 		check(ui.size.y <= 500.0, "Grimoire fits logical viewport: %s" % ui.size)
-		var content: Control = ui.get_node("Control/GrimoireContent") if ui.has_node("Control/GrimoireContent") else ui.get_child(0).get_child(0)
+		var content: Control = ui.get_child(0).get_child(0)
 		check(content.size.y <= ui.size.y - 24.0 + 1.0, "Content fits page: %s / %s" % [content.size, ui.size])
+	paper = null
+	model = null
 	ui.queue_free()
+	await process_frame
 	var banner := Banner.new()
 	root.add_child(banner)
 	check(not banner.observe(1, "K") and not banner.visible, "Initial level silent")
@@ -52,6 +55,7 @@ func run() -> void:
 	banner.reset()
 	check(not banner.observe(1, "K"), "New run resets baseline")
 	banner.queue_free()
+	await process_frame
 	var game = load("res://game/main.tscn").instantiate()
 	root.add_child(game)
 	await process_frame
@@ -63,5 +67,6 @@ func run() -> void:
 	game.leave_expedition(false)
 	check(not game.level_up.visible and game.level_up.last_level == 0, "Exit clears notification")
 	game.queue_free()
+	await process_frame
 	await process_frame
 	quit(0 if failures == 0 else 1)
