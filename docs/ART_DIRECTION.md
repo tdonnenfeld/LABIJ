@@ -38,3 +38,7 @@ Future Blender kit dimensions: floor/ceiling 3 x 0.3 x 3m; wall 3 x 3 x 0.2m (wi
 ## Interface art
 
 See [UI_ART_DIRECTION.md](UI_ART_DIRECTION.md) for the Expedition Journal palette, reusable parchment/leather components, item-icon conventions, roadmap and deferred audio backlog. The first UI pass generates paper textures in Godot, skins menus and HUD, and keeps game state and controls unchanged. Inventory and talent windows inherit the theme; their structural redesign and item icons are deferred.
+
+## Compact dungeon layout
+
+Keep 3m navigation tiles, but use small 2×2 to 3×3 rooms, 3×3 entrance/exit and 5×5 boss chambers. Straight connecting cells have thick masonry sides narrowing their physical width to 1.2 or 1.9 metres; corners stay open. Render the extra wall blocks using the same dimensions as collision. The map shows the narrow cross-section, and team collision makes single-file movement meaningful. Avoid obstructing entrance/stair landings. No new monster collision or traversal rules in this pass.

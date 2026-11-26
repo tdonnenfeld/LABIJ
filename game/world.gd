@@ -59,10 +59,11 @@ func build(seed_value: int, render_geometry: bool, size: int = 1) -> void:
 		var level := Dungeon.new()
 		add_child(level)
 		level.position.y = -i * SPACING
-		level.generate(seed_value + i * 7919, visual, 5 if i >= Routes.MAIN_COUNT else 9)
+		var room_count := (5 if i >= Routes.MAIN_COUNT else 9) + 3 * (clampi(party_size, 1, 8) - 1)
+		level.generate(seed_value + i * 7919, visual, room_count, i >= Routes.MAIN_COUNT)
 		floors[i] = level
 		if i == 1:
-			tablet_position = level.position + Vector3(6, 0, 0)
+			tablet_position = level.position + Vector3(3, 0, 0)
 			if visual:
 				marker(level, Vector3(6, 0, 0), "ANCIENT TABLET [T]", Color("#8ab8a0"))
 		for branch in Routes.PARENTS:
@@ -84,8 +85,8 @@ func build(seed_value: int, render_geometry: bool, size: int = 1) -> void:
 		if i == Routes.SANCTUARY:
 			objective.jewel_position = stair_position(i, true)
 		var cells: Array[Vector2i] = []
-		for cell in level.tiles:
-			if Vector2(cell).length() >= 7.0 and Vector2(cell - level.end_cell).length() >= 2.0 and not near_branch_entry(i, level.position + Vector3(cell.x * Dungeon.CELL, 0, cell.y * Dungeon.CELL)):
+		for cell in level.room_tiles:
+			if Vector2(cell).length() >= 4.0 and Vector2(cell - level.end_cell).length() >= 2.0 and not near_branch_entry(i, level.position + Vector3(cell.x * Dungeon.CELL, 0, cell.y * Dungeon.CELL)):
 				cells.append(cell)
 		cells.sort()
 		var count := mini(cells.size(), encounter_count(i, party_size))
@@ -251,7 +252,7 @@ func visible_floor(id: int) -> void:
 			if mob.kind in ["crypt_warden", "jewel_sentinel"]:
 				mob.node.get_child(2).visible = mob.phase == 1 and mob.stun <= 0
 
-func transfer(actor, peer_id: int) -> bool:
+func transfer(actor, peer_id: int, actors: Dictionary = {}) -> bool:
 	if objective.result != "" or actor.health <= 0 or actor.attack_phase != 0 or actor.cast_id != "":
 		return false
 	if interact_objective(actor, peer_id):
@@ -262,12 +263,15 @@ func transfer(actor, peer_id: int) -> bool:
 		return false
 	var destination: int = route.destination
 	var arrival: Vector3 = route.arrival
+	var landing := arrival_position(destination, arrival, actors, actor)
+	if landing == Vector3.INF:
+		return false
 	var followers: Array = []
 	for mob in monsters.values():
 		if not mob.boss and mob.health > 0 and mob.floor == old and mob.target == peer_id and horizontal_distance(mob.node.position, actor.position) <= FOLLOW_RADIUS and horizontal_distance(mob.node.position, route.entry) <= FOLLOW_RADIUS:
 			followers.append(mob)
 	actor.floor_id = destination
-	actor.position = arrival + Vector3(0, 1, 0)
+	actor.position = landing
 	actor.velocity = Vector3.ZERO
 	actor.direction = Vector2.ZERO
 	for i in range(followers.size()):
@@ -1020,3 +1024,35 @@ func voice_audible(speaker, listener, radius: float) -> bool:
 		return false
 	var distances := Acoustics.reach(floors[speaker.floor_id].tiles, speaker.position, radius)
 	return Acoustics.audible(distances, speaker.position, listener.position, radius)
+
+func arrival_position(floor_id: int, center: Vector3, actors: Dictionary, arriving = null) -> Vector3:
+	var level = floors[floor_id]
+	var candidates: Array[Vector3] = []
+	for z in range(-2, 3):
+		for x in range(-2, 3):
+			var offset := Vector3(x * 0.85, 0, z * 0.85)
+			if offset.length() <= USE_RADIUS:
+				candidates.append(center + offset + Vector3.UP)
+	candidates.sort_custom(func(a: Vector3, b: Vector3):
+		var da := a.distance_squared_to(center)
+		var db := b.distance_squared_to(center)
+		if not is_equal_approx(da, db):
+			return da < db
+		if a.x != b.x:
+			return a.x < b.x
+		return a.z < b.z)
+	for at in candidates:
+		var clear := true
+		for x in [-0.36, 0.36]:
+			for z in [-0.36, 0.36]:
+				if not level.room_tiles.has(Acoustics.cell(at + Vector3(x, 0, z))):
+					clear = false
+		if not clear:
+			continue
+		for other in actors.values():
+			if other != arriving and other.health > 0 and other.floor_id == floor_id and horizontal_distance(at, other.position) < 0.74:
+				clear = false
+				break
+		if clear:
+			return at
+	return Vector3.INF

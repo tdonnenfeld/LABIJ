@@ -18,7 +18,11 @@ func box(id: String, at: Vector3, size: Vector3, angle: float = 0.0) -> void:
 	var basis := Basis(Vector3.UP, angle).scaled_local(size)
 	batches[key].transforms.append(Transform3D(basis, at))
 
-func build(tiles: Dictionary, seed_value: int) -> void:
+func build(tiles: Dictionary, seed_value: int, corridor_blocks: Array = []) -> void:
+	var narrowed: Dictionary = {}
+	for block in corridor_blocks:
+		var at: Vector3 = block[0]
+		narrowed[Vector2i(roundi(at.x / CELL), roundi(at.z / CELL))] = true
 	for key in tiles:
 		var cell: Vector2i = key
 		var origin := Vector3(cell.x * CELL, 0, cell.y * CELL)
@@ -34,11 +38,13 @@ func build(tiles: Dictionary, seed_value: int) -> void:
 			box("trim", at - normal * 0.025 + Vector3.UP * 0.12, Vector3(3, 0.24, 0.22), angle)
 			box("trim", at - normal * 0.025 + Vector3.UP * 2.88, Vector3(3, 0.24, 0.22), angle)
 			var hash_value := posmod(cell.x * 73 + cell.y * 151 + side.x * 17 + side.y * 31 + seed_value, 19)
-			if hash_value == 0:
+			if hash_value == 0 and not narrowed.has(cell):
 				add_torch(at, normal, angle)
-			if hash_value in [4, 11]:
+			if hash_value in [4, 11] and not narrowed.has(cell):
 				box("wall", at - normal * 0.04 + Vector3.UP * 1.5, Vector3(0.34, 3.0, 0.20), angle)
 		add_arch(tiles, cell, origin)
+	for block in corridor_blocks:
+		box("wall", block[0], block[1])
 	flush_batches()
 	for i in range(LIGHT_LIMIT):
 		var light := OmniLight3D.new()
