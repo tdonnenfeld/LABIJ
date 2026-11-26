@@ -44,7 +44,12 @@ func build(tiles: Dictionary, seed_value: int, corridor_blocks: Array = [], floo
 		var height: float = ceiling_heights.get(cell, 3.0)
 		var tile_variant := posmod(cell.x * 73 + cell.y * 151 + seed_value, 11)
 		var floor_id := "floor" if tile_variant < 5 else "floor%d" % (1 + tile_variant % 3)
-		box(floor_id, origin + Vector3.DOWN * 0.15, Vector3(3, 0.3, 3))
+		if bridge_cells.has(cell):
+			var axis: Vector2i = bridge_cells[cell]
+			box("dark", origin + Vector3.DOWN * 2.0, Vector3(3, 0.15, 3))
+			box(floor_id, origin + Vector3.DOWN * 0.15, Vector3(3, 0.3, 1.9) if axis.x != 0 else Vector3(1.9, 0.3, 3))
+		else:
+			box(floor_id, origin + Vector3.DOWN * 0.15, Vector3(3, 0.3, 3))
 		if not narrowed.has(cell):
 			decorate_floor(origin, cell, style, seed_value)
 		box("ceiling", origin + Vector3.UP * (height + 0.15), Vector3(3, 0.3, 3))
@@ -88,8 +93,10 @@ func build(tiles: Dictionary, seed_value: int, corridor_blocks: Array = [], floo
 		var at: Vector3 = block[0]
 		var cell := Vector2i(roundi(at.x / CELL), roundi(at.z / CELL))
 		if bridge_cells.has(cell):
-			# Existing collision walls stay in place; dark sides suggest a recessed channel.
-			box("dark", at, block[1])
+			var size: Vector3 = block[1]
+			size.y = 1.1
+			# The parapet is open above its collision boundary.
+			box("dark", Vector3(at.x, 0.55, at.z), size)
 		else:
 			box("wall", at, block[1])
 	for feature in architecture:
