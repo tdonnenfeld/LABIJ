@@ -73,6 +73,9 @@ func run() -> void:
 	node.free()
 	var arena := World.new()
 	root.add_child(arena)
+	arena.add_child(arena.hazards)
+	arena.add_child(arena.projectiles)
+	arena.add_child(arena.loot)
 	arena.spawn_monster(0, 0, "goblin", Vector3(1.5, 0, 0), 1, false)
 	var mob: Dictionary = arena.monsters[0]
 	var player := Player.new()
@@ -90,4 +93,5 @@ func run() -> void:
 	check(player.move_and_collide(Vector3(2, 0, 0), true) == null, "Dead monster does not block")
 	arena.free()
 	player.free()
+	await process_frame
 	quit(0 if failures == 0 else 1)
