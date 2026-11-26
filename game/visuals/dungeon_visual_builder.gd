@@ -1,6 +1,6 @@
 extends Node3D
 
-const Theme = preload("res://game/visuals/stone_theme.gd")
+const StoneKit = preload("res://game/visuals/stone_theme.gd")
 const CELL := 3.0
 const CHUNK := 8
 const LIGHT_LIMIT := 4
@@ -82,7 +82,7 @@ func flush_batches() -> void:
 	for batch in batches.values():
 		var mesh := BoxMesh.new()
 		mesh.size = Vector3.ONE
-		mesh.material = Theme.material(batch.material)
+		mesh.material = StoneKit.material(batch.material)
 		var multimesh := MultiMesh.new()
 		multimesh.transform_format = MultiMesh.TRANSFORM_3D
 		multimesh.mesh = mesh
@@ -113,8 +113,8 @@ func update_lighting(viewer: Vector3, delta: float) -> void:
 			lights[i].light_energy = 1.65 + 0.14 * sin(time * 7.7 + phase) + 0.09 * sin(time * 13.0 + phase)
 
 static func route_marker(parent: Node3D, at: Vector3, color: Color, descending: bool) -> void:
-	var stone := Theme.material("wall")
-	var accent := Theme.solid(color, 0.65)
+	var stone := StoneKit.material("wall")
+	var accent := StoneKit.solid(color, 0.65)
 	for i in range(3):
 		var step := MeshInstance3D.new()
 		var mesh := BoxMesh.new()
