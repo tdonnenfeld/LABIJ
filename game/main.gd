@@ -3,6 +3,9 @@ extends Node3D
 const World = preload("res://game/world.gd")
 const Player = preload("res://game/player.gd")
 const InventoryUI = preload("res://game/items/inventory_ui.gd")
+const SkillsUI = preload("res://game/progression/skills_ui.gd")
+var skills_ui: PanelContainer
+var xp_label: Label
 const Catalog = preload("res://game/items/catalog.gd")
 var inventory_ui: PanelContainer
 var item_requests: Dictionary = {}
@@ -77,6 +80,14 @@ func _ready() -> void:
 		layer.add_child(inventory_ui)
 		inventory_ui.position = Vector2(250, 120)
 		inventory_ui.action.connect(_inventory_action)
+		skills_ui = SkillsUI.new()
+		layer.add_child(skills_ui)
+		skills_ui.position = Vector2(250, 120)
+		skills_ui.priority_changed.connect(_skill_action)
+		xp_label = Label.new()
+		xp_label.position = Vector2(16, 132)
+		layer.add_child(xp_label)
+		xp_label.hide()
 
 func make_bar(layer: CanvasLayer, at: Vector2, color: Color) -> ProgressBar:
 	var bar := ProgressBar.new()
@@ -123,6 +134,7 @@ func _start() -> void:
 			hp_bar.show()
 			stamina_bar.show()
 			crosshair.show()
+			xp_label.show()
 
 func _solo() -> void:
 	_spawn(1)
@@ -165,6 +177,8 @@ func _failed() -> void:
 		stamina_bar.hide()
 		crosshair.hide()
 		inventory_ui.hide()
+		skills_ui.hide()
+		xp_label.hide()
 		damage_flash.color.a = 0.0
 	spectating = false
 	for id in actors.keys():
@@ -221,8 +235,20 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_I:
 		if inventory_ui:
+			skills_ui.hide()
 			inventory_ui.visible = not inventory_ui.visible
 			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if inventory_ui.visible else Input.MOUSE_MODE_CAPTURED
+		return
+	if event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_K:
+		if skills_ui:
+			inventory_ui.hide()
+			skills_ui.visible = not skills_ui.visible
+			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if skills_ui.visible else Input.MOUSE_MODE_CAPTURED
+		return
+	if skills_ui and skills_ui.visible:
+		if event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE:
+			skills_ui.hide()
+			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 		return
 	if inventory_ui and inventory_ui.visible:
 		if event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE:
@@ -285,7 +311,7 @@ func _physics_process(delta: float) -> void:
 		for actor in actors.values():
 			actor.simulate(delta)
 			if actor.advance_combat(delta):
-				actor.swing_hit = world.strike(actor)
+				actor.swing_hit = world.strike(actor, actors)
 		world.simulate(actors, delta)
 		for id in stair_cooldowns.keys():
 			stair_cooldowns[id] = maxf(0.0, stair_cooldowns[id] - delta)
@@ -299,7 +325,7 @@ func _physics_process(delta: float) -> void:
 		if tick % 3 == 0 and multiplayer.has_multiplayer_peer():
 			var states := {}
 			for id in actors:
-				states[id] = [actors[id].position, actors[id].heading, actors[id].floor_id, actors[id].health, actors[id].stamina, actors[id].blocking, actors[id].attack_phase, actors[id].hurt_timer, actors[id].swing_hit, actors[id].inventory.state()]
+				states[id] = [actors[id].position, actors[id].heading, actors[id].floor_id, actors[id].health, actors[id].stamina, actors[id].blocking, actors[id].attack_phase, actors[id].hurt_timer, actors[id].swing_hit, actors[id].inventory.state(), actors[id].skills.state()]
 			snapshot.rpc(tick, states, world.monster_snapshot(), world.loot.state())
 	if not dedicated and actors.has(local_id):
 		var local = actors[local_id]
@@ -326,7 +352,11 @@ func _physics_process(delta: float) -> void:
 		if damage_flash:
 			damage_flash.color.a = minf(0.3, local.hurt_timer)
 		if hp_bar:
+			hp_bar.max_value = local.max_health()
 			hp_bar.value = local.health
+			xp_label.text = "Level %d | %d XP | K: Skills" % [local.skills.character_level(), local.skills.total_xp]
+			if skills_ui and skills_ui.visible:
+				skills_ui.refresh(local.skills.state())
 			stamina_bar.value = local.stamina
 			crosshair.modulate = Color("#90df87") if local.swing_hit and local.attack_phase == 2 else Color.WHITE
 		if hud:
@@ -370,6 +400,7 @@ func snapshot(sequence: int, states: Dictionary, mobs: Dictionary, drops: Dictio
 			actors[id].hurt_timer = states[id][7]
 			actors[id].swing_hit = states[id][8]
 			actors[id].inventory.apply(states[id][9])
+			actors[id].skills.apply(states[id][10])
 			if id != multiplayer.get_unique_id():
 				actors[id].rotation.y = states[id][1]
 
@@ -423,3 +454,18 @@ func apply_item_action(actor, index: int, drop: bool) -> void:
 			world.loot.spawn(item, actor.floor_id, at)
 	else:
 		actor.use_item(index)
+
+func _skill_action(index: int, value: int) -> void:
+	if multiplayer.is_server():
+		var id := multiplayer.get_unique_id()
+		if actors.has(id) and actors[id].health > 0:
+			actors[id].skills.set_priority(index, value)
+	else:
+		request_skill.rpc_id(1, index, value)
+
+@rpc("any_peer", "call_remote", "reliable")
+func request_skill(index: int, value: int) -> void:
+	if multiplayer.is_server():
+		var id := multiplayer.get_remote_sender_id()
+		if actors.has(id) and actors[id].health > 0:
+			actors[id].skills.set_priority(index, value)

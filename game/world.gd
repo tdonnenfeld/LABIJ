@@ -208,7 +208,7 @@ func apply_monsters(states: Dictionary) -> void:
 			monsters[id].phase = states[id][3]
 			monsters[id].hurt = states[id][4]
 
-func strike(actor) -> bool:
+func strike(actor, party: Dictionary = {}) -> bool:
 	if actor.health <= 0:
 		return false
 	var nearest = null
@@ -223,11 +223,18 @@ func strike(actor) -> bool:
 			best = distance
 	if nearest == null:
 		return false
-	nearest.health = maxf(0.0, nearest.health - weapon.damage)
+	nearest.health = maxf(0.0, nearest.health - actor.attack_damage())
 	nearest.hurt = 0.18
 	if nearest.health <= 0:
 		nearest.phase = 0
 		nearest.target = 0
+		var reward: int = 100 + nearest.floor * 25
+		for teammate in party.values():
+			if teammate == actor or teammate.health <= 0 or teammate.floor_id != actor.floor_id:
+				continue
+			if horizontal_distance(teammate.position, nearest.node.position) <= 15.0:
+				teammate.gain_xp(reward)
+		actor.gain_xp(reward)
 		var choices := ["potion", "potion", "axe", "spear", "iron_shield"]
 		var at: Vector3 = nearest.node.position
 		at.y = floors[nearest.floor].position.y + 0.3
