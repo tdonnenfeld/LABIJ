@@ -67,6 +67,9 @@ static func material(id: String) -> StandardMaterial3D:
 		materials["wood"] = solid(Color("#67442a"))
 		materials["flame"] = solid(Color("#ff9238"), 2.5)
 		materials["ember"] = solid(Color("#ffd18a"), 2.0)
+		materials["water"] = solid(Color("#294b53"))
+		materials["water"].roughness = 0.18
+		materials["gold"] = solid(Color("#a68a4c"))
 	return materials[id]
 
 static func tinted(id: String, tint: Color) -> StandardMaterial3D:
