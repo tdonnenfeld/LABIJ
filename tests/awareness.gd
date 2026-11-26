@@ -2,7 +2,7 @@ extends SceneTree
 
 const World = preload("res://game/world.gd")
 const Player = preload("res://game/player.gd")
-const Noise = preload("res://game/world/noise.gd")
+const Acoustics = preload("res://game/world/noise.gd")
 var failures := 0
 
 func _initialize() -> void:
@@ -15,10 +15,10 @@ func check(ok: bool, description: String) -> void:
 
 func run() -> void:
 	var tiles := {Vector2i(0, 0): true, Vector2i(1, 0): true, Vector2i(2, 0): true, Vector2i(2, 1): true, Vector2i(2, 2): true, Vector2i(1, 2): true, Vector2i(0, 2): true}
-	var distances := Noise.reach(tiles, Vector3.ZERO, 7.0)
-	check(not Noise.audible(distances, Vector3.ZERO, Vector3(0, 0, 6), 7.0), "Sound must not cross intervening walls")
-	distances = Noise.reach(tiles, Vector3.ZERO, 18.0)
-	check(Noise.audible(distances, Vector3.ZERO, Vector3(0, 0, 6), 18.0), "Loud sound can travel around corridor")
+	var distances := Acoustics.reach(tiles, Vector3.ZERO, 7.0)
+	check(not Acoustics.audible(distances, Vector3.ZERO, Vector3(0, 0, 6), 7.0), "Sound must not cross intervening walls")
+	distances = Acoustics.reach(tiles, Vector3.ZERO, 18.0)
+	check(Acoustics.audible(distances, Vector3.ZERO, Vector3(0, 0, 6), 18.0), "Loud sound can travel around corridor")
 	var world := World.new()
 	root.add_child(world)
 	world.build(123, false)
@@ -41,18 +41,18 @@ func run() -> void:
 	world.idle_move(mob, 0.1)
 	world.idle_move(mob, 0.2)
 	check(mob.node.position != at, "Awake enemy walks to a valid adjacent tile")
-	check(world.floors[0].tiles.has(Noise.cell(mob.node.position)), "Roaming remains on dungeon tiles")
+	check(world.floors[0].tiles.has(Acoustics.cell(mob.node.position)), "Roaming remains on dungeon tiles")
 	var actor := Player.new()
 	root.add_child(actor)
 	actor.setup(false, false)
 	actor.position = at
 	actor.quiet_walking = true
 	world.footsteps(actor, at + Vector3(1.5, 0, 0), 0.1)
-	check(is_equal_approx(actor.noise_level, Noise.QUIET), "Quiet footsteps")
+	check(is_equal_approx(actor.noise_level, Acoustics.QUIET), "Quiet footsteps")
 	actor.quiet_walking = false
 	actor.sprinting = true
 	world.footsteps(actor, at + Vector3(1.5, 0, 0), 0.1)
-	check(is_equal_approx(actor.noise_level, Noise.SPRINT), "Sprint footsteps louder")
+	check(is_equal_approx(actor.noise_level, Acoustics.SPRINT), "Sprint footsteps louder")
 	mob.asleep = true
 	mob.health = 100
 	world.hit_monster(actor, mob, {1: actor})

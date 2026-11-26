@@ -14,7 +14,10 @@ jobs:
           unzip godot.zip
           chmod +x Godot_v4.7.2-stable_linux.x86_64
       - name: Import project
-        run: ./Godot_v4.7.2-stable_linux.x86_64 --headless --path . --editor --import
+        run: |
+          set -o pipefail
+          ./Godot_v4.7.2-stable_linux.x86_64 --headless --path . --editor --import 2>&1 | tee import.log
+          ! grep -E 'SCRIPT ERROR|Parse Error|ERROR:' import.log
       - name: Smoke test
         run: |
           set -o pipefail
