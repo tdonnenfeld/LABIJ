@@ -189,12 +189,20 @@ func update_details() -> void:
 	item_picture.texture = Icons.texture(id)
 	item_title.text = item.title
 	var category: String = {"weapon": "WEAPON", "shield": "SHIELD", "armor": "ARMOUR", "helmet": "HEAD", "gloves": "GLOVES", "boots": "BOOTS", "amulet": "AMULET", "ring": "RING", "scroll": "SPELL SCROLL", "consumable": "CONSUMABLE", "distraction": "UTILITY", "ammo": "AMMUNITION"}.get(item.kind, "ITEM")
-	item_kind.text = category + (" · EQUIPPED" if equipped(selection) else "")
-	if id.contains(":"):
-		item_kind.text += " · ENCHANTED"
-	elif id in ["warden_shield", "oracle_staff"]:
-		item_kind.text += " · UNIQUE"
+	item_kind.text = category + " · " + Catalog.rarity(id).to_upper() + (" · EQUIPPED" if equipped(selection) else "")
+	if id.ends_with(":unknown"):
+		details.text = "Identify in a safe area to reveal the equipment properties."
+		use_button.text = "Identify"
+		use_button.disabled = false
+		return
+	var set_id := Catalog.set_name(id)
+	if not set_id.is_empty():
+		item_kind.text += " · " + set_id.to_upper() + " SET"
 	var lines: PackedStringArray = []
+	if set_id == "Warden":
+		lines.append("2 pieces: 8% mitigation; 3: 15% mitigation")
+	elif set_id == "Oracle":
+		lines.append("2 pieces: +20% mana regeneration; 3: +35%")
 	drop_button.text = "Drop stack" if state_data[5][selection] > 1 else "Drop"
 	use_button.text = "Unequip" if equipped(selection) else "Equip"
 	use_button.disabled = false
