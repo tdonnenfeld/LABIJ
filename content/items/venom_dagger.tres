@@ -1,0 +1,13 @@
+[gd_resource type="Resource" load_steps=2 format=3]
+[ext_resource type="Script" path="res://game/items/item_definition.gd" id="1"]
+[resource]
+script = ExtResource("1")
+title = "Venom Blade"
+kind = "weapon"
+damage = 14.0
+reach = 1.8
+stamina_cost = 12.0
+windup = 0.2
+recovery = 0.4
+poison = 3.0
+tint = Color(0.65, 0.55, 0.35, 1)

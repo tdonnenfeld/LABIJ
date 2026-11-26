@@ -59,12 +59,18 @@ func update_details() -> void:
 	match item.kind:
 		"weapon":
 			details.text = "Damage %g | Reach %g m | Stamina %g" % [item.damage, item.reach, item.stamina_cost]
+			if item.projectile_speed > 0:
+				details.text += " | Ranged"
+			if item.poison > 0:
+				details.text += " | Poison %g/s" % item.poison
+			if item.spell_power > 0:
+				details.text += " | Spell power +%g%%" % (item.spell_power * 100)
 		"scroll":
 			var node := Skills.Talents.find(item.spell_id)
 			details.text = "Read to learn permanently | %s mastery %d" % [Skills.TITLES[node[1]], Skills.SCROLL_REQUIREMENTS[item.spell_id]]
 			use_button.text = "Read scroll"
 		"armor":
-			details.text = "Damage reduction: %g%%" % (item.armor * 100)
+			details.text = "Damage reduction: %g%% | Magic resist: %g%%" % [item.armor * 100, item.magic_resistance * 100]
 		"shield":
 			details.text = "Damage blocked: %g%%" % (item.reduction * 100)
 		_:

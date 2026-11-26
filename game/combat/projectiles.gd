@@ -81,7 +81,7 @@ func step(world, actors: Dictionary, delta: float) -> void:
 					target = mob
 		if target != null:
 			if shot.enemy:
-				target.take_damage(shot.damage, from)
+				target.take_damage(shot.damage, from, shot.effect == "hex")
 			else:
 				world.spell_hit(shot, target, actors)
 			remove(id)

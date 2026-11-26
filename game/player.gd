@@ -97,7 +97,7 @@ func hand_item(at: Vector3, size: Vector3, color: Color) -> MeshInstance3D:
 
 func begin_attack() -> bool:
 	var weapon = Catalog.get_item(inventory.weapon)
-	if health <= 0 or attack_phase != 0 or cast_id != "" or blocking or stamina < attack_cost():
+	if health <= 0 or attack_phase != 0 or cast_id != "" or blocking or wants_block or stamina < attack_cost():
 		return false
 	sprinting = false
 	stamina -= attack_cost()
@@ -140,7 +140,7 @@ func advance_combat(delta: float) -> bool:
 	attack_phase = 0
 	return false
 
-func take_damage(amount: float, source: Vector3) -> void:
+func take_damage(amount: float, source: Vector3, magical: bool = false) -> void:
 	if health <= 0:
 		return
 	if blocking and stamina >= block_cost() and Combat.facing(heading, source - position):
@@ -153,7 +153,10 @@ func take_damage(amount: float, source: Vector3) -> void:
 			amount = 0.0
 	combat_timer = 5.0
 	if inventory.armor_index >= 0:
-		amount *= 1.0 - Catalog.get_item(inventory.items[inventory.armor_index]).armor
+		var armor = Catalog.get_item(inventory.items[inventory.armor_index])
+		amount *= 1.0 - armor.armor
+		if magical:
+			amount *= 1.0 - armor.magic_resistance
 	amount *= (1.0 - skills.bonus("mitigation")) * (0.5 if fortify_timer > 0 else 1.0) * (0.25 if escape_timer > 0 else 1.0)
 	health = maxf(0.0, health - amount)
 	hurt_timer = 0.25
