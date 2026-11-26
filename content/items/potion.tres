@@ -1,0 +1,14 @@
+[gd_resource type="Resource" load_steps=2 format=3]
+[ext_resource type="Script" path="res://game/items/item_definition.gd" id="1"]
+[resource]
+script = ExtResource("1")
+title = "Healing potion"
+kind = "consumable"
+damage = 0.0
+reach = 0
+stamina_cost = 0.0
+windup = 0
+recovery = 0
+reduction = 0
+heal = 35.0
+tint = Color(0.76, 0.19, 0.25, 1)

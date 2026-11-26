@@ -1,6 +1,9 @@
 extends CharacterBody3D
 
 const Combat = preload("res://game/combat.gd")
+const Inventory = preload("res://game/items/inventory.gd")
+const Catalog = preload("res://game/items/catalog.gd")
+var inventory := Inventory.new()
 
 var health := Combat.MAX_HEALTH
 var stamina := Combat.MAX_STAMINA
@@ -10,8 +13,8 @@ var attack_phase := 0
 var attack_timer := 0.0
 var hurt_timer := 0.0
 var swing_hit := false
-var sword: Node3D
-var shield: Node3D
+var sword: MeshInstance3D
+var shield: MeshInstance3D
 var floor_id := 0
 var direction := Vector2.ZERO
 var heading := 0.0
@@ -61,7 +64,7 @@ func simulate(delta: float) -> void:
 	velocity.y = maxf(velocity.y - 18.0 * delta, -20.0)
 	move_and_slide()
 
-func hand_item(at: Vector3, size: Vector3, color: Color) -> Node3D:
+func hand_item(at: Vector3, size: Vector3, color: Color) -> MeshInstance3D:
 	var item := MeshInstance3D.new()
 	var mesh := BoxMesh.new()
 	mesh.size = size
@@ -74,11 +77,12 @@ func hand_item(at: Vector3, size: Vector3, color: Color) -> Node3D:
 	return item
 
 func begin_attack() -> bool:
-	if health <= 0 or attack_phase != 0 or blocking or stamina < Combat.ATTACK_COST:
+	var weapon = Catalog.get_item(inventory.weapon)
+	if health <= 0 or attack_phase != 0 or blocking or stamina < weapon.stamina_cost:
 		return false
-	stamina -= Combat.ATTACK_COST
+	stamina -= weapon.stamina_cost
 	attack_phase = 1
-	attack_timer = Combat.WINDUP
+	attack_timer = weapon.windup
 	swing_hit = false
 	return true
 
@@ -96,7 +100,7 @@ func advance_combat(delta: float) -> bool:
 		return false
 	if attack_phase == 1:
 		attack_phase = 2
-		attack_timer = Combat.RECOVERY
+		attack_timer = Catalog.get_item(inventory.weapon).recovery
 		return true
 	attack_phase = 0
 	return false
@@ -106,7 +110,7 @@ func take_damage(amount: float, source: Vector3) -> void:
 		return
 	if blocking and stamina >= Combat.BLOCK_COST and Combat.facing(heading, source - position):
 		stamina -= Combat.BLOCK_COST
-		amount *= 0.2
+		amount *= 1.0 - Catalog.get_item(inventory.shield).reduction
 	health = maxf(0.0, health - amount)
 	hurt_timer = 0.25
 	if health == 0:
@@ -122,5 +126,21 @@ func update_hands(delta: float) -> void:
 		return
 	sword.rotation.x = lerpf(sword.rotation.x, -0.95 if attack_phase == 2 else (0.65 if attack_phase == 1 else 0.0), minf(1.0, delta * 14.0))
 	shield.position.y = lerpf(shield.position.y, -0.12 if blocking else -0.38, minf(1.0, delta * 14.0))
+	var weapon = Catalog.get_item(inventory.weapon)
+	sword.scale.y = weapon.reach / 2.4
+	sword.material_override.albedo_color = weapon.tint
+	shield.material_override.albedo_color = Catalog.get_item(inventory.shield).tint
 	sword.visible = health > 0
 	shield.visible = health > 0
+
+func use_item(index: int) -> bool:
+	if health <= 0 or attack_phase != 0 or index < 0 or index >= inventory.items.size():
+		return false
+	var item = Catalog.get_item(inventory.items[index])
+	if item.kind == "consumable":
+		if health >= Combat.MAX_HEALTH:
+			return false
+		health = minf(Combat.MAX_HEALTH, health + item.heal)
+		inventory.remove(index)
+		return true
+	return inventory.equip(index)

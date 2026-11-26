@@ -1,0 +1,14 @@
+[gd_resource type="Resource" load_steps=2 format=3]
+[ext_resource type="Script" path="res://game/items/item_definition.gd" id="1"]
+[resource]
+script = ExtResource("1")
+title = "Iron axe"
+kind = "weapon"
+damage = 38.0
+reach = 2
+stamina_cost = 30.0
+windup = 0.55
+recovery = 0.85
+reduction = 0
+heal = 0.0
+tint = Color(0.67, 0.48, 0.31, 1)

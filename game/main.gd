@@ -2,6 +2,10 @@ extends Node3D
 
 const World = preload("res://game/world.gd")
 const Player = preload("res://game/player.gd")
+const InventoryUI = preload("res://game/items/inventory_ui.gd")
+const Catalog = preload("res://game/items/catalog.gd")
+var inventory_ui: PanelContainer
+var item_requests: Dictionary = {}
 const PORT := 7777
 const SEED := 42069
 
@@ -69,6 +73,10 @@ func _ready() -> void:
 		layer.add_child(crosshair)
 		crosshair.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
 		crosshair.hide()
+		inventory_ui = InventoryUI.new()
+		layer.add_child(inventory_ui)
+		inventory_ui.position = Vector2(250, 120)
+		inventory_ui.action.connect(_inventory_action)
 
 func make_bar(layer: CanvasLayer, at: Vector2, color: Color) -> ProgressBar:
 	var bar := ProgressBar.new()
@@ -156,6 +164,7 @@ func _failed() -> void:
 		hp_bar.hide()
 		stamina_bar.hide()
 		crosshair.hide()
+		inventory_ui.hide()
 		damage_flash.color.a = 0.0
 	spectating = false
 	for id in actors.keys():
@@ -179,6 +188,7 @@ func _remove(id: int) -> void:
 	if actors.has(id):
 		actors[id].queue_free()
 		actors.erase(id)
+	item_requests.erase(id)
 	attack_requests.erase(id)
 	stair_requests.erase(id)
 	stair_cooldowns.erase(id)
@@ -209,6 +219,16 @@ func remove_remote(id: int) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if not active or dedicated:
 		return
+	if event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_I:
+		if inventory_ui:
+			inventory_ui.visible = not inventory_ui.visible
+			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if inventory_ui.visible else Input.MOUSE_MODE_CAPTURED
+		return
+	if inventory_ui and inventory_ui.visible:
+		if event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE:
+			inventory_ui.hide()
+			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+		return
 	if event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE:
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	elif event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_E and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
@@ -216,6 +236,11 @@ func _unhandled_input(event: InputEvent) -> void:
 			stair_requests[multiplayer.get_unique_id()] = true
 		else:
 			request_stairs.rpc_id(1)
+	elif event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_F and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+		if multiplayer.is_server():
+			item_requests[multiplayer.get_unique_id()] = [-1, false]
+		else:
+			request_item.rpc_id(1, -1, false)
 	elif event is InputEventMouseButton and event.pressed:
 		if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
 			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
@@ -253,6 +278,10 @@ func _physics_process(delta: float) -> void:
 			if actors.has(id):
 				actors[id].begin_attack()
 		attack_requests.clear()
+		for id in item_requests:
+			if actors.has(id):
+				apply_item_action(actors[id], item_requests[id][0], item_requests[id][1])
+		item_requests.clear()
 		for actor in actors.values():
 			actor.simulate(delta)
 			if actor.advance_combat(delta):
@@ -270,8 +299,8 @@ func _physics_process(delta: float) -> void:
 		if tick % 3 == 0 and multiplayer.has_multiplayer_peer():
 			var states := {}
 			for id in actors:
-				states[id] = [actors[id].position, actors[id].heading, actors[id].floor_id, actors[id].health, actors[id].stamina, actors[id].blocking, actors[id].attack_phase, actors[id].hurt_timer, actors[id].swing_hit]
-			snapshot.rpc(tick, states, world.monster_snapshot())
+				states[id] = [actors[id].position, actors[id].heading, actors[id].floor_id, actors[id].health, actors[id].stamina, actors[id].blocking, actors[id].attack_phase, actors[id].hurt_timer, actors[id].swing_hit, actors[id].inventory.state()]
+			snapshot.rpc(tick, states, world.monster_snapshot(), world.loot.state())
 	if not dedicated and actors.has(local_id):
 		var local = actors[local_id]
 		var viewed_floor: int = local.floor_id
@@ -292,6 +321,8 @@ func _physics_process(delta: float) -> void:
 		for id in actors:
 			actors[id].visible = id == local_id or (actors[id].floor_id == viewed_floor and actors[id].health > 0)
 		local.update_hands(delta)
+		if inventory_ui:
+			inventory_ui.refresh(local.inventory.state())
 		if damage_flash:
 			damage_flash.color.a = minf(0.3, local.hurt_timer)
 		if hp_bar:
@@ -306,7 +337,10 @@ func _physics_process(delta: float) -> void:
 			if local.health <= 0:
 				hud.text += "\n" + ("Dead — spectating" if spectating else "Party defeated — restart to try again")
 			else:
-				hud.text += "\nLMB: Sword | RMB: Block"
+				hud.text += "\nLMB: Attack | RMB: Block | I: Inventory"
+				var drop_id: int = world.loot.nearest(local)
+				if drop_id != 0:
+					hud.text += "\nF: Pick up " + Catalog.get_item(world.loot.drops[drop_id].item).title
 
 @rpc("any_peer", "call_remote", "unreliable_ordered")
 func submit_input(move: Vector2, angle: float, block: bool) -> void:
@@ -319,11 +353,12 @@ func submit_input(move: Vector2, angle: float, block: bool) -> void:
 		actors[id].wants_block = block
 
 @rpc("authority", "call_remote", "unreliable_ordered")
-func snapshot(sequence: int, states: Dictionary, mobs: Dictionary) -> void:
+func snapshot(sequence: int, states: Dictionary, mobs: Dictionary, drops: Dictionary) -> void:
 	if sequence < received_tick:
 		return
 	received_tick = sequence
 	world.apply_monsters(mobs)
+	world.loot.apply(drops)
 	for id in states:
 		if actors.has(id):
 			actors[id].position = states[id][0]
@@ -334,6 +369,7 @@ func snapshot(sequence: int, states: Dictionary, mobs: Dictionary) -> void:
 			actors[id].attack_phase = states[id][6]
 			actors[id].hurt_timer = states[id][7]
 			actors[id].swing_hit = states[id][8]
+			actors[id].inventory.apply(states[id][9])
 			if id != multiplayer.get_unique_id():
 				actors[id].rotation.y = states[id][1]
 
@@ -360,3 +396,30 @@ func request_attack() -> void:
 		var id := multiplayer.get_remote_sender_id()
 		if actors.has(id):
 			attack_requests[id] = true
+
+func _inventory_action(index: int, drop: bool) -> void:
+	if multiplayer.is_server():
+		item_requests[multiplayer.get_unique_id()] = [index, drop]
+	else:
+		request_item.rpc_id(1, index, drop)
+
+@rpc("any_peer", "call_remote", "reliable")
+func request_item(index: int, drop: bool) -> void:
+	if multiplayer.is_server():
+		var id := multiplayer.get_remote_sender_id()
+		if actors.has(id) and index >= -1 and index < 12:
+			item_requests[id] = [index, drop]
+
+func apply_item_action(actor, index: int, drop: bool) -> void:
+	if actor.health <= 0 or actor.attack_phase != 0:
+		return
+	if index == -1:
+		world.loot.pickup(actor)
+	elif drop:
+		var item: String = actor.inventory.remove(index)
+		if not item.is_empty():
+			var at: Vector3 = actor.position
+			at.y = world.floors[actor.floor_id].position.y + 0.3
+			world.loot.spawn(item, actor.floor_id, at)
+	else:
+		actor.use_item(index)
