@@ -24,3 +24,7 @@ See docs/GAME_DESIGN.md and docs/ARCHITECTURE.md.
 ## Monster and talent expansion
 
 Each floor has a different roster: fast cave rats, goblins, slow heavy ogres, skeleton archers with telegraphed aimed ranged hits, and armored iron guardians. All can follow stairs when close. K opens connected talent nodes with a details panel; scroll to see deeper tiers. New effects include bleed, stagger, armor penetration, perfect guard, cleave, riposte and temporary defensive abilities. Monsters still use placeholder geometry; archer attacks are resolved by range, line of sight and movement from the aimed point, not physical projectiles.
+
+## Elemental magic and sprinting
+
+Hold Shift while moving to sprint at 155% speed (22 stamina/s, no regeneration while sprinting). Release Shift after exhaustion. K now includes Fire, Ice, Air and Earth trees; allocate XP, learn spells and assign them to 1–3. Spells use mana (blue bar), windup and cooldowns. Aim horizontally; projectiles collide with walls and targets. Fire burns, ice slows/freezes, air interrupts and earth staggers. Fire and ice consume opposing status effects for bonus damage. Skeleton archers and Hex Mages fire physical projectiles. Sprinting, spell casts and projectile simulation are authoritative.

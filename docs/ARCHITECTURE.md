@@ -13,3 +13,5 @@ Progression is server-authoritative. XP is shared at full value with nearby livi
 Next milestones: branch graph; species and backgrounds; Jewel retrieval and escape; saves, resurrection and eight-player tests.
 
 Monster definitions and encounter rosters live in game/monsters/bestiary.gd. Per-monster runtime state includes health, aim, attack timers, bleed and stun. Bleed uses the same kill reward path as direct hits. Talent UI lays out prerequisite nodes by depth; the server remains authoritative for all effects.
+
+Projectile state is authoritative and replicated as visual snapshots; swept segment tests avoid tunneling against targets and wall raycasts stop projectiles. The prototype uses horizontal player aim and spherical target hit volumes. Magic definitions live in game/combat/spells.gd. Mana, cast state and sprint state are replicated alongside player snapshots. New weapon and armour categories remain future work.

@@ -1,12 +1,12 @@
 extends RefCounted
 
 const Talents = preload("res://game/progression/talents.gd")
-const TITLES := ["Fighting", "Long Blades", "Axes", "Polearms", "Shields", "Dodging"]
+const TITLES := ["Fighting", "Long Blades", "Axes", "Polearms", "Shields", "Dodging", "Fire Magic", "Ice Magic", "Air Magic", "Earth Magic"]
 const SLOT_COUNT := 3
 var total_xp := 0
-var xp: Array[float] = [0, 0, 0, 0, 0, 0]
-var wallet: Array[float] = [0, 0, 0, 0, 0, 0]
-var priorities: Array[int] = [1, 2, 0, 0, 1, 0]
+var xp: Array[float] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+var wallet: Array[float] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+var priorities: Array[int] = [1, 2, 0, 0, 1, 0, 0, 0, 0, 0]
 var learned: Array[String] = []
 var discovered: Array[String] = []
 var slots: Array[String] = ["", "", ""]

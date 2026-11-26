@@ -7,6 +7,7 @@ const SkillsUI = preload("res://game/progression/skills_ui.gd")
 var skills_ui: PanelContainer
 var talent_requests: Dictionary = {}
 var xp_label: Label
+var mana_bar: ProgressBar
 const Catalog = preload("res://game/items/catalog.gd")
 var inventory_ui: PanelContainer
 var item_requests: Dictionary = {}
@@ -66,6 +67,7 @@ func _ready() -> void:
 		hud.hide()
 		hp_bar = make_bar(layer, Vector2(16, 78), Color("#a64e48"))
 		stamina_bar = make_bar(layer, Vector2(16, 106), Color("#6a9d65"))
+		mana_bar = make_bar(layer, Vector2(16, 134), Color("#668cc4"))
 		damage_flash = ColorRect.new()
 		damage_flash.color = Color(0.8, 0.05, 0.05, 0)
 		damage_flash.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -87,7 +89,7 @@ func _ready() -> void:
 		skills_ui.priority_changed.connect(_skill_action)
 		skills_ui.talent_action.connect(_talent_action)
 		xp_label = Label.new()
-		xp_label.position = Vector2(16, 132)
+		xp_label.position = Vector2(16, 160)
 		layer.add_child(xp_label)
 		xp_label.hide()
 
@@ -135,6 +137,7 @@ func _start() -> void:
 			hud.show()
 			hp_bar.show()
 			stamina_bar.show()
+			mana_bar.show()
 			crosshair.show()
 			xp_label.show()
 
@@ -177,6 +180,7 @@ func _failed() -> void:
 		hud.hide()
 		hp_bar.hide()
 		stamina_bar.hide()
+		mana_bar.hide()
 		crosshair.hide()
 		inventory_ui.hide()
 		skills_ui.hide()
@@ -301,12 +305,14 @@ func _physics_process(delta: float) -> void:
 			actor.camera.rotation.x = pitch
 		actor.rotation.y = yaw
 		var block := Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT)
+		var sprint := Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and Input.is_physical_key_pressed(KEY_SHIFT)
 		if multiplayer.is_server():
 			actor.wants_block = block
+			actor.wants_sprint = sprint
 			actor.direction = move.limit_length()
 			actor.heading = yaw
 		else:
-			submit_input.rpc_id(1, move, yaw, block)
+			submit_input.rpc_id(1, move, yaw, block, sprint)
 	if multiplayer.is_server():
 		for id in attack_requests.keys():
 			if actors.has(id):
@@ -320,7 +326,12 @@ func _physics_process(delta: float) -> void:
 			actor.simulate(delta)
 			if actor.advance_combat(delta):
 				actor.swing_hit = world.strike(actor, actors)
+		for id in actors:
+			var spell_id: String = actors[id].advance_cast(delta)
+			if spell_id != "":
+				world.cast(actors[id], id, spell_id)
 		world.simulate(actors, delta)
+		world.projectiles.step(world, actors, delta)
 		for id in talent_requests:
 			if actors.has(id):
 				apply_talent(actors[id], talent_requests[id])
@@ -337,8 +348,8 @@ func _physics_process(delta: float) -> void:
 		if tick % 3 == 0 and multiplayer.has_multiplayer_peer():
 			var states := {}
 			for id in actors:
-				states[id] = [actors[id].position, actors[id].heading, actors[id].floor_id, actors[id].health, actors[id].stamina, actors[id].blocking, actors[id].attack_phase, actors[id].hurt_timer, actors[id].swing_hit, actors[id].inventory.state(), actors[id].skills.state(), actors[id].combat_timer]
-			snapshot.rpc(tick, states, world.monster_snapshot(), world.loot.state())
+				states[id] = [actors[id].position, actors[id].heading, actors[id].floor_id, actors[id].health, actors[id].stamina, actors[id].blocking, actors[id].attack_phase, actors[id].hurt_timer, actors[id].swing_hit, actors[id].inventory.state(), actors[id].skills.state(), actors[id].combat_timer, actors[id].mana, actors[id].sprinting, actors[id].cast_id]
+			snapshot.rpc(tick, states, world.monster_snapshot(), world.loot.state(), world.projectiles.state())
 	if not dedicated and actors.has(local_id):
 		var local = actors[local_id]
 		var viewed_floor: int = local.floor_id
@@ -374,6 +385,9 @@ func _physics_process(delta: float) -> void:
 			if skills_ui and skills_ui.visible:
 				skills_ui.refresh(local.skills.state(), world.safe(local), world.near_shrine(local))
 			stamina_bar.value = local.stamina
+			mana_bar.value = local.mana
+			if local.camera:
+				local.camera.fov = lerpf(local.camera.fov, 85.0 if local.sprinting else 75.0, minf(1.0, delta * 8.0))
 			crosshair.modulate = Color("#90df87") if local.swing_hit and local.attack_phase == 2 else Color.WHITE
 		if hud:
 			var step: int = world.stair_at(local.floor_id, local.position)
@@ -383,13 +397,13 @@ func _physics_process(delta: float) -> void:
 			if local.health <= 0:
 				hud.text += "\n" + ("Dead — spectating" if spectating else "Party defeated — restart to try again")
 			else:
-				hud.text += "\nLMB: Attack | RMB: Block | I: Inventory"
+				hud.text += "\nLMB: Attack | RMB: Block | Shift: Sprint | I: Inventory"
 				var drop_id: int = world.loot.nearest(local)
 				if drop_id != 0:
 					hud.text += "\nF: Pick up " + Catalog.get_item(world.loot.drops[drop_id].item).title
 
 @rpc("any_peer", "call_remote", "unreliable_ordered")
-func submit_input(move: Vector2, angle: float, block: bool) -> void:
+func submit_input(move: Vector2, angle: float, block: bool, sprint: bool) -> void:
 	if not multiplayer.is_server() or not move.is_finite() or not is_finite(angle):
 		return
 	var id := multiplayer.get_remote_sender_id()
@@ -397,14 +411,16 @@ func submit_input(move: Vector2, angle: float, block: bool) -> void:
 		actors[id].direction = move.limit_length()
 		actors[id].heading = angle
 		actors[id].wants_block = block
+		actors[id].wants_sprint = sprint
 
 @rpc("authority", "call_remote", "unreliable_ordered")
-func snapshot(sequence: int, states: Dictionary, mobs: Dictionary, drops: Dictionary) -> void:
+func snapshot(sequence: int, states: Dictionary, mobs: Dictionary, drops: Dictionary, shots: Dictionary) -> void:
 	if sequence < received_tick:
 		return
 	received_tick = sequence
 	world.apply_monsters(mobs)
 	world.loot.apply(drops)
+	world.projectiles.apply(shots)
 	for id in states:
 		if actors.has(id):
 			actors[id].position = states[id][0]
@@ -418,6 +434,9 @@ func snapshot(sequence: int, states: Dictionary, mobs: Dictionary, drops: Dictio
 			actors[id].inventory.apply(states[id][9])
 			actors[id].skills.apply(states[id][10])
 			actors[id].combat_timer = states[id][11]
+			actors[id].mana = states[id][12]
+			actors[id].sprinting = states[id][13]
+			actors[id].cast_id = states[id][14]
 			if id != multiplayer.get_unique_id():
 				actors[id].rotation.y = states[id][1]
 
@@ -459,7 +478,7 @@ func request_item(index: int, drop: bool) -> void:
 			item_requests[id] = [index, drop]
 
 func apply_item_action(actor, index: int, drop: bool) -> void:
-	if actor.health <= 0 or actor.attack_phase != 0:
+	if actor.health <= 0 or actor.attack_phase != 0 or actor.cast_id != "":
 		return
 	if index == -1:
 		world.loot.pickup(actor)
