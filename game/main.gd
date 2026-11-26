@@ -70,6 +70,8 @@ var ready_peers: Dictionary = {}
 var bootstrapping := false
 var connecting := false
 var connection_timeout := 0.0
+var dungeon_environment: Environment
+var atmosphere_floor := -1
 var cancel_join_button: Button
 var input_age: Dictionary = {}
 var selected_profile: Array = ["", 0, 0]
@@ -125,6 +127,7 @@ func _ready() -> void:
 			settings.fog_light_color = Color("#252a25")
 			settings.fog_density = 0.027
 		environment.environment = settings
+		dungeon_environment = settings
 		add_child(environment)
 	multiplayer.peer_connected.connect(_peer_joined)
 	multiplayer.peer_disconnected.connect(_peer_left)
@@ -980,6 +983,10 @@ func _physics_process(delta: float) -> void:
 		feedback.viewed_floor = viewed_floor
 		combat_fx.viewed_floor = viewed_floor
 		world.visible_floor(viewed_floor)
+		if dungeon_environment and atmosphere_floor != viewed_floor:
+			atmosphere_floor = viewed_floor
+			dungeon_environment.fog_light_color = [Color("#252a25"), Color("#292625"), Color("#213a42"), Color("#393126"), Color("#282c3a"), Color("#422923"), Color("#393323")][viewed_floor]
+			dungeon_environment.fog_density = 0.045 if viewed_floor == 2 else 0.027
 		environmental_audio.update_environment(world.floors[viewed_floor], local, delta)
 		var builder = world.floors[viewed_floor].visual_builder
 		if builder:
