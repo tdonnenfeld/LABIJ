@@ -36,7 +36,11 @@ func build(model, domain: int, chosen: String) -> void:
 		max_row = maxi(max_row, rows[depth].size())
 		var id: String = node[0]
 		var button := Button.new()
-		button.text = "%s\n%s" % [node[2], "Learned" if model.learned.has(id) else ("Scroll · %d XP" % node[3] if model.SCROLL_REQUIREMENTS.has(id) else "%d XP" % node[3])]
+		var status := "Learned" if model.learned.has(id) else ("Scroll · M%d" % model.SCROLL_REQUIREMENTS[id] if model.SCROLL_REQUIREMENTS.has(id) else ("%d XP · Ready" % node[3] if model.can_buy(id) else "%d XP · Locked" % node[3]))
+		var slot: int = model.slots.find(id)
+		if slot >= 0:
+			status = "Assigned · Slot %d" % (slot + 1)
+		button.text = "%s\n%s" % [node[2], status]
 		button.tooltip_text = node[7]
 		button.add_theme_font_size_override("font_size", 13)
 		var fill := Color("#49362b")
