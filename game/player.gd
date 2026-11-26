@@ -1,5 +1,17 @@
 extends CharacterBody3D
 
+const Combat = preload("res://game/combat.gd")
+
+var health := Combat.MAX_HEALTH
+var stamina := Combat.MAX_STAMINA
+var blocking := false
+var wants_block := false
+var attack_phase := 0
+var attack_timer := 0.0
+var hurt_timer := 0.0
+var swing_hit := false
+var sword: Node3D
+var shield: Node3D
 var floor_id := 0
 var direction := Vector2.ZERO
 var heading := 0.0
@@ -7,6 +19,8 @@ var look_pitch := 0.0
 var camera: Camera3D
 
 func setup(local: bool, visual: bool = true) -> void:
+	collision_layer = 2
+	collision_mask = 1
 	var collision := CollisionShape3D.new()
 	var capsule := CapsuleShape3D.new()
 	capsule.radius = 0.32
@@ -31,13 +45,82 @@ func setup(local: bool, visual: bool = true) -> void:
 		light.omni_range = 14
 		light.light_energy = 2.5
 		camera.add_child(light)
+		sword = hand_item(Vector3(0.42, -0.36, -0.85), Vector3(0.10, 0.75, 0.10), Color("#bcb8a9"))
+		shield = hand_item(Vector3(-0.48, -0.38, -0.8), Vector3(0.40, 0.52, 0.12), Color("#78604a"))
 
 func simulate(delta: float) -> void:
+	if health <= 0.0:
+		velocity = Vector3.ZERO
+		return
 	rotation.y = heading
 	var forward := Vector3(sin(heading), 0, cos(heading))
 	var right := Vector3(cos(heading), 0, -sin(heading))
-	var motion := (right * direction.x + forward * direction.y) * 4.5
+	var motion := (right * direction.x + forward * direction.y) * (2.5 if blocking or attack_phase == 1 else 4.5)
 	velocity.x = motion.x
 	velocity.z = motion.z
 	velocity.y = maxf(velocity.y - 18.0 * delta, -20.0)
 	move_and_slide()
+
+func hand_item(at: Vector3, size: Vector3, color: Color) -> Node3D:
+	var item := MeshInstance3D.new()
+	var mesh := BoxMesh.new()
+	mesh.size = size
+	item.mesh = mesh
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = color
+	item.material_override = mat
+	camera.add_child(item)
+	item.position = at
+	return item
+
+func begin_attack() -> bool:
+	if health <= 0 or attack_phase != 0 or blocking or stamina < Combat.ATTACK_COST:
+		return false
+	stamina -= Combat.ATTACK_COST
+	attack_phase = 1
+	attack_timer = Combat.WINDUP
+	swing_hit = false
+	return true
+
+func advance_combat(delta: float) -> bool:
+	hurt_timer = maxf(0.0, hurt_timer - delta)
+	if health <= 0:
+		return false
+	blocking = wants_block and attack_phase == 0 and stamina > 0
+	if not blocking and attack_phase == 0:
+		stamina = minf(Combat.MAX_STAMINA, stamina + delta * 18.0)
+	if attack_phase == 0:
+		return false
+	attack_timer -= delta
+	if attack_timer > 0:
+		return false
+	if attack_phase == 1:
+		attack_phase = 2
+		attack_timer = Combat.RECOVERY
+		return true
+	attack_phase = 0
+	return false
+
+func take_damage(amount: float, source: Vector3) -> void:
+	if health <= 0:
+		return
+	if blocking and stamina >= Combat.BLOCK_COST and Combat.facing(heading, source - position):
+		stamina -= Combat.BLOCK_COST
+		amount *= 0.2
+	health = maxf(0.0, health - amount)
+	hurt_timer = 0.25
+	if health == 0:
+		blocking = false
+		attack_phase = 0
+		direction = Vector2.ZERO
+		wants_block = false
+		collision_layer = 0
+		collision_mask = 0
+
+func update_hands(delta: float) -> void:
+	if not sword or not shield:
+		return
+	sword.rotation.x = lerpf(sword.rotation.x, -0.95 if attack_phase == 2 else (0.65 if attack_phase == 1 else 0.0), minf(1.0, delta * 14.0))
+	shield.position.y = lerpf(shield.position.y, -0.12 if blocking else -0.38, minf(1.0, delta * 14.0))
+	sword.visible = health > 0
+	shield.visible = health > 0

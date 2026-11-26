@@ -1,6 +1,7 @@
 extends Node3D
 
 const Dungeon = preload("res://game/dungeon.gd")
+const Combat = preload("res://game/combat.gd")
 const COUNT := 4
 const SPACING := 30.0
 const USE_RADIUS := 2.5
@@ -38,7 +39,7 @@ func build(seed_value: int, render_geometry: bool) -> void:
 				mat.albedo_color = Color("#a64e48")
 				mesh.material_override = mat
 				mob.add_child(mesh)
-			monsters[i * 3 + j] = {"node": mob, "floor": i, "target": 0}
+			monsters[i * 3 + j] = {"node": mob, "floor": i, "target": 0, "health": 50.0, "phase": 0, "timer": 0.0, "attack_target": 0, "hurt": 0.0}
 
 func marker(level: Node3D, at: Vector3, caption: String, color: Color) -> void:
 	var mesh := MeshInstance3D.new()
@@ -80,9 +81,14 @@ func visible_floor(id: int) -> void:
 	for key in floors:
 		floors[key].visible = key == id
 	for mob in monsters.values():
-		mob.node.visible = mob.floor == id
+		mob.node.visible = mob.floor == id and mob.health > 0
+		if visual:
+			var mesh: MeshInstance3D = mob.node.get_child(0)
+			mesh.material_override.albedo_color = Color("#ffffff") if mob.hurt > 0 else (Color("#e5a64e") if mob.phase == 1 else Color("#a64e48"))
 
 func transfer(actor, peer_id: int) -> bool:
+	if actor.health <= 0 or actor.attack_phase != 0:
+		return false
 	var old: int = actor.floor_id
 	var step := stair_at(old, actor.position)
 	if step == 0:
@@ -91,7 +97,7 @@ func transfer(actor, peer_id: int) -> bool:
 	var arrival := stair_position(destination, step < 0)
 	var followers: Array = []
 	for mob in monsters.values():
-		if mob.floor == old and mob.target == peer_id and horizontal_distance(mob.node.position, actor.position) <= FOLLOW_RADIUS and horizontal_distance(mob.node.position, stair_position(old, step > 0)) <= FOLLOW_RADIUS:
+		if mob.health > 0 and mob.floor == old and mob.target == peer_id and horizontal_distance(mob.node.position, actor.position) <= FOLLOW_RADIUS and horizontal_distance(mob.node.position, stair_position(old, step > 0)) <= FOLLOW_RADIUS:
 			followers.append(mob)
 	actor.floor_id = destination
 	actor.position = arrival + Vector3(0, 1, 0)
@@ -99,25 +105,47 @@ func transfer(actor, peer_id: int) -> bool:
 	actor.direction = Vector2.ZERO
 	for i in range(followers.size()):
 		var mob = followers[i]
+		mob.phase = 0
+		mob.timer = 0.0
 		mob.floor = destination
 		mob.node.position = arrival + Vector3(1.0 + float(i % 3) * 0.6, 0.7, float(i / 3) * 0.6)
 	return true
 
 func simulate(actors: Dictionary, delta: float) -> void:
 	for mob in monsters.values():
+		if mob.health <= 0:
+			continue
+		mob.hurt = maxf(0.0, mob.hurt - delta)
 		var node: Node3D = mob.node
 		var closest := 12.0
 		var target := 0
 		for id in actors:
 			var actor = actors[id]
-			if actor.floor_id != mob.floor:
+			if actor.floor_id != mob.floor or actor.health <= 0:
 				continue
 			var distance := horizontal_distance(actor.position, node.position)
 			if distance < closest:
 				closest = distance
 				target = id
 		mob.target = target
-		if target == 0 or closest < 1.0:
+		if mob.phase != 0:
+			mob.timer -= delta
+			if mob.timer <= 0:
+				if mob.phase == 1:
+					var victim = actors.get(mob.attack_target)
+					if victim != null and victim.health > 0 and victim.floor_id == mob.floor and horizontal_distance(victim.position, node.position) <= Combat.MONSTER_REACH and Combat.clear_path(node, victim.position):
+						victim.take_damage(Combat.MONSTER_DAMAGE, node.position)
+					mob.phase = 2
+					mob.timer = Combat.MONSTER_RECOVERY
+				else:
+					mob.phase = 0
+			continue
+		if target == 0:
+			continue
+		if closest <= Combat.MONSTER_REACH and Combat.clear_path(node, actors[target].position):
+			mob.phase = 1
+			mob.timer = Combat.MONSTER_WINDUP
+			mob.attack_target = target
 			continue
 		var level = floors[mob.floor]
 		var start := Vector2i(roundi(node.position.x / Dungeon.CELL), roundi(node.position.z / Dungeon.CELL))
@@ -160,7 +188,7 @@ func monster_snapshot() -> Dictionary:
 	var states := {}
 	for id in monsters:
 		var mob = monsters[id]
-		states[id] = [mob.floor, mob.node.position]
+		states[id] = [mob.floor, mob.node.position, mob.health, mob.phase, mob.hurt]
 	return states
 
 func apply_monsters(states: Dictionary) -> void:
@@ -168,3 +196,27 @@ func apply_monsters(states: Dictionary) -> void:
 		if monsters.has(id):
 			monsters[id].floor = states[id][0]
 			monsters[id].node.position = states[id][1]
+			monsters[id].health = states[id][2]
+			monsters[id].phase = states[id][3]
+			monsters[id].hurt = states[id][4]
+
+func strike(actor) -> bool:
+	if actor.health <= 0:
+		return false
+	var nearest = null
+	var best := Combat.REACH + 1.0
+	for mob in monsters.values():
+		if mob.health <= 0 or mob.floor != actor.floor_id:
+			continue
+		var distance := horizontal_distance(actor.position, mob.node.position)
+		if distance < best and Combat.can_hit(actor.position, mob.node.position, actor.heading, Combat.REACH) and Combat.clear_path(actor, mob.node.position):
+			nearest = mob
+			best = distance
+	if nearest == null:
+		return false
+	nearest.health = maxf(0.0, nearest.health - Combat.DAMAGE)
+	nearest.hurt = 0.18
+	if nearest.health <= 0:
+		nearest.phase = 0
+		nearest.target = 0
+	return true

@@ -22,3 +22,5 @@ jobs:
           ! grep -E 'SCRIPT ERROR|Parse Error|ERROR:' smoke.log
       - name: Floor transition tests
         run: ./Godot_v4.7.2-stable_linux.x86_64 --headless --path . --script res://tests/floors.gd
+      - name: Combat tests
+        run: ./Godot_v4.7.2-stable_linux.x86_64 --headless --path . --script res://tests/combat.gd
