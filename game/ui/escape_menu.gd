@@ -35,6 +35,7 @@ var confirmation_message: Label
 var confirmation_action: Button
 var confirmation_callback: Callable
 var confirmation_cancel: Button
+var menu_panel: PanelContainer
 
 func _ready() -> void:
 	theme = Parchment.build(true)
@@ -49,6 +50,7 @@ func _ready() -> void:
 	center.set_anchors_and_offsets_preset(PRESET_FULL_RECT)
 	center.mouse_filter = MOUSE_FILTER_IGNORE
 	var paper := PanelContainer.new()
+	menu_panel = paper
 	paper.custom_minimum_size = Vector2(600, 420)
 	center.add_child(paper)
 	var column := VBoxContainer.new()
@@ -312,6 +314,7 @@ func show_confirmation(title: String, message: String, action: String, callback:
 	confirmation_message.text = message
 	confirmation_action.text = action
 	confirmation_callback = callback
+	menu_panel.hide()
 	confirmation.show()
 	confirmation.move_to_front()
 	confirmation_cancel.grab_focus()
@@ -348,6 +351,7 @@ func reset_confirmations() -> void:
 	confirmation_callback = Callable()
 	if is_instance_valid(confirmation):
 		confirmation.hide()
+		menu_panel.show()
 		if is_instance_valid(confirmation_cancel):
 			confirmation_cancel.release_focus()
 
