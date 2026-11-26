@@ -4,6 +4,8 @@ const Combat = preload("res://game/combat.gd")
 const Inventory = preload("res://game/items/inventory.gd")
 const Catalog = preload("res://game/items/catalog.gd")
 var inventory := Inventory.new()
+const Skills = preload("res://game/progression/skills.gd")
+var skills := Skills.new()
 
 var health := Combat.MAX_HEALTH
 var stamina := Combat.MAX_STAMINA
@@ -78,11 +80,11 @@ func hand_item(at: Vector3, size: Vector3, color: Color) -> MeshInstance3D:
 
 func begin_attack() -> bool:
 	var weapon = Catalog.get_item(inventory.weapon)
-	if health <= 0 or attack_phase != 0 or blocking or stamina < weapon.stamina_cost:
+	if health <= 0 or attack_phase != 0 or blocking or stamina < attack_cost():
 		return false
-	stamina -= weapon.stamina_cost
+	stamina -= attack_cost()
 	attack_phase = 1
-	attack_timer = weapon.windup
+	attack_timer = weapon.windup * attack_speed_factor()
 	swing_hit = false
 	return true
 
@@ -100,7 +102,7 @@ func advance_combat(delta: float) -> bool:
 		return false
 	if attack_phase == 1:
 		attack_phase = 2
-		attack_timer = Catalog.get_item(inventory.weapon).recovery
+		attack_timer = Catalog.get_item(inventory.weapon).recovery * attack_speed_factor()
 		return true
 	attack_phase = 0
 	return false
@@ -108,9 +110,10 @@ func advance_combat(delta: float) -> bool:
 func take_damage(amount: float, source: Vector3) -> void:
 	if health <= 0:
 		return
-	if blocking and stamina >= Combat.BLOCK_COST and Combat.facing(heading, source - position):
-		stamina -= Combat.BLOCK_COST
+	if blocking and stamina >= block_cost() and Combat.facing(heading, source - position):
+		stamina -= block_cost()
 		amount *= 1.0 - Catalog.get_item(inventory.shield).reduction
+	amount *= 1.0 - minf(0.25, skills.skill_level(5) * 0.01)
 	health = maxf(0.0, health - amount)
 	hurt_timer = 0.25
 	if health == 0:
@@ -138,9 +141,29 @@ func use_item(index: int) -> bool:
 		return false
 	var item = Catalog.get_item(inventory.items[index])
 	if item.kind == "consumable":
-		if health >= Combat.MAX_HEALTH:
+		if health >= max_health():
 			return false
-		health = minf(Combat.MAX_HEALTH, health + item.heal)
+		health = minf(max_health(), health + item.heal)
 		inventory.remove(index)
 		return true
 	return inventory.equip(index)
+
+func max_health() -> float:
+	return Combat.MAX_HEALTH + skills.skill_level(0) * 4.0
+
+func gain_xp(amount: int) -> void:
+	var old_max := max_health()
+	skills.gain(amount)
+	health = minf(max_health(), health + max_health() - old_max)
+
+func attack_cost() -> float:
+	return Catalog.get_item(inventory.weapon).stamina_cost * maxf(0.65, 1.0 - skills.weapon_level(inventory.weapon) * 0.015)
+
+func attack_speed_factor() -> float:
+	return maxf(0.65, 1.0 - skills.weapon_level(inventory.weapon) * 0.015)
+
+func attack_damage() -> float:
+	return Catalog.get_item(inventory.weapon).damage * (1.0 + 0.035 * skills.weapon_level(inventory.weapon) + 0.02 * skills.skill_level(0))
+
+func block_cost() -> float:
+	return Combat.BLOCK_COST * maxf(0.5, 1.0 - skills.skill_level(4) * 0.02)

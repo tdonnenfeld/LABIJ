@@ -3,8 +3,14 @@ extends RefCounted
 const Catalog = preload("res://game/items/catalog.gd")
 const CAPACITY := 12
 var items: Array[String] = ["sword", "shield", "potion"]
-var weapon := "sword"
-var shield := "shield"
+var weapon_index := 0
+var shield_index := 1
+var weapon: String:
+	get:
+		return items[weapon_index]
+var shield: String:
+	get:
+		return items[shield_index]
 
 func add(id: String) -> bool:
 	if items.size() >= CAPACITY or Catalog.get_item(id) == null:
@@ -15,30 +21,33 @@ func add(id: String) -> bool:
 func equip(index: int) -> bool:
 	if index < 0 or index >= items.size():
 		return false
-	var id := items[index]
-	var item = Catalog.get_item(id)
+	var item = Catalog.get_item(items[index])
 	if item.kind == "weapon":
-		weapon = id
+		weapon_index = index
 	elif item.kind == "shield":
-		shield = id
+		shield_index = index
 	else:
 		return false
 	return true
 
+func is_equipped(index: int) -> bool:
+	return index == weapon_index or index == shield_index
+
 func remove(index: int) -> String:
-	if index < 0 or index >= items.size():
+	if index < 0 or index >= items.size() or is_equipped(index):
 		return ""
 	var id := items[index]
-	# Equipped items must remain available.
-	if (id == weapon or id == shield) and items.count(id) == 1:
-		return ""
 	items.remove_at(index)
+	if weapon_index > index:
+		weapon_index -= 1
+	if shield_index > index:
+		shield_index -= 1
 	return id
 
 func state() -> Array:
-	return [items.duplicate(), weapon, shield]
+	return [items.duplicate(), weapon_index, shield_index]
 
 func apply(state_data: Array) -> void:
 	items.assign(state_data[0])
-	weapon = state_data[1]
-	shield = state_data[2]
+	weapon_index = state_data[1]
+	shield_index = state_data[2]

@@ -36,9 +36,9 @@ func refresh(data: Array) -> void:
 	var selected := list.get_selected_items()
 	state_data = data.duplicate(true)
 	list.clear()
-	for id in data[0]:
-		var item = Catalog.get_item(id)
-		var equipped: bool = id == data[1] or id == data[2]
+	for index in range(data[0].size()):
+		var item = Catalog.get_item(data[0][index])
+		var equipped: bool = index == data[1] or index == data[2]
 		list.add_item(item.title + (" [equipped]" if equipped else ""))
 	if list.item_count > 0:
 		list.select(mini(selected[0] if not selected.is_empty() else 0, list.item_count - 1))
@@ -51,7 +51,9 @@ func update_details() -> void:
 	if selected.is_empty() or state_data.is_empty():
 		details.text = "No items"
 		return
-	var item = Catalog.get_item(state_data[0][selected[0]])
+	var index := selected[0]
+	drop_button.disabled = index == state_data[1] or index == state_data[2]
+	var item = Catalog.get_item(state_data[0][index])
 	match item.kind:
 		"weapon":
 			details.text = "Damage %g | Reach %g m | Stamina %g" % [item.damage, item.reach, item.stamina_cost]
