@@ -4,7 +4,25 @@ const Acoustics = preload("res://game/world/noise.gd")
 const RATE := 22050
 const LIMIT := 24
 const SOUNDS := ["step", "quiet", "sprint", "melee", "bow", "magic", "impact", "block", "explosion", "stone", "enemy_step", "wake"]
+const STONE_STEPS := [
+	preload("res://art/audio/steps/stone_L1.ogg"),
+	preload("res://art/audio/steps/stone_L2.ogg"),
+	preload("res://art/audio/steps/stone_L3.ogg"),
+	preload("res://art/audio/steps/stone_R1.ogg"),
+	preload("res://art/audio/steps/stone_R2.ogg"),
+	preload("res://art/audio/steps/stone_R3.ogg")
+]
+const ENEMY_STEPS := [
+	preload("res://art/audio/steps/kenney_00.ogg"),
+	preload("res://art/audio/steps/kenney_02.ogg"),
+	preload("res://art/audio/steps/kenney_06.ogg"),
+	preload("res://art/audio/steps/kenney_09.ogg")
+]
+const BLOCK_SOUND = preload("res://art/audio/impacts/impactMetal_heavy_001.ogg")
+const IMPACT_SOUND = preload("res://art/audio/impacts/impactMining_002.ogg")
 var streams: Dictionary = {}
+var previous_variant: Dictionary = {}
+var audio_rng := RandomNumberGenerator.new()
 var voices: Array[AudioStreamPlayer3D] = []
 
 func sample(kind: String) -> AudioStreamWAV:
@@ -52,15 +70,44 @@ func hear(events: Array, world, listener) -> void:
 			continue
 		play_sound(event[3], at, radius)
 
+func sound_for(kind: String) -> AudioStream:
+	var variants: Array = []
+	if kind in ["step", "quiet", "sprint"]:
+		variants = STONE_STEPS
+	elif kind == "enemy_step":
+		variants = ENEMY_STEPS
+	elif kind == "block":
+		return BLOCK_SOUND
+	elif kind == "impact":
+		return IMPACT_SOUND
+	else:
+		return sample(kind)
+	var group := "enemy_step" if kind == "enemy_step" else "player_step"
+	var index := audio_rng.randi_range(0, variants.size() - 2)
+	var previous: int = previous_variant.get(group, -1)
+	if previous < 0:
+		index = audio_rng.randi_range(0, variants.size() - 1)
+	elif index >= previous:
+		index += 1
+	previous_variant[group] = index
+	return variants[index]
+
 func play_sound(kind: String, at: Vector3, radius: float) -> void:
 	if voices.size() >= LIMIT:
 		var oldest: AudioStreamPlayer3D = voices.pop_front()
 		oldest.queue_free()
 	var voice := AudioStreamPlayer3D.new()
-	voice.stream = sample(kind)
+	voice.stream = sound_for(kind)
 	voice.unit_size = maxf(1.0, radius * 0.35)
 	voice.max_distance = maxf(1.5, radius)
-	voice.volume_db = -10.0 if kind in ["step", "quiet", "enemy_step"] else -5.0
+	match kind:
+		"quiet": voice.volume_db = -19.0
+		"step": voice.volume_db = -12.0
+		"sprint": voice.volume_db = -7.0
+		"enemy_step": voice.volume_db = -13.0
+		_: voice.volume_db = -9.0
+	voice.volume_db += audio_rng.randf_range(-1.5, 1.5)
+	voice.pitch_scale = audio_rng.randf_range(0.94, 1.06) * (0.88 if kind == "sprint" else 1.0)
 	add_child(voice)
 	voice.global_position = at
 	voices.append(voice)

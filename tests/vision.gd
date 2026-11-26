@@ -57,4 +57,10 @@ func run() -> void:
 	for kind in DungeonAudio.SOUNDS:
 		var stream := audio.sample(kind)
 		check(stream.data.size() > 0 and stream.mix_rate == 22050 and stream == audio.sample(kind), "Cached PCM: " + kind)
+	for kind in ["step", "quiet", "sprint", "enemy_step"]:
+		var first := audio.sound_for(kind)
+		var second := audio.sound_for(kind)
+		check(first is AudioStreamOggVorbis and first.get_length() > 0.0, "Recorded step: " + kind)
+		check(first != second, "No consecutive repeated step: " + kind)
+	check(audio.sound_for("block") is AudioStreamOggVorbis and audio.sound_for("impact") is AudioStreamOggVorbis, "Recorded impacts")
 	quit(0 if failures == 0 else 1)
