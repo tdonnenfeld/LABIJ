@@ -58,7 +58,7 @@ var bow_charge := 0.0
 var bow_drawing := false
 var shot_power := 1.0
 var trigger_held := false
-var beam_timer := 0.0
+var beam_active := false
 var camera: Camera3D
 
 func setup(local: bool, visual: bool = true) -> void:
@@ -128,10 +128,16 @@ func set_trigger(held: bool, cancel: bool = false) -> void:
 		return
 	trigger_held = held
 	if cancel:
+		if beam_active:
+			cast_id = ""
+			beam_active = false
 		bow_drawing = false
 		bow_charge = 0.0
 		return
 	if not held:
+		if beam_active:
+			cast_id = ""
+			beam_active = false
 		if bow_drawing:
 			bow_drawing = false
 			if begin_attack():
@@ -140,8 +146,8 @@ func set_trigger(held: bool, cancel: bool = false) -> void:
 			bow_charge = 0.0
 		return
 	if not selected_spell.is_empty():
-		if skills.slots.has(selected_spell):
-			start_spell(selected_spell)
+		if skills.slots.has(selected_spell) and start_spell(selected_spell):
+			beam_active = selected_spell == "spark"
 	elif Catalog.get_item(inventory.weapon).projectile_speed > 0:
 		if health > 0 and attack_phase == 0 and cast_id == "" and not blocking and stamina >= attack_cost() and inventory.count("arrows") > 0:
 			bow_drawing = true
@@ -151,7 +157,7 @@ func set_trigger(held: bool, cancel: bool = false) -> void:
 
 func begin_attack() -> bool:
 	var weapon = Catalog.get_item(inventory.weapon)
-	if health <= 0 or attack_phase != 0 or cast_id != "" or blocking or (wants_block and inventory.shield_index >= 0) or stamina < attack_cost():
+	if health <= 0 or bow_drawing or attack_phase != 0 or cast_id != "" or blocking or (wants_block and inventory.shield_index >= 0) or stamina < attack_cost():
 		return false
 	if weapon.projectile_speed > 0 and inventory.count("arrows") == 0:
 		return false
@@ -180,7 +186,7 @@ func advance_combat(delta: float) -> bool:
 		return false
 	if bow_drawing:
 		bow_charge = minf(1.0, bow_charge + delta / 0.9)
-		if not trigger_held or not Catalog.get_item(inventory.weapon).projectile_speed > 0:
+		if not trigger_held or Catalog.get_item(inventory.weapon).projectile_speed <= 0:
 			bow_drawing = false
 			bow_charge = 0.0
 	var was_blocking := blocking
@@ -377,11 +383,12 @@ func advance_cast(delta: float) -> String:
 	if cast_timer > 0:
 		return ""
 	var id := cast_id
-	if id == "spark" and trigger_held and selected_spell == id and mana >= 3.0:
+	if beam_active and id == "spark" and trigger_held and selected_spell == id and mana >= 3.0:
 		mana -= 3.0
 		cast_timer = 0.15
 		return id
 	cast_id = ""
+	beam_active = false
 	return id
 
 func configure_profile(chosen_name: String, species: int, background: int) -> bool:
