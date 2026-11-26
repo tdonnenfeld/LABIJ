@@ -51,6 +51,17 @@ func run() -> void:
 		check(guest.actors[peer].position.distance_to(host.actors[peer].position) < 0.4, "Authoritative initial position")
 		check(host.actors[1].position.distance_to(host.actors[peer].position) >= 0.64, "Distinct spawn positions")
 		check(host.reserved_slots() == 2 and host.pending_profiles.is_empty(), "Handshake does not double-count capacity")
+		check(host.remote_gameplay_ready(peer), "Acknowledged peer can submit gameplay actions")
+		host.ready_peers.erase(peer)
+		check(not host.remote_gameplay_ready(peer), "Pending peer cannot submit gameplay actions")
+		guest.request_attack.rpc_id(1)
+		guest.request_stairs.rpc_id(1)
+		for i in range(8):
+			await process_frame
+		check(not host.attack_requests.has(peer) and not host.stair_requests.has(peer), "Pending peer actions are not queued")
+		host.ready_peers[peer] = true
+		check(not host.remote_gameplay_ready(1), "Local host is not a remote peer")
+		check(host.remote_gameplay_ready(peer), "Ready peer is accepted again")
 	guest.leave_expedition(false)
 	for i in range(60):
 		if host.actors.size() == 1:
