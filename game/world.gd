@@ -107,6 +107,12 @@ func build(seed_value: int, render_geometry: bool, size: int = 1) -> void:
 			if level.rooms.size() > 3:
 				var room: Vector2i = level.rooms[1]
 				add_fixture(10001 + i * 10, i, level.position + Vector3(room.x * Dungeon.CELL - 1.0, 0, room.y * Dungeon.CELL - 1.0), "lever")
+		if level.rooms.size() >= 5:
+			for n in range(2, 4):
+				var room: Vector2i = level.rooms[n]
+				add_fixture(11000 + i * 10 + n, i, level.position + Vector3(room.x * Dungeon.CELL - 1.0, 0, room.y * Dungeon.CELL - 1.0), "seal")
+			var chamber: Vector2i = level.rooms[4]
+			add_fixture(11004 + i * 10, i, level.position + Vector3(chamber.x * Dungeon.CELL - 1.0, 0, chamber.y * Dungeon.CELL - 1.0), "sealed_chest")
 		if i == Routes.SANCTUARY:
 			objective.jewel_position = stair_position(i, true)
 		var cells: Array[Vector2i] = []
@@ -886,7 +892,7 @@ func reward_kill(mob: Dictionary, killer, party: Dictionary) -> void:
 	var item_id: String = choices[loot_rng.randi_range(0, choices.size() - 1)]
 	if mob.boss:
 		item_id = Routes.REWARDS[mob.kind]
-	elif loot_rng.randf() < 0.12:
+	elif loot_rng.randf() < minf(0.35, 0.12 + Routes.depth(mob.floor) * 0.035):
 		item_id = Catalog.enchant(item_id, loot_rng)
 	if not mob.boss and mob.kind == "archer":
 		loot.spawn("arrows", mob.floor, at, 12)
@@ -1118,7 +1124,7 @@ func objective_hint(actor, peer: int) -> String:
 		return "E: Close door" if door.opened else "E: Open door"
 	for fixture in fixtures.values():
 		if not fixture.used and fixture.floor == actor.floor_id and horizontal_distance(actor.position, fixture.at) <= 1.7:
-			return {"crate":"Attack: Break crate", "chest":"E: Open chest", "key":"E: Take floor key", "lever":"E: Pull lever", "inscription":"E: Read inscription"}.get(fixture.kind, "E: Interact")
+			return {"crate":"Attack: Break crate", "chest":"E: Open chest", "key":"E: Take floor key", "lever":"E: Pull lever", "seal":"E: Activate seal", "sealed_chest":"E: Open sealed cache", "inscription":"E: Read inscription"}.get(fixture.kind, "E: Interact")
 	if objective.carrier == peer:
 		return "G: Drop Jewel for teammate"
 	return ""
@@ -1385,7 +1391,7 @@ func add_fixture(id: int, floor_id: int, at: Vector3, kind: String) -> void:
 	mesh.material_override = mat
 	prop.add_child(mesh)
 	mesh.position.y = box.size.y * 0.5
-	var labels := {"chest":"CHEST [E]", "crate":"CRATE", "inscription":"INSCRIPTION [E]", "key":"FLOOR KEY [E]", "lever":"GATE LEVER [E]"}
+	var labels := {"chest":"CHEST [E]", "crate":"CRATE", "inscription":"INSCRIPTION [E]", "key":"FLOOR KEY [E]", "lever":"GATE LEVER [E]", "seal":"RUNE SEAL [E]", "sealed_chest":"SEALED CACHE [E]"}
 	marker(prop, Vector3.ZERO, labels.get(kind, kind.to_upper()), Color("#d3ae76"))
 	entry.node = prop
 
@@ -1400,7 +1406,20 @@ func interact_fixture(actor) -> bool:
 			continue
 		if not Combat.clear_path(actor, entry.at + Vector3.UP * 0.5):
 			continue
+		if entry.kind == "sealed_chest":
+			var base: int = 11000 + entry.floor * 10
+			if not fixtures[base + 2].used or not fixtures[base + 3].used:
+				journal.add("Exploration", "Activate both rune seals to unlock this cache")
+				return true
 		mark_fixture_used(entry)
+		if entry.kind == "seal":
+			journal.add("Party", "A rune seal resonates through the dungeon")
+			return true
+		if entry.kind == "sealed_chest":
+			var choice: String = ["sword:runic", "mail:warded", "ward_ring:vital"][entry.floor % 3]
+			loot.spawn(choice, entry.floor, entry.at + Vector3.UP * 0.3)
+			journal.add("Loot", "The party opens a runebound cache")
+			return true
 		if entry.kind == "key":
 			floor_keys[entry.floor] = true
 			journal.add("Exploration", "Party found the floor key")
@@ -1413,6 +1432,12 @@ func interact_fixture(actor) -> bool:
 			journal.add("Exploration", "The floor portcullises rise")
 			return true
 		if entry.kind == "chest":
+			if posmod(int(entry.at.x) + int(entry.at.z), 5) == 0:
+				if actor.skills.bonus("disarm") > 0:
+					actor.skills.credit(11, 8)
+					journal.add("Exploration", "Chest trap disarmed")
+				else:
+					actor.take_damage(12.0, entry.at + Vector3.UP, false, "Chest trap")
 			loot.spawn("potion", entry.floor, entry.at + Vector3.UP * 0.3)
 			journal.add("Loot", "%s opens a forgotten chest" % actor.display_name)
 			sound(entry.floor, entry.at, 4.0, "pickup")
