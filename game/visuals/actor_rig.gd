@@ -35,7 +35,7 @@ var last_phase := 0
 var flinch := 0.0
 var was_hurt := false
 var body_rest := Vector3.ZERO
-var skeleton: Skeleton3D
+var skeleton: ArticulatedSkeleton
 var elbow_r: Node3D
 var elbow_l: Node3D
 var knee_r: Node3D
