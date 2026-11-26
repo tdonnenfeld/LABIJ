@@ -21,11 +21,13 @@ static func advance(node: Node3D, delta: float) -> void:
 		return
 	motion.elapsed = minf(INTERVAL, motion.elapsed + delta)
 	var weight: float = motion.elapsed / INTERVAL
+	# Ease rotation separately; keep translation linear to avoid stop-start gait.
+	var turn_weight := weight * (2.0 - weight)
 	var start: Vector3 = motion.from
 	var target: Vector3 = motion.to
 	node.position = start.lerp(target, weight)
 	if motion.rotate:
-		node.rotation.y = lerp_angle(motion.from_yaw, motion.to_yaw, weight)
+		node.rotation.y = lerp_angle(motion.from_yaw, motion.to_yaw, turn_weight)
 
 static func reset(node: Node3D) -> void:
 	if node.has_meta("net_motion"):

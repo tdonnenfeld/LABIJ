@@ -69,6 +69,9 @@ var pending_profiles: Dictionary = {}
 var ready_peers: Dictionary = {}
 var bootstrapping := false
 var connecting := false
+var connection_timeout := 0.0
+var cancel_join_button: Button
+var input_age: Dictionary = {}
 var selected_profile: Array = ["", 0, 0]
 var noise_label: Label
 var target_label: Label
@@ -126,8 +129,8 @@ func _ready() -> void:
 	multiplayer.peer_connected.connect(_peer_joined)
 	multiplayer.peer_disconnected.connect(_peer_left)
 	multiplayer.connected_to_server.connect(_connected)
-	multiplayer.connection_failed.connect(_failed)
-	multiplayer.server_disconnected.connect(_failed)
+	multiplayer.connection_failed.connect(func(): _failed("Connection failed. Check the address and try Join again."))
+	multiplayer.server_disconnected.connect(func(): _failed("Disconnected from host. Join again if the expedition is open."))
 	if dedicated:
 		for arg in OS.get_cmdline_user_args():
 			if arg.begins_with("--party-size="):
@@ -446,6 +449,11 @@ func _build_menu() -> void:
 		button.pressed.connect(entry[1])
 		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		choices.add_child(button)
+	cancel_join_button = Button.new()
+	cancel_join_button.text = "Cancel connection"
+	cancel_join_button.pressed.connect(func(): _failed("Connection cancelled."))
+	panel.add_child(cancel_join_button)
+	cancel_join_button.hide()
 	status = Label.new()
 	status.text = "Physical movement keys · mouse · Esc opens expedition menu"
 	panel.add_child(status)
@@ -489,6 +497,9 @@ func _start() -> void:
 		return
 	connecting = false
 	bootstrapping = false
+	connection_timeout = 0.0
+	if cancel_join_button:
+		cancel_join_button.hide()
 	if not dedicated:
 		var actor = actors[multiplayer.get_unique_id()]
 		actor.direction = Vector2.ZERO
@@ -574,20 +585,29 @@ func _join() -> void:
 		return
 	peer.host.compress(ENetConnection.COMPRESS_RANGE_CODER)
 	connecting = true
+	connection_timeout = 45.0
+	cancel_join_button.show()
 	multiplayer.multiplayer_peer = peer
 	status.text = "Connecting..."
 
 func _connected() -> void:
 	status.text = "Generating expedition..."
 
-func _failed() -> void:
+func _failed(message: String = "Choose Solo, Host or Join") -> void:
 	active = false
 	connecting = false
 	bootstrapping = false
 	ready_peers.clear()
 	if is_instance_valid(escape_menu):
 		escape_menu.close_menu()
+	var old_peer := multiplayer.multiplayer_peer
 	multiplayer.multiplayer_peer = null
+	if old_peer is ENetMultiplayerPeer:
+		old_peer.close()
+	input_age.clear()
+	connection_timeout = 0.0
+	if cancel_join_button:
+		cancel_join_button.hide()
 	lobby_locked = false
 	pending_profiles.clear()
 	trade_book.reset()
@@ -639,7 +659,7 @@ func _failed() -> void:
 	if menu:
 		main_display.refresh()
 		menu.show()
-		status.text = "Choose Solo, Host or Join"
+		status.text = message
 
 func _spawn(id: int, profile: Array = ["", 0, 0]) -> void:
 	if actors.has(id):
@@ -669,6 +689,7 @@ func _remove(id: int) -> void:
 	if actors.has(id):
 		actors[id].queue_free()
 		actors.erase(id)
+	input_age.erase(id)
 	voice_tokens.erase(id)
 	voice_peaks.erase(id)
 	party_names.erase(id)
@@ -879,6 +900,15 @@ func _physics_process(delta: float) -> void:
 			submit_input.rpc_id(1, move, yaw, block, sprint, quiet)
 	if multiplayer.is_server():
 		advance_voice(delta)
+		for peer in ready_peers:
+			if not actors.has(peer):
+				continue
+			input_age[peer] = float(input_age.get(peer, 0.0)) + delta
+			if input_age[peer] > 0.35:
+				actors[peer].direction = Vector2.ZERO
+				actors[peer].wants_block = false
+				actors[peer].wants_sprint = false
+				actors[peer].wants_quiet = false
 		for id in pending_profiles.keys():
 			pending_profiles[id] -= delta
 			if pending_profiles[id] <= 0:
@@ -1031,6 +1061,7 @@ func submit_input(move: Vector2, angle: float, block: bool, sprint: bool, quiet:
 		return
 	var id := multiplayer.get_remote_sender_id()
 	if remote_gameplay_ready(id):
+		input_age[id] = 0.0
 		actors[id].direction = move.limit_length()
 		actors[id].heading = angle
 		actors[id].wants_block = block
@@ -1248,6 +1279,7 @@ func new_expedition() -> void:
 func build_expedition(seed_value: int, size: int) -> void:
 	active = false
 	ready_peers.clear()
+	input_age.clear()
 	for id in actors.keys():
 		_remove(id)
 	tick = 0
@@ -1589,6 +1621,10 @@ func apply_inventory_equip_slot(id: int, index: int, slot: int, revision: int) -
 			actor.empowered = ""
 
 func _process(delta: float) -> void:
+	if connecting:
+		connection_timeout -= delta
+		if connection_timeout <= 0.0:
+			_failed("Connection timed out. Check the host and try again.")
 	if not active or dedicated or not is_instance_valid(world) or world.objective.result != "":
 		return
 	var local_id := multiplayer.get_unique_id()
@@ -1694,9 +1730,6 @@ func kick_companion(peer: int) -> void:
 func leave_expedition(quit_game: bool) -> void:
 	if not active:
 		return
-	var peer := multiplayer.multiplayer_peer
-	if peer is ENetMultiplayerPeer:
-		peer.close()
 	_failed()
 	if quit_game:
 		get_tree().quit()
