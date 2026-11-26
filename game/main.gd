@@ -8,6 +8,12 @@ const SEED := 42069
 var actors: Dictionary = {}
 var world: Node3D
 var hud: Label
+var hp_bar: ProgressBar
+var stamina_bar: ProgressBar
+var crosshair: Label
+var damage_flash: ColorRect
+var attack_requests: Dictionary = {}
+var spectating := false
 var stair_requests: Dictionary = {}
 var stair_cooldowns: Dictionary = {}
 var yaw := 0.0
@@ -50,6 +56,32 @@ func _ready() -> void:
 		hud.position = Vector2(16, 16)
 		layer.add_child(hud)
 		hud.hide()
+		hp_bar = make_bar(layer, Vector2(16, 78), Color("#a64e48"))
+		stamina_bar = make_bar(layer, Vector2(16, 106), Color("#6a9d65"))
+		damage_flash = ColorRect.new()
+		damage_flash.color = Color(0.8, 0.05, 0.05, 0)
+		damage_flash.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		layer.add_child(damage_flash)
+		damage_flash.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		crosshair = Label.new()
+		crosshair.text = "+"
+		crosshair.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		layer.add_child(crosshair)
+		crosshair.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+		crosshair.hide()
+
+func make_bar(layer: CanvasLayer, at: Vector2, color: Color) -> ProgressBar:
+	var bar := ProgressBar.new()
+	bar.position = at
+	bar.size = Vector2(200, 20)
+	bar.max_value = 100
+	bar.value = 100
+	var fill := StyleBoxFlat.new()
+	fill.bg_color = color
+	bar.add_theme_stylebox_override("fill", fill)
+	layer.add_child(bar)
+	bar.hide()
+	return bar
 
 func _build_menu() -> void:
 	menu = CanvasLayer.new()
@@ -80,6 +112,9 @@ func _start() -> void:
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 		if hud:
 			hud.show()
+			hp_bar.show()
+			stamina_bar.show()
+			crosshair.show()
 
 func _solo() -> void:
 	_spawn(1)
@@ -118,6 +153,11 @@ func _failed() -> void:
 	received_tick = -1
 	if hud:
 		hud.hide()
+		hp_bar.hide()
+		stamina_bar.hide()
+		crosshair.hide()
+		damage_flash.color.a = 0.0
+	spectating = false
 	for id in actors.keys():
 		_remove(id)
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
@@ -139,6 +179,7 @@ func _remove(id: int) -> void:
 	if actors.has(id):
 		actors[id].queue_free()
 		actors.erase(id)
+	attack_requests.erase(id)
 	stair_requests.erase(id)
 	stair_cooldowns.erase(id)
 
@@ -176,7 +217,13 @@ func _unhandled_input(event: InputEvent) -> void:
 		else:
 			request_stairs.rpc_id(1)
 	elif event is InputEventMouseButton and event.pressed:
-		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+		if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
+			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+		elif event.button_index == MOUSE_BUTTON_LEFT:
+			if multiplayer.is_server():
+				attack_requests[multiplayer.get_unique_id()] = true
+			else:
+				request_attack.rpc_id(1)
 	elif event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 		yaw -= event.relative.x * 0.002
 		pitch = clampf(pitch - event.relative.y * 0.002, -1.4, 1.4)
@@ -194,14 +241,22 @@ func _physics_process(delta: float) -> void:
 		if actor.camera:
 			actor.camera.rotation.x = pitch
 		actor.rotation.y = yaw
+		var block := Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT)
 		if multiplayer.is_server():
+			actor.wants_block = block
 			actor.direction = move.limit_length()
 			actor.heading = yaw
 		else:
-			submit_input.rpc_id(1, move, yaw)
+			submit_input.rpc_id(1, move, yaw, block)
 	if multiplayer.is_server():
+		for id in attack_requests.keys():
+			if actors.has(id):
+				actors[id].begin_attack()
+		attack_requests.clear()
 		for actor in actors.values():
 			actor.simulate(delta)
+			if actor.advance_combat(delta):
+				actor.swing_hit = world.strike(actor)
 		world.simulate(actors, delta)
 		for id in stair_cooldowns.keys():
 			stair_cooldowns[id] = maxf(0.0, stair_cooldowns[id] - delta)
@@ -215,27 +270,53 @@ func _physics_process(delta: float) -> void:
 		if tick % 3 == 0 and multiplayer.has_multiplayer_peer():
 			var states := {}
 			for id in actors:
-				states[id] = [actors[id].position, actors[id].heading, actors[id].floor_id]
+				states[id] = [actors[id].position, actors[id].heading, actors[id].floor_id, actors[id].health, actors[id].stamina, actors[id].blocking, actors[id].attack_phase, actors[id].hurt_timer, actors[id].swing_hit]
 			snapshot.rpc(tick, states, world.monster_snapshot())
 	if not dedicated and actors.has(local_id):
 		var local = actors[local_id]
-		world.visible_floor(local.floor_id)
+		var viewed_floor: int = local.floor_id
+		if local.health <= 0 and local.camera:
+			var watched = null
+			for id in actors:
+				if actors[id].health > 0:
+					watched = actors[id]
+					break
+			if watched != null:
+				spectating = true
+				viewed_floor = watched.floor_id
+				local.camera.global_position = watched.position + Vector3(0, 0.55, 0)
+				local.camera.global_rotation = Vector3(pitch, yaw, 0)
+			else:
+				spectating = false
+		world.visible_floor(viewed_floor)
 		for id in actors:
-			actors[id].visible = actors[id].floor_id == local.floor_id
+			actors[id].visible = id == local_id or (actors[id].floor_id == viewed_floor and actors[id].health > 0)
+		local.update_hands(delta)
+		if damage_flash:
+			damage_flash.color.a = minf(0.3, local.hurt_timer)
+		if hp_bar:
+			hp_bar.value = local.health
+			stamina_bar.value = local.stamina
+			crosshair.modulate = Color("#90df87") if local.swing_hit and local.attack_phase == 2 else Color.WHITE
 		if hud:
 			var step: int = world.stair_at(local.floor_id, local.position)
 			hud.text = "Dungeon %d / %d" % [local.floor_id + 1, World.COUNT]
-			if step != 0:
+			if step != 0 and local.health > 0:
 				hud.text += "  |  E: " + ("Descend" if step > 0 else "Ascend")
+			if local.health <= 0:
+				hud.text += "\n" + ("Dead — spectating" if spectating else "Party defeated — restart to try again")
+			else:
+				hud.text += "\nLMB: Sword | RMB: Block"
 
 @rpc("any_peer", "call_remote", "unreliable_ordered")
-func submit_input(move: Vector2, angle: float) -> void:
+func submit_input(move: Vector2, angle: float, block: bool) -> void:
 	if not multiplayer.is_server() or not move.is_finite() or not is_finite(angle):
 		return
 	var id := multiplayer.get_remote_sender_id()
 	if actors.has(id):
 		actors[id].direction = move.limit_length()
 		actors[id].heading = angle
+		actors[id].wants_block = block
 
 @rpc("authority", "call_remote", "unreliable_ordered")
 func snapshot(sequence: int, states: Dictionary, mobs: Dictionary) -> void:
@@ -247,6 +328,12 @@ func snapshot(sequence: int, states: Dictionary, mobs: Dictionary) -> void:
 		if actors.has(id):
 			actors[id].position = states[id][0]
 			actors[id].floor_id = states[id][2]
+			actors[id].health = states[id][3]
+			actors[id].stamina = states[id][4]
+			actors[id].blocking = states[id][5]
+			actors[id].attack_phase = states[id][6]
+			actors[id].hurt_timer = states[id][7]
+			actors[id].swing_hit = states[id][8]
 			if id != multiplayer.get_unique_id():
 				actors[id].rotation.y = states[id][1]
 
@@ -266,3 +353,10 @@ func transition(sequence: int, id: int, floor_id: int, at: Vector3, mobs: Dictio
 		actors[id].floor_id = floor_id
 		actors[id].position = at
 	world.apply_monsters(mobs)
+
+@rpc("any_peer", "call_remote", "reliable")
+func request_attack() -> void:
+	if multiplayer.is_server():
+		var id := multiplayer.get_remote_sender_id()
+		if actors.has(id):
+			attack_requests[id] = true

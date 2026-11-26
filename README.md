@@ -17,6 +17,6 @@ Dedicated server:
 godot --headless --path . -- --server
 ```
 
-Four independent fixed-seed floors are connected by explicit stair interactions. Approach a gold DOWN or blue UP marker and press E. Players travel independently; pursuing monsters within 3 m of both the player and stairs follow. Floors and monster positions persist for the session. Red capsules are prototype pursuers (no attacks or damage yet). No combat, loot, branches, PS1 shader or disk saves yet. Remote movement is not predicted/interpolated. Multiplayer and visual testing are still required.
+Four independent fixed-seed floors are connected by explicit stair interactions. Approach a gold DOWN or blue UP marker and press E. Players travel independently; pursuing monsters within 3 m of both the player and stairs follow. Floors and monster positions persist for the session. Red capsules pursue and attack; orange indicates a wind-up. Left click swings the sword, hold right click to block frontal attacks. Health and stamina appear in the HUD; green crosshair indicates a successful hit. Dead players spectate a surviving teammate, or see defeat when no one survives. Restart the game for a new run. No resurrection, loot, branches, PS1 shader or disk saves yet. Remote movement is not predicted/interpolated. Multiplayer and visual testing are still required.
 
 See docs/GAME_DESIGN.md and docs/ARCHITECTURE.md.
