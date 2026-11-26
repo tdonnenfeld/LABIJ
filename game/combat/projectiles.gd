@@ -95,8 +95,13 @@ static func sweep(space: PhysicsDirectSpaceState3D, from: Vector3, to: Vector3, 
 		return overlap
 	query.motion = to - from
 	var fractions := space.cast_motion(query)
+	var ray := PhysicsRayQueryParameters3D.create(from, to, mask, excluded)
+	ray.hit_from_inside = true
+	var ray_hit := space.intersect_ray(ray)
+	if not ray_hit.is_empty():
+		ray_hit["fraction"] = clampf(from.distance_to(ray_hit.position) / maxf(from.distance_to(to), 0.00001) - radius / maxf(from.distance_to(to), 0.00001), 0.0, 1.0)
 	if fractions.size() < 2 or fractions[0] >= 1.0:
-		return {}
+		return ray_hit
 	var fraction := fractions[0]
 	query.motion = Vector3.ZERO
 	query.transform.origin = from.lerp(to, minf(1.0, fractions[1] + 0.001))
@@ -104,10 +109,14 @@ static func sweep(space: PhysicsDirectSpaceState3D, from: Vector3, to: Vector3, 
 	if contact.is_empty():
 		query.transform.origin = from.lerp(to, minf(1.0, fractions[1] + 0.01))
 		contact = space.get_rest_info(query)
+	if contact.is_empty() and not ray_hit.is_empty():
+		contact = ray_hit
 	if contact.is_empty():
 		# A sweep still found an obstacle. Never let a projectile tunnel through it.
 		contact = {"normal": (from - to).normalized(), "collider_id": 0}
 	contact["fraction"] = fraction
+	if not ray_hit.is_empty() and float(ray_hit.fraction) < fraction:
+		return ray_hit
 	return contact
 
 func step(world, actors: Dictionary, delta: float) -> void:
@@ -177,10 +186,22 @@ func step(world, actors: Dictionary, delta: float) -> void:
 				else:
 					world.spell_hit(shot, target, actors)
 			elif shot.effect == "blast":
-				var normal: Vector3 = hit.get("normal", (from - to).normalized())
-				shot.node.position = impact + normal * 0.015
-				shot.velocity = shot.velocity.bounce(normal) * 0.58
+				var normal: Vector3 = hit.get("normal", Vector3.ZERO)
+				if normal.length_squared() < 0.5:
+					normal = (from - to).normalized()
+				normal = normal.normalized()
+				# A sphere already intersecting geometry cannot safely bounce out.
+				if limit <= 0.0001 and not sweep(get_world_3d().direct_space_state, from, from, radius_for("blast"), 1).is_empty():
+					world.spell_blast(shot, from, actors)
+					remove(id)
+					continue
+				shot.node.position = impact + normal * 0.025
+				if shot.velocity.dot(normal) < 0.0:
+					shot.velocity = shot.velocity.bounce(normal) * 0.58
+				else:
+					shot.velocity *= 0.58
 				shot.bounces += 1
+				shot.node.set_meta("impact_serial", shot.bounces)
 				continue
 			if shot.effect.begins_with("arrow"):
 				world.recover_arrow(shot.floor, impact)
@@ -198,7 +219,7 @@ func state() -> Dictionary:
 	var result := {}
 	for id in shots:
 		var shot: Dictionary = shots[id]
-		result[id] = [shot.floor, shot.node.position, shot.color, shot.effect, shot.velocity]
+		result[id] = [shot.floor, shot.node.position, shot.color, shot.effect, shot.velocity, shot.bounces]
 	return result
 
 func apply(data: Dictionary, smooth: bool = false) -> void:
@@ -210,8 +231,12 @@ func apply(data: Dictionary, smooth: bool = false) -> void:
 			shots[id] = {"node": make_node(data[id][1], data[id][2], data[id][3] if data[id].size() > 3 else ""), "floor": data[id][0], "color": data[id][2]}
 		if data[id].size() > 4:
 			shots[id].node.set_meta("shot_velocity", data[id][4])
+		var node: Node3D = shots[id].node
+		var serial: int = data[id][5] if data[id].size() > 5 else 0
+		var bounced: bool = serial != int(node.get_meta("impact_serial", 0))
+		node.set_meta("impact_serial", serial)
 		if smooth:
-			NetMotion.receive(shots[id].node, data[id][1], 0.0, false, false)
+			NetMotion.receive(node, data[id][1], 0.0, bounced, false)
 		else:
 			NetMotion.reset(shots[id].node)
 			shots[id].node.position = data[id][1]

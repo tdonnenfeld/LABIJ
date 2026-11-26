@@ -84,7 +84,11 @@ func hear(events: Array, world, listener) -> void:
 		var reach := Acoustics.reach(tiles, at, radius)
 		if not Acoustics.audible(reach, at, listener.position, radius):
 			continue
-		play_sound(event[3], at, radius)
+		var cue: String = event[3]
+		if cue.begins_with("spell_voice:"):
+			spell_voice(cue, distance, radius)
+		else:
+			play_sound(cue, at, radius)
 
 func sound_for(kind: String) -> AudioStream:
 	var variants: Array = []
@@ -139,8 +143,33 @@ func play_sound(kind: String, at: Vector3, radius: float) -> void:
 	voice.play()
 
 func reset() -> void:
+	if DisplayServer.get_name() != "headless":
+		DisplayServer.tts_stop()
 	for voice in voices:
 		voice.stop()
 		voice.stream = null
 		voice.queue_free()
 	voices.clear()
+
+func spell_voice(cue: String, distance: float, radius: float) -> void:
+	if DisplayServer.get_name() == "headless":
+		return
+	var parts := cue.split(":")
+	if parts.size() != 3:
+		return
+	var names := {"firebolt":"Fire Bolt", "fireball":"Fireball", "frostbolt":"Frost Bolt", "freeze":"Flash Freeze", "spark":"Spark", "thunder":"Thunderbolt", "stonebolt":"Stone Bolt", "boulder":"Boulder"}
+	if not names.has(parts[2]):
+		return
+	var available := DisplayServer.tts_get_voices_for_language("en")
+	if available.is_empty():
+		return
+	var profile := clampi(int(parts[1]), 0, 7)
+	var voice: String = available[profile % available.size()]
+	var volume := roundi(85.0 * clampf(1.0 - distance / maxf(radius, 1.0), 0.15, 1.0))
+	var bus := AudioServer.get_bus_index(Mix.VOICE)
+	if bus >= 0:
+		if AudioServer.is_bus_mute(bus) or AudioServer.is_bus_mute(0):
+			return
+		volume = roundi(volume * clampf(db_to_linear(AudioServer.get_bus_volume_db(bus) + AudioServer.get_bus_volume_db(0)), 0.0, 1.0))
+	if volume > 0:
+		DisplayServer.tts_speak(names[parts[2]], voice, volume, 0.78 + profile * 0.065, 1.05, 0, true)

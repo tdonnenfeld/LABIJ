@@ -23,6 +23,8 @@ var sprinting := false
 var sprint_exhausted := false
 var cast_id := ""
 var cast_timer := 0.0
+var spell_voice := 0
+var announce_spell := false
 var skills := Skills.new()
 var combat_timer := 0.0
 var fortify_timer := 0.0
@@ -63,6 +65,7 @@ var beam_active := false
 var camera: Camera3D
 
 func setup(local: bool, visual: bool = true) -> void:
+	spell_voice = randi_range(0, 7)
 	collision_layer = 2
 	collision_mask = 7
 	var collision := CollisionShape3D.new()
@@ -383,6 +386,7 @@ func start_spell(id: String) -> bool:
 		return false
 	mana -= cost
 	cast_id = id
+	announce_spell = true
 	cast_timer = 0.4
 	sprinting = false
 	combat_timer = 5.0
