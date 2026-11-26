@@ -50,7 +50,7 @@ func build(seed_value: int, render_geometry: bool, party_size: int = 1) -> void:
 				marker(level, Vector3(6, 0, 0), "ANCIENT TABLET [T]", Color("#8ab8a0"))
 		for branch in Routes.PARENTS:
 			if Routes.PARENTS[branch] == i:
-				var entry: Vector2i = level.rooms[rng.randi_range(2, level.rooms.size() - 3)]
+				var entry := branch_cell(level, rng)
 				branch_entries[branch] = level.position + Vector3(entry.x * Dungeon.CELL, 0, entry.y * Dungeon.CELL)
 				if visual:
 					marker(level, branch_entries[branch] - level.position, Routes.NAMES[branch] + " [E]", Color("#b98ddb"))
@@ -96,7 +96,22 @@ func build(seed_value: int, render_geometry: bool, party_size: int = 1) -> void:
 				label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 				label.position.y = float(stats[11]) * 0.5 + 0.3
 				mob.add_child(label)
-			monsters[i * 1000 + j] = {"node": mob, "kind": kind, "floor": i, "target": 0, "threat": {}, "health": float(stats[1]) * (1.0 + 0.35 * (clampi(party_size, 1, 8) - 1) if boss else 1.0), "boss": boss, "max_health": float(stats[1]) * (1.0 + 0.35 * (clampi(party_size, 1, 8) - 1) if boss else 1.0), "forced_target": 0, "force_timer": 0.0, "phase": 0, "timer": 0.0, "attack_target": 0, "aim": Vector3.ZERO, "hurt": 0.0, "bleed": 0.0, "bleed_damage": 0.0, "bleed_owner": 0, "stun": 0.0, "burn": 0.0, "burn_damage": 0.0, "burn_owner": 0, "slow": 0.0, "poison": 0.0, "poison_damage": 0.0, "poison_owner": 0}
+				if kind == "crypt_warden":
+					var ring := MeshInstance3D.new()
+					var disc := CylinderMesh.new()
+					disc.top_radius = 3.2
+					disc.bottom_radius = 3.2
+					disc.height = 0.03
+					ring.mesh = disc
+					var warning := StandardMaterial3D.new()
+					warning.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+					warning.albedo_color = Color(1.0, 0.35, 0.08, 0.28)
+					warning.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+					ring.material_override = warning
+					mob.add_child(ring)
+					ring.position.y = 0.04 - float(stats[11]) * 0.5
+					ring.hide()
+			monsters[i * 1000 + j] = {"node": mob, "kind": kind, "floor": i, "target": 0, "threat": {}, "health": float(stats[1]) * (1.0 + 0.35 * (clampi(party_size, 1, 8) - 1) if boss else 1.0), "boss": boss, "rewarded": false, "max_health": float(stats[1]) * (1.0 + 0.35 * (clampi(party_size, 1, 8) - 1) if boss else 1.0), "forced_target": 0, "force_timer": 0.0, "phase": 0, "timer": 0.0, "attack_target": 0, "aim": Vector3.ZERO, "hurt": 0.0, "bleed": 0.0, "bleed_damage": 0.0, "bleed_owner": 0, "stun": 0.0, "burn": 0.0, "burn_damage": 0.0, "burn_owner": 0, "slow": 0.0, "poison": 0.0, "poison_damage": 0.0, "poison_owner": 0}
 		for j in range(mini(cells.size(), 2 + Routes.depth(i))):
 			var pick := rng.randi_range(0, cells.size() - 1)
 			var cell: Vector2i = cells[pick]
@@ -164,6 +179,11 @@ func visible_floor(id: int) -> void:
 		if visual:
 			var mesh: MeshInstance3D = mob.node.get_child(0)
 			mesh.material_override.albedo_color = Color("#ffffff") if mob.hurt > 0 else (Color("#e5a64e") if mob.phase == 1 else (Color("#8aa7e0") if mob.stun > 0 or mob.slow > 0 else (Color("#e96c38") if mob.burn > 0 else Bestiary.stats(mob.kind)[9])))
+			if mob.boss:
+				var label: Label3D = mob.node.get_child(1)
+				label.text = "%s %d/%d HP" % [Bestiary.stats(mob.kind)[0], ceili(mob.health), ceili(mob.max_health)]
+				if mob.kind == "crypt_warden":
+					mob.node.get_child(2).visible = mob.phase == 1 and mob.stun <= 0
 
 func transfer(actor, peer_id: int) -> bool:
 	if actor.health <= 0 or actor.attack_phase != 0 or actor.cast_id != "":
@@ -378,6 +398,8 @@ func strike(actor, party: Dictionary = {}) -> bool:
 	return true
 
 func hit_monster(actor, mob: Dictionary, party: Dictionary) -> void:
+	if mob.health <= 0:
+		return
 	var stats := Bestiary.stats(mob.kind)
 	var domain: int = actor.skills.weapon_domain(actor.inventory.weapon)
 	var damage: float = actor.attack_damage()
@@ -411,6 +433,9 @@ func hit_monster(actor, mob: Dictionary, party: Dictionary) -> void:
 		mob.phase = 0
 
 func reward_kill(mob: Dictionary, killer, party: Dictionary) -> void:
+	if mob.get("rewarded", false):
+		return
+	mob.rewarded = true
 	mob.phase = 0
 	mob.target = 0
 	mob.threat.clear()
@@ -472,6 +497,8 @@ func spell_blast(shot: Dictionary, at: Vector3, actors: Dictionary) -> void:
 				apply_spell_damage(shot, mob, actors)
 
 func apply_spell_damage(shot: Dictionary, mob: Dictionary, actors: Dictionary) -> void:
+	if mob.health <= 0:
+		return
 	var owner = actors.get(shot.owner)
 	var damage: float = shot.damage
 	if shot.effect in ["burn", "blast"] and mob.slow > 0:
@@ -538,3 +565,15 @@ func threat_ability(actor, peer: int, ability: String) -> bool:
 		actor.combat_timer = 5.0
 		actor.skills.cooldowns[ability] = 12.0 if ability == "taunt" else 20.0
 	return changed
+
+func branch_cell(level, rng: RandomNumberGenerator) -> Vector2i:
+	var candidates: Array[Vector2i] = []
+	for cell in level.rooms:
+		if Vector2(cell).length() > 4.0 and Vector2(cell - level.end_cell).length() > 4.0:
+			candidates.append(cell)
+	if candidates.is_empty():
+		for cell in level.tiles:
+			if Vector2(cell).length() > 4.0 and Vector2(cell - level.end_cell).length() > 4.0:
+				candidates.append(cell)
+		candidates.sort()
+	return candidates[rng.randi_range(0, candidates.size() - 1)] if not candidates.is_empty() else Vector2i(2, 2)

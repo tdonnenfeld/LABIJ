@@ -421,6 +421,12 @@ func _physics_process(delta: float) -> void:
 				hud.text += "\n" + ("Dead — spectating" if spectating else "Party defeated — restart to try again")
 			else:
 				hud.text += "\nLMB: Attack | RMB: Block | Shift: Sprint | I: Inventory"
+				var aggro := 0
+				for mob in world.monsters.values():
+					if mob.health > 0 and mob.floor == local.floor_id and mob.target == local_id:
+						aggro += 1
+				if aggro > 0:
+					hud.text += " | Aggro: %d" % aggro
 				var drop_id: int = world.loot.nearest(local)
 				if drop_id != 0:
 					hud.text += "\nF: Pick up " + Catalog.get_item(world.loot.drops[drop_id].item).title
