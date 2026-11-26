@@ -92,7 +92,10 @@ func simulate(delta: float) -> void:
 	update_sprint(delta)
 	var forward := Vector3(sin(heading), 0, cos(heading))
 	var right := Vector3(cos(heading), 0, -sin(heading))
-	var motion := (right * direction.x + forward * direction.y) * (2.5 if blocking or attack_phase == 1 else 4.5) * (1.0 + skills.bonus("move")) * float(Profiles.SPECIES[species_id][3]) * (2.0 if dash_timer > 0 else (1.55 if sprinting else (0.45 * (1.0 + skills.bonus("quiet_speed")) if quiet_walking else 1.0)))
+	var weapon = Catalog.get_item(inventory.weapon)
+	var attack_move := 3.4 if weapon.projectile_speed <= 0 else 2.5
+	var move_speed := 2.5 if blocking else (attack_move if attack_phase == 1 else (3.8 if attack_phase == 2 else 4.5))
+	var motion := (right * direction.x + forward * direction.y) * move_speed * (1.0 + skills.bonus("move")) * float(Profiles.SPECIES[species_id][3]) * (2.0 if dash_timer > 0 else (1.55 if sprinting else (0.45 * (1.0 + skills.bonus("quiet_speed")) if quiet_walking else 1.0)))
 	velocity.x = motion.x
 	velocity.z = motion.z
 	velocity.y = maxf(velocity.y - 18.0 * delta, -20.0)
