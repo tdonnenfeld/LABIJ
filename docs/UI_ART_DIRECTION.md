@@ -86,3 +86,7 @@ Rotation and compacting are explicit controls in the satchel. A four-dose leathe
 ## Paper doll and placement preview
 
 Three-column parchment spread: backpack on left, original ink character silhouette in centre with nine labelled leather slots, inspection on right. The drop preview uses exactly the same inventory operation on a copy of the current server state, including stacks, rotations and equipped-to-grid moves. Green for valid, red for blocked, gold for merge; equipment targets highlight when valid. Right-click gear to equip/unequip. Head, chest, gloves, boots, amulet and two rings are functional slots. The character is a static illustrated silhouette with equipped item icons, not a 3D outfit preview.
+
+## Expedition menu
+
+Esc opens a modal parchment journal overlay with Keybinds, Sound, Lobby and Exit tabs. Resume remains visible. The room continues behind the dimmed overlay: never imply multiplayer pause or safety. Use local persisted settings, confirmation for destructive lobby and exit actions, and display the current party roster without changing generation size. Host-only join lock and removal are available before claiming the Jewel.

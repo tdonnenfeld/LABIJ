@@ -1,6 +1,12 @@
 extends Node3D
 
 const NetMotion = preload("res://game/network/net_motion.gd")
+const PlayerSettings = preload("res://game/ui/player_settings.gd")
+const EscapeMenu = preload("res://game/ui/escape_menu.gd")
+var settings := PlayerSettings.new()
+var escape_menu: Control
+var lobby_locked := false
+var audio_sliders: Dictionary = {}
 const Numbers = preload("res://game/ui/numbers.gd")
 const Parchment = preload("res://game/ui/parchment.gd")
 
@@ -118,6 +124,7 @@ func _ready() -> void:
 		_host()
 	else:
 		AudioMix.ensure()
+		settings.load_file()
 		_build_menu()
 		var canvas := CanvasLayer.new()
 		add_child(canvas)
@@ -292,6 +299,18 @@ func _ready() -> void:
 		column.add_child(back)
 		back.pressed.connect(_failed)
 		result_screen.hide()
+		escape_menu = EscapeMenu.new()
+		escape_menu.settings = settings
+		layer.add_child(escape_menu)
+		escape_menu.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		escape_menu.resume.connect(close_escape_menu)
+		escape_menu.voice_changed.connect(set_voice_mode)
+		escape_menu.mute_changed.connect(set_voice_muted)
+		escape_menu.lobby_lock.connect(set_lobby_locked)
+		escape_menu.kick.connect(kick_companion)
+		escape_menu.leave.connect(leave_expedition)
+		escape_menu.settings_changed.connect(refresh_binding_hints)
+		refresh_binding_hints()
 
 func make_bar(layer: Control, at: Vector2, color: Color, caption: String) -> ProgressBar:
 	var bar := ProgressBar.new()
@@ -399,7 +418,7 @@ func _build_menu() -> void:
 		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		choices.add_child(button)
 	status = Label.new()
-	status.text = "WASD / ZQSD · mouse · Esc releases mouse\nI: Inventory · K: Talents · M: Map · L: Log"
+	status.text = "Physical movement keys · mouse · Esc opens expedition menu"
 	panel.add_child(status)
 	var right_page := PanelContainer.new()
 	right_page.custom_minimum_size.x = 260
@@ -410,7 +429,7 @@ func _build_menu() -> void:
 	audio_title.text = "Field instruments"
 	Parchment.heading(audio_title, 21)
 	audio_panel.add_child(audio_title)
-	for entry in [["Effects", AudioMix.EFFECTS, 0.85], ["Ambience", AudioMix.AMBIENCE, 0.65], ["Voice playback", AudioMix.VOICE, 1.0]]:
+	for entry in [["Master", "Master", 1.0], ["Effects", AudioMix.EFFECTS, 0.85], ["Ambience", AudioMix.AMBIENCE, 0.65], ["Voice playback", AudioMix.VOICE, 1.0]]:
 		add_audio_slider(audio_panel, entry[0], entry[1], entry[2])
 	var credit := Label.new()
 	credit.text = "Fire Loop — Iwan \"qubodup\" Gabovitch\nCC BY 3.0 · see art/audio/CREDITS.md"
@@ -427,16 +446,18 @@ func add_audio_slider(panel: VBoxContainer, title: String, bus: String, default_
 	slider.max_value = 1.0
 	slider.step = 0.05
 	slider.custom_minimum_size.x = 210
-	slider.value = default_value
+	slider.value = settings.volumes.get(bus, default_value)
 	panel.add_child(slider)
-	AudioMix.set_volume(bus, default_value)
-	slider.value_changed.connect(func(value: float): AudioMix.set_volume(bus, value))
+	audio_sliders[bus] = slider
+	slider.value_changed.connect(func(value: float): settings.set_volume(bus, value); settings.save_file())
 
 func _start() -> void:
 	active = true
 	if menu:
 		menu.hide()
 	if not dedicated:
+		if is_instance_valid(escape_menu):
+			escape_menu.close_menu()
 		voice_mode = voice_selector.selected
 		voice_muted = false
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
@@ -500,7 +521,10 @@ func _connected() -> void:
 	status.text = "Generating expedition..."
 
 func _failed() -> void:
+	if is_instance_valid(escape_menu):
+		escape_menu.close_menu()
 	multiplayer.multiplayer_peer = null
+	lobby_locked = false
 	pending_profiles.clear()
 	trade_book.reset()
 	trade_views.clear()
@@ -587,7 +611,7 @@ func _remove(id: int) -> void:
 func _peer_joined(id: int) -> void:
 	if not multiplayer.is_server():
 		return
-	if world.objective.started or world.objective.result != "" or actors.size() + pending_profiles.size() >= party_size:
+	if lobby_locked or world.objective.started or world.objective.result != "" or actors.size() + pending_profiles.size() >= party_size:
 		multiplayer.multiplayer_peer.disconnect_peer(id)
 		return
 	pending_profiles[id] = 10.0
@@ -605,7 +629,7 @@ func submit_profile(chosen_name: String, species: int, background: int) -> void:
 	if not pending_profiles.has(id):
 		return
 	pending_profiles.erase(id)
-	if not Profiles.valid(species, background) or chosen_name.length() > 64 or world.objective.started or world.objective.result != "" or actors.size() >= party_size:
+	if lobby_locked or not Profiles.valid(species, background) or chosen_name.length() > 64 or world.objective.started or world.objective.result != "" or actors.size() >= party_size:
 		multiplayer.multiplayer_peer.disconnect_peer(id)
 		return
 	initialize_expedition.rpc_id(id, expedition_seed, party_size)
@@ -615,6 +639,7 @@ func submit_profile(chosen_name: String, species: int, background: int) -> void:
 	_spawn(id, [chosen_name, species, background])
 	spawn_remote.rpc(id, 0, actors[id].position, actors[id].display_name, species, background)
 	log_history.rpc_id(id, world.journal.history)
+	lobby_state.rpc_id(id, lobby_locked)
 
 func _peer_left(id: int) -> void:
 	if multiplayer.is_server():
@@ -640,21 +665,32 @@ func spawn_remote(id: int, floor_id: int, at: Vector3, player_name: String, spec
 func remove_remote(id: int) -> void:
 	_remove(id)
 
+func _input(event: InputEvent) -> void:
+	if not active or dedicated or not is_instance_valid(escape_menu) or world.objective.result != "":
+		return
+	if escape_menu.visible and escape_menu.capture(event):
+		get_viewport().set_input_as_handled()
+		return
+	if event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_ESCAPE:
+		if escape_menu.visible:
+			close_escape_menu()
+		else:
+			open_escape_menu()
+		get_viewport().set_input_as_handled()
+
 func _unhandled_input(event: InputEvent) -> void:
-	if not active or dedicated or world.objective.result != "":
+	if not active or dedicated or world.objective.result != "" or escape_menu.visible:
 		return
-	if event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_N:
-		voice_muted = not voice_muted
-		if voice_muted:
-			voice_chat.stop_capture()
+	if settings.matches(event, "mute"):
+		set_voice_muted(not voice_muted)
 		return
-	if event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_M:
+	if settings.matches(event, "map"):
 		minimap.visible = not minimap.visible
 		return
-	if event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_L:
+	if settings.matches(event, "log"):
 		log_panel.visible = not log_panel.visible
 		return
-	if event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_J:
+	if settings.matches(event, "trade"):
 		if trade_panel.visible:
 			close_trade()
 			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
@@ -665,77 +701,66 @@ func _unhandled_input(event: InputEvent) -> void:
 			trade_panel.move_to_front()
 			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 		return
-	if event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_I:
-		if inventory_ui:
-			close_trade()
-			skills_ui.hide()
-			inventory_ui.visible = not inventory_ui.visible
-			if inventory_ui.visible:
-				inventory_ui.move_to_front()
-			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if inventory_ui.visible else Input.MOUSE_MODE_CAPTURED
+	if settings.matches(event, "inventory"):
+		close_trade()
+		skills_ui.hide()
+		inventory_ui.visible = not inventory_ui.visible
+		if inventory_ui.visible:
+			inventory_ui.move_to_front()
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if inventory_ui.visible else Input.MOUSE_MODE_CAPTURED
 		return
-	if event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_K:
-		if skills_ui:
-			close_trade()
-			inventory_ui.hide()
-			skills_ui.visible = not skills_ui.visible
-			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if skills_ui.visible else Input.MOUSE_MODE_CAPTURED
+	if settings.matches(event, "talents"):
+		close_trade()
+		inventory_ui.hide()
+		skills_ui.visible = not skills_ui.visible
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if skills_ui.visible else Input.MOUSE_MODE_CAPTURED
 		return
-	if trade_panel and trade_panel.visible:
-		if event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE:
-			close_trade()
-			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	if trade_panel.visible or skills_ui.visible:
 		return
-	if skills_ui and skills_ui.visible:
-		if event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE:
-			skills_ui.hide()
-			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
-		return
-	if inventory_ui and inventory_ui.visible:
-		if event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_R:
+	if inventory_ui.visible:
+		if settings.matches(event, "rotate"):
 			inventory_ui.organize_selected("rotate")
-			return
-		if event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE:
-			inventory_ui.hide()
+		return
+	if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
+		if event is InputEventMouseButton and event.pressed:
 			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 		return
-	if event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE:
-		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-	elif event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_E and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+	if settings.matches(event, "interact"):
 		if multiplayer.is_server():
 			stair_requests[multiplayer.get_unique_id()] = true
 		else:
 			request_stairs.rpc_id(1)
-	elif event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_F and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+	elif settings.matches(event, "pickup"):
 		if multiplayer.is_server():
 			item_requests[multiplayer.get_unique_id()] = [-1, false]
 		else:
 			request_item.rpc_id(1, -1, false)
-	elif event is InputEventKey and event.pressed and not event.echo and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and event.physical_keycode in [KEY_4, KEY_5, KEY_6, KEY_7]:
+	elif settings.matches(event, "throw_stone"):
+		_talent_action("throw_stone", "", 0)
+	elif settings.matches(event, "drop_jewel"):
+		_talent_action("drop_jewel", "", 0)
+	elif settings.matches(event, "discover"):
+		_talent_action("discover", "", 0)
+	elif settings.matches(event, "attack"):
 		if multiplayer.is_server():
-			use_belt(multiplayer.get_unique_id(), event.physical_keycode - KEY_4)
+			attack_requests[multiplayer.get_unique_id()] = true
 		else:
-			request_belt.rpc_id(1, event.physical_keycode - KEY_4)
-	elif event is InputEventKey and event.pressed and not event.echo and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and event.physical_keycode in [KEY_1, KEY_2, KEY_3, KEY_T, KEY_G, KEY_H]:
-		if event.physical_keycode == KEY_H:
-			_talent_action("throw_stone", "", 0)
-		elif event.physical_keycode == KEY_G:
-			_talent_action("drop_jewel", "", 0)
-		elif event.physical_keycode == KEY_T:
-			_talent_action("discover", "", 0)
-		else:
-			_talent_action("activate", "", event.physical_keycode - KEY_1)
-	elif event is InputEventMouseButton and event.pressed:
-		if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
-			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
-		elif event.button_index == MOUSE_BUTTON_LEFT:
-			if multiplayer.is_server():
-				attack_requests[multiplayer.get_unique_id()] = true
-			else:
-				request_attack.rpc_id(1)
-	elif event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
-		yaw -= event.relative.x * 0.002
-		pitch = clampf(pitch - event.relative.y * 0.002, -1.4, 1.4)
+			request_attack.rpc_id(1)
+	elif event is InputEventMouseMotion:
+		yaw -= event.relative.x * 0.002 * settings.sensitivity
+		pitch = clampf(pitch - event.relative.y * 0.002 * settings.sensitivity, -1.4, 1.4)
+	else:
+		for i in range(4):
+			if settings.matches(event, "belt%d" % (i + 1)):
+				if multiplayer.is_server():
+					use_belt(multiplayer.get_unique_id(), i)
+				else:
+					request_belt.rpc_id(1, i)
+				return
+		for i in range(3):
+			if settings.matches(event, "ability%d" % (i + 1)):
+				_talent_action("activate", "", i)
+				return
 
 func _physics_process(delta: float) -> void:
 	if not active:
@@ -746,17 +771,18 @@ func _physics_process(delta: float) -> void:
 	var local_id := multiplayer.get_unique_id()
 	if not dedicated and actors.has(local_id):
 		var move := Vector2.ZERO
-		if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
-			move.x = float(Input.is_physical_key_pressed(KEY_D)) - float(Input.is_physical_key_pressed(KEY_A))
-			move.y = float(Input.is_physical_key_pressed(KEY_S)) - float(Input.is_physical_key_pressed(KEY_W))
+		if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and not escape_menu.visible and get_window().has_focus():
+			move.x = float(settings.pressed("right")) - float(settings.pressed("left"))
+			move.y = float(settings.pressed("back")) - float(settings.pressed("forward"))
 		var actor = actors[local_id]
 		update_voice(actor, delta)
 		if actor.camera:
 			actor.camera.rotation.x = pitch
 		actor.rotation.y = yaw
-		var block := Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT)
-		var sprint := Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and Input.is_physical_key_pressed(KEY_SHIFT)
-		var quiet := Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and Input.is_physical_key_pressed(KEY_CTRL)
+		var enabled := Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and not escape_menu.visible and get_window().has_focus()
+		var block := enabled and settings.pressed("block")
+		var sprint := enabled and settings.pressed("sprint")
+		var quiet := enabled and settings.pressed("quiet")
 		if multiplayer.is_server():
 			actor.wants_block = block
 			actor.wants_sprint = sprint
@@ -834,6 +860,8 @@ func _physics_process(delta: float) -> void:
 		if builder:
 			builder.update_lighting(local.position - world.floors[viewed_floor].position, delta)
 		party_panel.refresh(actors, local_id, world)
+		if escape_menu.visible:
+			refresh_lobby_menu()
 		update_awareness_hud(local, local_id)
 		map_timer -= delta
 		if map_timer <= 0:
@@ -858,7 +886,7 @@ func _physics_process(delta: float) -> void:
 				var node: Array = local.Skills.Talents.find(ability)
 				var cooldown: float = local.skills.cooldowns.get(ability, 0.0)
 				var slot := action_slots[i]
-				slot.text = "%d · %s\n%s" % [i + 1, "Empty" if node.is_empty() else node[2], "%.1fs" % cooldown if cooldown > 0 else ("—" if node.is_empty() else "Ready")]
+				slot.text = "%s · %s\n%s" % [settings.label("ability%d" % (i + 1)), "Empty" if node.is_empty() else node[2], "%.1fs" % cooldown if cooldown > 0 else ("—" if node.is_empty() else "Ready")]
 				slot.modulate = Color("#b8a88b") if cooldown > 0 else Color.WHITE
 			if skills_ui and skills_ui.visible:
 				skills_ui.refresh(local.skills.state(), world.safe(local))
@@ -874,17 +902,17 @@ func _physics_process(delta: float) -> void:
 			var route: Dictionary = world.route_at(local.floor_id, local.position)
 			hud.text = World.Routes.NAMES[local.floor_id]
 			if not route.is_empty() and local.health > 0:
-				hud.text += "  |  " + ("" if route.get("locked", false) else "E: ") + route.label
+				hud.text += "  |  " + ("" if route.get("locked", false) else settings.label("interact") + ": ") + route.label
 			if world.secret_near(local):
-				hud.text += "  |  E: Inspect loose masonry"
+				hud.text += "  |  %s: Inspect loose masonry" % settings.label("interact")
 			var hint: String = world.objective_hint(local, local_id)
 			if hint != "":
-				hud.text += "  |  " + hint
+				hud.text += "  |  " + hint.replace("E:", settings.label("interact") + ":").replace("G:", settings.label("drop_jewel") + ":")
 			update_objective_hud(local_id)
 			if local.health <= 0:
 				hud.text += "\nParty defeated"
 			else:
-				hud.text += "\nI: Inventory  ·  K: Talents  ·  J: Trade"
+				hud.text += "\n%s: Inventory · %s: Talents · %s: Trade" % [settings.label("inventory"), settings.label("talents"), settings.label("trade")]
 				if trade_panel.session.get("incoming", false):
 					hud.text += "  ·  Trade invitation!"
 				if Catalog.get_item(local.inventory.weapon).projectile_speed > 0:
@@ -897,7 +925,7 @@ func _physics_process(delta: float) -> void:
 					hud.text += " | Aggro: %d" % aggro
 				var drop_id: int = world.loot.nearest(local)
 				if drop_id != 0:
-					hud.text += "\nF: Pick up " + Catalog.get_item(world.loot.drops[drop_id].item).title
+					hud.text += "\n%s: Pick up " % settings.label("pickup") + Catalog.get_item(world.loot.drops[drop_id].item).title
 					if world.loot.drops[drop_id].amount > 1:
 						hud.text += " ×%d" % world.loot.drops[drop_id].amount
 
@@ -1121,6 +1149,7 @@ func build_expedition(seed_value: int, size: int) -> void:
 		world.queue_free()
 	expedition_seed = seed_value
 	party_size = size
+	lobby_locked = false
 	party_names.clear()
 	trade_book.reset()
 	trade_views.clear()
@@ -1153,7 +1182,7 @@ func update_objective_hud(local_id: int) -> void:
 	else:
 		message = "ESCAPE — Pursuit %d/3" % goal.pressure()
 		message += "\n" + ("You carry the Jewel" if goal.carrier == local_id else ("Jewel carried by a teammate" if goal.carrier != 0 else "Jewel dropped: " + World.Routes.NAMES[goal.jewel_floor]))
-		message += "\nReturn to Dungeon 1 exit [E]"
+		message += "\nReturn to Dungeon 1 exit [%s]" % settings.label("interact")
 	objective_label.text = message
 
 @rpc("authority", "call_remote", "reliable")
@@ -1166,6 +1195,8 @@ func show_result() -> void:
 	if dedicated or result_shown:
 		return
 	result_shown = true
+	if is_instance_valid(escape_menu):
+		escape_menu.close_menu()
 	voice_chat.reset()
 	environmental_audio.reset()
 	inventory_ui.hide()
@@ -1259,7 +1290,7 @@ func receive_sounds(events: Array) -> void:
 
 func update_voice(actor, delta: float) -> void:
 	var enabled: bool = voice_mode != 0 and not voice_muted and get_window().has_focus() and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and actor.health > 0
-	var speaking: bool = enabled and (voice_mode == 2 or Input.is_physical_key_pressed(KEY_V))
+	var speaking: bool = enabled and (voice_mode == 2 or settings.pressed("voice"))
 	for packet in voice_chat.poll(speaking):
 		if multiplayer.is_server():
 			accept_voice(multiplayer.get_unique_id(), packet)
@@ -1269,11 +1300,11 @@ func update_voice(actor, delta: float) -> void:
 	if voice_mode == 0:
 		voice_label.text = "MIC OFF"
 	elif voice_muted:
-		voice_label.text = "MIC MUTED [N]"
+		voice_label.text = "MIC MUTED [%s]" % settings.label("mute")
 	elif speaking:
-		voice_label.text = "MIC LIVE | Noise %s [N]" % Numbers.number(voice_chat.level)
+		voice_label.text = "MIC LIVE | Noise %s [%s]" % [Numbers.number(voice_chat.level), settings.label("mute")]
 	else:
-		voice_label.text = "MIC READY [V]"
+		voice_label.text = "MIC READY [%s]" % settings.label("voice")
 
 func advance_voice(delta: float) -> void:
 	for id in voice_tokens:
@@ -1439,3 +1470,92 @@ func _process(delta: float) -> void:
 		if local.camera:
 			local.rotation.y = yaw
 			local.camera.rotation.x = pitch
+
+func open_escape_menu() -> void:
+	inventory_ui.hide()
+	skills_ui.hide()
+	close_trade()
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	voice_chat.stop_capture()
+	var id := multiplayer.get_unique_id()
+	if actors.has(id):
+		if multiplayer.is_server():
+			actors[id].direction = Vector2.ZERO
+			actors[id].wants_block = false
+			actors[id].wants_sprint = false
+			actors[id].wants_quiet = false
+			attack_requests.erase(id)
+		else:
+			submit_input.rpc_id(1, Vector2.ZERO, yaw, false, false, false)
+	refresh_lobby_menu()
+	escape_menu.open_menu(voice_mode, voice_muted)
+
+func close_escape_menu() -> void:
+	escape_menu.close_menu()
+	if active and world.objective.result == "":
+		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+
+func set_voice_mode(mode: int) -> void:
+	voice_mode = clampi(mode, 0, 2)
+	voice_selector.select(voice_mode)
+	voice_chat.stop_capture()
+
+func set_voice_muted(muted: bool) -> void:
+	voice_muted = muted
+	if muted:
+		voice_chat.stop_capture()
+
+func refresh_binding_hints() -> void:
+	for bus in audio_sliders:
+		audio_sliders[bus].set_value_no_signal(settings.volumes[bus])
+	for i in range(potion_belt.slots.size()):
+		potion_belt.slots[i].text = settings.label("belt%d" % (i + 1))
+		potion_belt.slots[i].tooltip_text = "Potion belt [%s]" % potion_belt.slots[i].text
+	inventory_ui.rotate_button.text = "Rotate [%s]" % settings.label("rotate")
+
+func lobby_admin() -> bool:
+	return active and not dedicated and multiplayer.is_server() and multiplayer.has_multiplayer_peer() and multiplayer.multiplayer_peer is ENetMultiplayerPeer
+
+func refresh_lobby_menu() -> void:
+	if not is_instance_valid(escape_menu):
+		return
+	var admin := lobby_admin()
+	var mode := "Host" if admin else ("Solo" if multiplayer.is_server() else "Guest")
+	var players: Array = []
+	for id in actors:
+		var actor = actors[id]
+		players.append([id, actor.display_name, World.Routes.NAMES[actor.floor_id]])
+	var sealed: bool = world.objective.started or world.objective.result != ""
+	escape_menu.update_lobby({"mode": mode, "admin": admin, "can_manage": admin and not sealed, "locked": mode == "Solo" or lobby_locked or sealed, "players": players, "capacity": party_size, "local_id": multiplayer.get_unique_id()})
+
+func set_lobby_locked(locked: bool) -> void:
+	if not lobby_admin() or world.objective.started or world.objective.result != "":
+		return
+	lobby_locked = locked
+	if locked:
+		for id in pending_profiles.keys():
+			pending_profiles.erase(id)
+			multiplayer.multiplayer_peer.disconnect_peer(id)
+	lobby_state.rpc(lobby_locked)
+	refresh_lobby_menu()
+
+@rpc("authority", "call_remote", "reliable")
+func lobby_state(locked: bool) -> void:
+	lobby_locked = locked
+
+func kick_companion(peer: int) -> void:
+	if not lobby_admin() or world.objective.started or world.objective.result != "" or peer == 1 or not actors.has(peer):
+		return
+	_peer_left(peer)
+	multiplayer.multiplayer_peer.disconnect_peer(peer)
+	refresh_lobby_menu()
+
+func leave_expedition(quit_game: bool) -> void:
+	if not active:
+		return
+	var peer := multiplayer.multiplayer_peer
+	if peer is ENetMultiplayerPeer:
+		peer.close()
+	_failed()
+	if quit_game:
+		get_tree().quit()
