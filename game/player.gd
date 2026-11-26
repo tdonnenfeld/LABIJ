@@ -52,6 +52,13 @@ var floor_id := 0
 var direction := Vector2.ZERO
 var heading := 0.0
 var look_pitch := 0.0
+var selected_spell := ""
+var aiming := false
+var bow_charge := 0.0
+var bow_drawing := false
+var shot_power := 1.0
+var trigger_held := false
+var beam_timer := 0.0
 var camera: Camera3D
 
 func setup(local: bool, visual: bool = true) -> void:
@@ -88,18 +95,59 @@ func simulate(delta: float) -> void:
 		velocity = Vector3.ZERO
 		return
 	rotation.y = heading
-	quiet_walking = wants_quiet and not wants_sprint and dash_timer <= 0 and attack_phase == 0 and cast_id == ""
+	quiet_walking = wants_quiet and not wants_sprint and not bow_drawing and dash_timer <= 0 and attack_phase == 0 and cast_id == ""
 	update_sprint(delta)
 	var forward := Vector3(sin(heading), 0, cos(heading))
 	var right := Vector3(cos(heading), 0, -sin(heading))
 	var weapon = Catalog.get_item(inventory.weapon)
 	var attack_move := 3.4 if weapon.projectile_speed <= 0 else 2.5
-	var move_speed := 2.5 if blocking else (attack_move if attack_phase == 1 else (3.8 if attack_phase == 2 else 4.5))
+	var move_speed := 2.5 if blocking or aiming else (attack_move if attack_phase == 1 else (3.8 if attack_phase == 2 else 4.5))
 	var motion := (right * direction.x + forward * direction.y) * move_speed * (1.0 + skills.bonus("move")) * float(Profiles.SPECIES[species_id][3]) * (2.0 if dash_timer > 0 else (1.55 if sprinting else (0.45 * (1.0 + skills.bonus("quiet_speed")) if quiet_walking else 1.0)))
 	velocity.x = motion.x
 	velocity.z = motion.z
 	velocity.y = maxf(velocity.y - 18.0 * delta, -20.0)
 	move_and_slide()
+
+func ranged_mode() -> bool:
+	return not selected_spell.is_empty() or Catalog.get_item(inventory.weapon).projectile_speed > 0
+
+func select_spell(slot: int) -> bool:
+	if slot == -1:
+		selected_spell = ""
+		return true
+	if slot < 0 or slot >= Skills.SLOT_COUNT:
+		return false
+	var id: String = skills.slots[slot]
+	if Spells.get_spell(id).is_empty() or not skills.learned.has(id):
+		return false
+	selected_spell = id
+	return true
+
+func set_trigger(held: bool, cancel: bool = false) -> void:
+	if held == trigger_held and not cancel:
+		return
+	trigger_held = held
+	if cancel:
+		bow_drawing = false
+		bow_charge = 0.0
+		return
+	if not held:
+		if bow_drawing:
+			bow_drawing = false
+			if begin_attack():
+				shot_power = clampf(bow_charge, 0.25, 1.0)
+				attack_timer = 0.01
+			bow_charge = 0.0
+		return
+	if not selected_spell.is_empty():
+		if skills.slots.has(selected_spell):
+			start_spell(selected_spell)
+	elif Catalog.get_item(inventory.weapon).projectile_speed > 0:
+		if health > 0 and attack_phase == 0 and cast_id == "" and not blocking and stamina >= attack_cost() and inventory.count("arrows") > 0:
+			bow_drawing = true
+			bow_charge = 0.0
+	else:
+		begin_attack()
 
 func begin_attack() -> bool:
 	var weapon = Catalog.get_item(inventory.weapon)
@@ -108,6 +156,7 @@ func begin_attack() -> bool:
 	if weapon.projectile_speed > 0 and inventory.count("arrows") == 0:
 		return false
 	sprinting = false
+	shot_power = 1.0
 	stamina -= attack_cost()
 	attack_phase = 1
 	attack_timer = weapon.windup * attack_speed_factor()
@@ -129,12 +178,17 @@ func advance_combat(delta: float) -> bool:
 		skills.cooldowns[id] = maxf(0.0, skills.cooldowns[id] - delta)
 	if health <= 0:
 		return false
+	if bow_drawing:
+		bow_charge = minf(1.0, bow_charge + delta / 0.9)
+		if not trigger_held or not Catalog.get_item(inventory.weapon).projectile_speed > 0:
+			bow_drawing = false
+			bow_charge = 0.0
 	var was_blocking := blocking
-	blocking = inventory.shield_index >= 0 and wants_block and attack_phase == 0 and cast_id == "" and stamina > 0
+	blocking = inventory.shield_index >= 0 and not ranged_mode() and wants_block and attack_phase == 0 and cast_id == "" and stamina > 0
 	if blocking:
 		block_age = block_age + delta if was_blocking else 0.0
 	mana = minf(100.0, mana + delta * 5.0 * float(Profiles.SPECIES[species_id][4]) * (1.0 + Catalog.get_item(inventory.weapon).mana_bonus))
-	if not blocking and not sprinting and attack_phase == 0 and cast_id == "":
+	if not blocking and not sprinting and not bow_drawing and attack_phase == 0 and cast_id == "":
 		stamina = minf(Combat.MAX_STAMINA, stamina + delta * (18.0 + skills.bonus("regen")))
 	if attack_phase == 0:
 		return false
@@ -177,6 +231,7 @@ func take_damage(amount: float, source: Vector3, magical: bool = false, source_n
 	damage_event.emit(before - health, blocked, parried, source_name)
 	hurt_timer = 0.25
 	if health == 0:
+		set_trigger(false, true)
 		blocking = false
 		attack_phase = 0
 		direction = Vector2.ZERO
@@ -294,7 +349,7 @@ func buy_talent(id: String) -> bool:
 func update_sprint(delta: float) -> void:
 	if not wants_sprint:
 		sprint_exhausted = false
-	sprinting = wants_sprint and not sprint_exhausted and direction.length_squared() > 0.01 and health > 0 and attack_phase == 0 and cast_id == "" and not wants_block and not blocking and stamina > 0
+	sprinting = wants_sprint and not sprint_exhausted and direction.length_squared() > 0.01 and health > 0 and attack_phase == 0 and cast_id == "" and not wants_block and not blocking and not aiming and not bow_drawing and stamina > 0
 	if sprinting:
 		stamina = maxf(0.0, stamina - 22.0 * delta * (1.0 - skills.bonus("sprint_cost")))
 		if stamina <= 0:
@@ -302,7 +357,7 @@ func update_sprint(delta: float) -> void:
 
 func start_spell(id: String) -> bool:
 	var stats := Spells.get_spell(id)
-	if stats.is_empty() or not skills.learned.has(id) or cast_id != "" or attack_phase != 0 or health <= 0 or blocking or wants_block or skills.cooldowns.get(id, 0.0) > 0:
+	if bow_drawing or stats.is_empty() or not skills.learned.has(id) or cast_id != "" or attack_phase != 0 or health <= 0 or blocking or wants_block or skills.cooldowns.get(id, 0.0) > 0:
 		return false
 	var cost: float = float(stats[1]) * (1.0 - skills.bonus("mana_cost", stats[0]))
 	if mana < cost:
@@ -322,6 +377,10 @@ func advance_cast(delta: float) -> String:
 	if cast_timer > 0:
 		return ""
 	var id := cast_id
+	if id == "spark" and trigger_held and selected_spell == id and mana >= 3.0:
+		mana -= 3.0
+		cast_timer = 0.15
+		return id
 	cast_id = ""
 	return id
 
