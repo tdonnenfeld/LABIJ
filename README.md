@@ -164,3 +164,7 @@ Hold the attack binding to draw a bow, then release to shoot; charge reaches ful
 ## Animation motion curves
 
 Attack windup and recovery now drive procedural weapon and creature animation curves. First-person sword, axe, spear/dagger, bow and staff paths use distinct anticipation and follow-through poses. Movement adds damped look sway, acceleration inertia, breathing, eased aiming and potion lift. Creature rigs add speed-dependent gait, body twist, turn lean and decaying directional flinch. Attack/cast timers are included in player snapshots; enemy attack timers are included in monster snapshots. Gameplay hit timing is unchanged. Existing articulated assets are reused; no skeletal clips, inverse kinematics or new meshes. Native visual playtesting is required.
+
+## Skeletal character foundation
+
+Original rigid low-poly meshes are attached to runtime Skeleton3D bones using BoneAttachment3D, preserving existing equipment sockets and procedural combat drivers. Limbs gain elbow and knee articulation; walk/run knee clips are sampled through AnimationPlayer and combined with directional gait and combat poses. This is a rigid segmented skeleton, not weighted skin deformation. AnimationTree blending, terrain-aware inverse kinematics and exact two-handed weapon grip constraints remain future work. Native visual and multiplayer validation is required.
