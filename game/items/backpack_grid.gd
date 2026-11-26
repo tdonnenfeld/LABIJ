@@ -87,7 +87,7 @@ func placement(at_position: Vector2, data: Variant) -> Dictionary:
 	replica.apply(model.state())
 	var valid := replica.move_item(index, at, data.split)
 	var other := model.item_at(at, index)
-	var merge := valid and not data.split and not model.is_equipped(index) and other >= 0 and model.items[other] == model.items[index] and Catalog.stack_limit(model.items[index]) > 1
+	var merge: bool = valid and not data.split and not model.is_equipped(index) and other >= 0 and model.items[other] == model.items[index] and Catalog.stack_limit(model.items[index]) > 1
 	if merge:
 		at = model.positions[other]
 		extent = Inventory.footprint(model.items[other], model.rotated[other])
