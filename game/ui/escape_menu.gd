@@ -3,6 +3,8 @@ extends Control
 const Parchment = preload("res://game/ui/parchment.gd")
 const Settings = preload("res://game/ui/player_settings.gd")
 const Mix = preload("res://game/audio/audio_mix.gd")
+const DisplayControls = preload("res://game/ui/display_controls.gd")
+var display_controls: VBoxContainer
 signal resume
 signal voice_changed(mode: int)
 signal mute_changed(muted: bool)
@@ -68,6 +70,7 @@ func _ready() -> void:
 	column.add_child(tabs)
 	build_keys()
 	build_sound()
+	build_display()
 	build_lobby()
 	build_exit()
 	notice = Label.new()
@@ -201,6 +204,13 @@ func sync_sound(mode: int, muted: bool) -> void:
 	voice_select.select(mode)
 	mute_check.set_pressed_no_signal(muted)
 
+func build_display() -> void:
+	var content := page("Display")
+	display_controls = DisplayControls.new()
+	display_controls.settings = settings
+	content.add_child(display_controls)
+	display_controls.changed.connect(func(): settings_changed.emit())
+
 func build_lobby() -> void:
 	var content := page("Lobby")
 	lobby_status = Label.new()
@@ -286,6 +296,7 @@ func open_menu(mode: int, muted: bool) -> void:
 	cancel_binding()
 	reset_confirmations()
 	sync_sound(mode, muted)
+	display_controls.refresh()
 	show()
 	move_to_front()
 

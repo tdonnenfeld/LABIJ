@@ -132,3 +132,7 @@ Esc opens the parchment Expedition Journal menu from gameplay or other in-game p
 ## Grimoire readability and level-up feedback
 
 The talent screen is an opaque, nearly full-screen parchment spread rendered above the gameplay HUD. The dependency tree measures its nodes and reserves horizontal/vertical gaps; wider branches can scroll in both directions. Talent details and active ability assignment stay in a separate column, with current ability keybinds. The close button returns to gameplay. A large gold LEVEL UP banner appears on the local player when their authoritative character level increases, including on joining clients; it shows the new level, prompts the current talent shortcut, and fades after about four seconds. It neither pauses the expedition nor intercepts input. No XP or talent rules changed.
+
+## Display settings
+
+LABIJ now opens in a larger 1280×720 window by default (fitted to the monitor work area). The logical 960×540 canvas remains unchanged so the HUD, inventory and grimoire scale with the window. Choose windowed, maximized or fullscreen in the main menu or Esc → Display. Window-size presets range from 960×540 to 2560×1440 and are clamped to fit the current monitor in windowed mode. Preferences persist locally in `user://settings.cfg`. Fullscreen uses the desktop display size; this does not change the monitor resolution. Dedicated/headless instances skip window operations.
