@@ -1,5 +1,6 @@
 extends Node3D
 
+const Catalog = preload("res://game/items/catalog.gd")
 const Assets = preload("res://game/visuals/asset_registry.gd")
 const Loot = preload("res://game/items/loot_models.gd")
 var right: Node3D
@@ -67,6 +68,18 @@ func animate(actor, delta: float, motion: float) -> void:
 	elif actor.attack_phase == 2:
 		target += Vector3(-0.24, 0.08, -0.17)
 		rot = Vector3(-0.8, 0.55, 0.70)
+	if actor.attack_phase != 0:
+		var item_id: String = key[0]
+		var windup: bool = actor.attack_phase == 1
+		if Catalog.get_item(item_id).projectile_speed > 0:
+			target = Vector3(0.23, -0.19, -0.70 if windup else -0.86)
+			rot = Vector3(-0.12, -0.25, -0.08)
+		elif "spear" in item_id or "dagger" in item_id:
+			target = Vector3(0.32, -0.25, -0.55 if windup else -1.03)
+			rot = Vector3(0.1, -0.12, -0.18)
+		elif "axe" in item_id:
+			target.y += 0.18 if windup else -0.08
+			rot.x = 1.15 if windup else -1.25
 	if casting:
 		target = Vector3(0.22, -0.16, -0.72)
 		rot.x = -0.4

@@ -120,9 +120,28 @@ func animate(delta: float, alive: bool, phase: int, asleep: bool, hurt: bool, bl
 	var gait := sin(clock) * clampf(speed / 2.3, 0.0, 1.0) * (0.52 if kind == "brute" else 0.76)
 	angle(leg_r, gait, weight)
 	angle(leg_l, -gait, weight)
-	var attack := -1.45 if phase == 1 else (0.65 if phase == 2 else -gait * 0.65)
+	var windup := -1.45
+	var release := 0.65
+	match kind:
+		"brute", "crypt_warden": 
+			windup = -2.0
+			release = 1.0
+		"guardian", "jewel_sentinel":
+			windup = -0.85
+			release = -1.65
+		"archer", "mage", "ember_oracle":
+			windup = -1.15
+			release = -0.7
+		"goblin", "jewel_hunter":
+			windup = -1.8
+			release = 0.9
+	var attack := windup if phase == 1 else (release if phase == 2 else -gait * 0.65)
 	if is_rat:
 		attack = -gait
+		if phase == 1:
+			attack = -0.65
+		elif phase == 2:
+			attack = 0.55
 	angle(arm_r, -1.15 if casting else attack, weight)
 	angle(arm_l, -1.4 if blocking or casting or (kind == "archer" and phase == 1) else gait * 0.65, weight)
 	if body:

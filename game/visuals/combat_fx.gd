@@ -31,11 +31,13 @@ func burst(at: Vector3, floor_id: int, style: String, seed_value: int = 0) -> vo
 	node.position = at
 	var color: Color = {"damage": Color("#8f3633"), "magic": Color("#c4a1eb"), "blocked": Color("#e3ce89"), "incoming": Color("#913a35")}[style]
 	var particles: Array = []
-	for i in range(7):
+	for i in range(12 if style == "magic" else (9 if style == "blocked" else 7)):
 		var part := MeshInstance3D.new()
 		part.mesh = mesh
 		part.material_override = material(color)
 		part.scale = Vector3.ONE * rng.randf_range(0.035, 0.065)
+		if style == "blocked":
+			part.scale.y *= 2.5
 		node.add_child(part)
 		particles.append({"node": part, "velocity": Vector3(rng.randf_range(-1.8, 1.8), rng.randf_range(0.4, 2.3), rng.randf_range(-1.8, 1.8))})
 	bursts.append({"node": node, "floor": floor_id, "age": 0.0, "particles": particles})

@@ -42,6 +42,7 @@ const FOLLOW_RADIUS := 3.0
 var floors: Dictionary = {}
 var monsters: Dictionary = {}
 var visual := false
+var fixtures: Dictionary = {}
 
 func build(seed_value: int, render_geometry: bool, size: int = 1) -> void:
 	party_size = size
@@ -93,6 +94,13 @@ func build(seed_value: int, render_geometry: bool, size: int = 1) -> void:
 			if i < Routes.MAIN_COUNT - 1:
 				var end: Vector2i = level.end_cell
 				marker(level, Vector3(end.x * Dungeon.CELL, 0, end.y * Dungeon.CELL), "DOWN [E]", Color("#d3ae55"))
+		if level.rooms.size() > 3:
+			for n in range(1, mini(4, level.rooms.size() - 1)):
+				var cell: Vector2i = level.rooms[n]
+				var at := level.position + Vector3(cell.x * Dungeon.CELL + 1.0, 0.0, cell.y * Dungeon.CELL + 1.0)
+				if near_branch_entry(i, at) or (escape_entries.has(i) and horizontal_distance(at, escape_entries[i]) < 3.0):
+					continue
+				add_fixture(i * 10 + n, i, at, ["chest", "crate", "inscription"][n - 1])
 		if i == Routes.SANCTUARY:
 			objective.jewel_position = stair_position(i, true)
 		var cells: Array[Vector2i] = []
@@ -291,11 +299,15 @@ func transfer(actor, peer_id: int, actors: Dictionary = {}) -> bool:
 		return false
 	if interact_objective(actor, peer_id):
 		return true
+	if revive_companion(actor, actors):
+		return true
 	var old: int = actor.floor_id
 	if discover_secret(actor):
 		return true
 	var route := route_at(old, actor.position)
-	if route.is_empty() or route.get("locked", false):
+	if route.is_empty():
+		return interact_fixture(actor)
+	if route.get("locked", false):
 		return false
 	var destination: int = route.destination
 	var arrival: Vector3 = route.arrival
@@ -351,6 +363,7 @@ func simulate(actors: Dictionary, delta: float) -> void:
 		mob.hurt = maxf(0.0, mob.hurt - delta)
 		mob.force_timer = maxf(0.0, mob.force_timer - delta)
 		var stats := Bestiary.stats(mob.kind)
+		var tactics := Bestiary.tactics(mob.kind)
 		mob.slow = maxf(0.0, mob.slow - delta)
 		if mob.burn > 0:
 			var burn_elapsed := minf(delta, mob.burn)
@@ -422,6 +435,14 @@ func simulate(actors: Dictionary, delta: float) -> void:
 		if target != 0:
 			closest = distances[target]
 		if mob.phase != 0:
+			if mob.phase == 1 or (mob.phase == 2 and float(tactics[2]) > 0.0):
+				var moving_target = actors.get(mob.attack_target)
+				if moving_target != null and moving_target.health > 0 and moving_target.floor_id == mob.floor:
+					if mob.phase == 1 and float(tactics[2]) == 0.0 and horizontal_distance(node.position, moving_target.position) > float(stats[3]) * 0.65:
+						move_monster(mob, moving_target.position, delta, float(stats[4]) * float(tactics[1]))
+					elif float(tactics[2]) > 0.0 and horizontal_distance(node.position, moving_target.position) < float(tactics[2]):
+						retreat_monster(mob, moving_target.position, delta, float(stats[4]) * float(tactics[1]))
+					face_toward(mob, moving_target.position, delta)
 			mob.timer -= delta
 			if mob.timer <= 0:
 				if mob.phase == 1:
@@ -452,15 +473,24 @@ func simulate(actors: Dictionary, delta: float) -> void:
 			if not mob.asleep and occupied.has(mob.floor):
 				idle_move(mob, delta)
 			continue
-		if closest <= float(stats[3]) and Combat.clear_path(node, actors[target].position):
+		if closest <= float(stats[3]) + float(tactics[0]) and Combat.clear_path(node, actors[target].position):
 			face_toward(mob, actors[target].position)
 			mob.move_speed = 0.0
 			mob.phase = 1
 			mob.timer = float(stats[5])
 			mob.attack_target = target
 			mob.aim = actors[target].position
+			if mob.kind in ["goblin", "guardian", "jewel_hunter"]:
+				emit_noise(mob.floor, node.position, 6.0)
 			continue
 		move_monster(mob, actors[target].position, delta, float(stats[4]) * (1.0 + 0.08 * objective.pressure()))
+
+func retreat_monster(mob: Dictionary, target: Vector3, delta: float, speed: float) -> void:
+	var node: CharacterBody3D = mob.node
+	var away := node.position - target
+	away.y = 0.0
+	if away.length_squared() > 0.01:
+		node.move_and_collide(away.normalized() * speed * delta, false, 0.001)
 
 func move_monster(mob: Dictionary, at: Vector3, delta: float, speed: float) -> void:
 	var node: CharacterBody3D = mob.node
@@ -709,6 +739,10 @@ func strike(actor, party: Dictionary = {}) -> bool:
 			nearest = mob
 			best = distance
 	if nearest == null:
+		if break_fixture(actor):
+			player_noise(actor, radius, "impact")
+			actor.empowered = ""
+			return true
 		player_noise(actor, radius, "melee")
 		journal.add("Combat", "%s misses" % actor.display_name, actor.floor_id, actor.position + Vector3.UP, "Miss", "status", int(actor.name) if str(actor.name).is_valid_int() else 0)
 		actor.empowered = ""
@@ -989,10 +1023,13 @@ func release_jewel(actor, peer: int) -> bool:
 func update_objective(actors: Dictionary, delta: float) -> void:
 	if objective.result != "":
 		return
+	var living := 0
 	for actor in actors.values():
-		if actor.health <= 0:
-			fail_party(actor.display_name)
-			return
+		if actor.health > 0:
+			living += 1
+	if living == 0 and not actors.is_empty():
+		fail_party("The party")
+		return
 	if objective.started:
 		objective.elapsed += delta
 
@@ -1001,6 +1038,9 @@ func objective_hint(actor, peer: int) -> String:
 		return "E: Escape with the Jewel"
 	if objective.carrier == 0 and objective.guardian_defeated and actor.floor_id == objective.jewel_floor and horizontal_distance(actor.position, objective.jewel_position) <= USE_RADIUS:
 		return "E: Take the Jewel"
+	for fixture in fixtures.values():
+		if not fixture.used and fixture.floor == actor.floor_id and horizontal_distance(actor.position, fixture.at) <= 1.7:
+			return "Attack: Break crate" if fixture.kind == "crate" else ("E: Open chest" if fixture.kind == "chest" else "E: Read inscription")
 	if objective.carrier == peer:
 		return "G: Drop Jewel for teammate"
 	return ""
@@ -1017,7 +1057,33 @@ func player_hit(actor, peer: int, amount: float, blocked: bool, parried: bool, s
 	var popup := effect if amount == 0 and effect != "" else ("-" + number + (" (" + effect + ")" if effect != "" else ""))
 	journal.add("Combat", "%s hits %s for %s%s" % [source_name, actor.display_name, number, " (" + effect + ")" if effect != "" else ""], actor.floor_id, actor.position + Vector3.UP, popup, "blocked" if blocked else "incoming", peer, actor.last_damage_source)
 	if actor.health <= 0:
-		fail_party(actor.display_name)
+		release_jewel(actor, peer)
+		journal.add("Party", "%s is downed — a companion can revive them" % actor.display_name)
+
+func revive_companion(actor, actors: Dictionary) -> bool:
+	if actor.health <= 0 or actor.attack_phase != 0 or actor.cast_id != "" or not safe(actor):
+		return false
+	for other in actors.values():
+		if other == actor or other.health > 0 or other.floor_id != actor.floor_id:
+			continue
+		if horizontal_distance(actor.position, other.position) > 2.0 or not Combat.clear_path(actor, other.position):
+			continue
+		var center: Vector3 = other.position
+		center.y = floors[other.floor_id].position.y
+		var landing := arrival_position(other.floor_id, center, actors, other)
+		if landing == Vector3.INF:
+			continue
+		other.position = landing
+		other.health = other.max_health() * 0.3
+		other.stamina = 30.0
+		other.velocity = Vector3.ZERO
+		other.direction = Vector2.ZERO
+		other.collision_layer = 2
+		other.collision_mask = 7
+		journal.add("Party", "%s revives %s" % [actor.display_name, other.display_name])
+		sound(actor.floor_id, actor.position, 4.0, "potion")
+		return true
+	return false
 
 func fail_party(player_name: String) -> void:
 	if objective.result != "":
@@ -1187,11 +1253,17 @@ func secret_state() -> Array:
 	for id in floors:
 		if floors[id].secret_open:
 			result.append(id)
+	for id in fixtures:
+		if fixtures[id].used:
+			result.append(["fixture", id])
 	return result
 
 func apply_secrets(data: Array) -> void:
 	for id in data:
-		if floors.has(id):
+		if id is Array:
+			if id.size() == 2 and id[0] == "fixture" and fixtures.has(id[1]):
+				mark_fixture_used(fixtures[id[1]])
+		elif floors.has(id):
 			floors[id].reveal_secret()
 
 func advance_network_motion(delta: float) -> void:
@@ -1199,3 +1271,57 @@ func advance_network_motion(delta: float) -> void:
 		if mob.health > 0:
 			NetMotion.advance(mob.node, delta)
 	projectiles.advance_network_motion(delta)
+
+func add_fixture(id: int, floor_id: int, at: Vector3, kind: String) -> void:
+	var entry := {"floor": floor_id, "at": at, "kind": kind, "used": false, "node": null}
+	fixtures[id] = entry
+	if not visual:
+		return
+	var prop := Node3D.new()
+	floors[floor_id].add_child(prop)
+	prop.position = at - floors[floor_id].position
+	var mesh := MeshInstance3D.new()
+	var box := BoxMesh.new()
+	box.size = Vector3(0.75, 0.5, 0.48) if kind != "inscription" else Vector3(0.48, 0.9, 0.26)
+	mesh.mesh = box
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color("#8a653b") if kind != "inscription" else Color("#8b9292")
+	mesh.material_override = mat
+	prop.add_child(mesh)
+	mesh.position.y = box.size.y * 0.5
+	marker(prop, Vector3.ZERO, "CHEST [E]" if kind == "chest" else ("CRATE" if kind == "crate" else "INSCRIPTION [E]"), Color("#d3ae76"))
+	entry.node = prop
+
+func mark_fixture_used(entry: Dictionary) -> void:
+	entry.used = true
+	if is_instance_valid(entry.node):
+		entry.node.hide()
+
+func interact_fixture(actor) -> bool:
+	for entry in fixtures.values():
+		if entry.used or entry.kind == "crate" or entry.floor != actor.floor_id or horizontal_distance(actor.position, entry.at) > 1.7:
+			continue
+		if not Combat.clear_path(actor, entry.at + Vector3.UP * 0.5):
+			continue
+		mark_fixture_used(entry)
+		if entry.kind == "chest":
+			loot.spawn("potion", entry.floor, entry.at + Vector3.UP * 0.3)
+			journal.add("Loot", "%s opens a forgotten chest" % actor.display_name)
+			sound(entry.floor, entry.at, 4.0, "pickup")
+		else:
+			var lore := ["The gaoler hid the keys beneath the stones.", "The drowned chapel remembers its last prayer.", "The wardens sealed the Jewel with two runes."]
+			journal.add("Exploration", lore[entry.floor % lore.size()])
+		return true
+	return false
+
+func break_fixture(actor) -> bool:
+	for entry in fixtures.values():
+		if entry.used or entry.kind != "crate" or entry.floor != actor.floor_id:
+			continue
+		if not Combat.can_hit(actor.position, entry.at + Vector3.UP * 0.5, actor.heading, actor.attack_reach()) or not Combat.clear_path(actor, entry.at + Vector3.UP * 0.5):
+			continue
+		mark_fixture_used(entry)
+		loot.spawn("noise_stone", entry.floor, entry.at + Vector3.UP * 0.3, 2)
+		journal.add("Loot", "%s breaks a supply crate" % actor.display_name)
+		return true
+	return false

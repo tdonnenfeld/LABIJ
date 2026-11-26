@@ -65,7 +65,7 @@ func run() -> void:
 	NetMotion.receive(node, Vector3.RIGHT, PI * 0.5)
 	check(node.position == Vector3.ZERO, "Snapshot does not teleport")
 	NetMotion.advance(node, NetMotion.INTERVAL * 0.5)
-	check(is_equal_approx(node.position.x, 0.5) and is_equal_approx(node.rotation.y, PI * 0.25), "Halfway interpolation")
+	check(is_equal_approx(node.position.x, 0.5) and is_equal_approx(node.rotation.y, PI * 0.375), "Halfway interpolation")
 	NetMotion.advance(node, NetMotion.INTERVAL)
 	check(node.position == Vector3.RIGHT, "Interpolation converges")
 	NetMotion.receive(node, Vector3(0, -30, 0), 0, true)

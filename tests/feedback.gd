@@ -45,7 +45,13 @@ func run() -> void:
 	check(world.journal.history.any(func(e): return e.style == "damage"), "Monster hit must emit damage text")
 	actor.blocking = false
 	actor.take_damage(999.0, actor.position, false, "Ogre")
-	check(world.objective.result == "defeat" and partner.health == 100.0, "One death must end the run with a living partner")
+	var party := {1: actor, 2: partner}
+	world.update_objective(party, 0.1)
+	check(world.objective.result == "" and actor.health == 0.0 and partner.health == 100.0, "One downed player must not end the run with a living partner")
+	check(world.journal.history.back().message.contains("is downed"), "Downed player must be logged")
+	partner.take_damage(999.0, partner.position, false, "Ogre")
+	world.update_objective(party, 0.1)
+	check(world.objective.result == "defeat", "Full party wipe must end the run")
 	check(world.journal.history.back().message.contains("Expedition lost"), "Defeat must be logged")
 	var j := Journal.new()
 	for i in range(220):
