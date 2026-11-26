@@ -98,3 +98,7 @@ The client plays a quiet wind bed with faded edges, occasional spatial water dri
 ## Expedition Journal UI
 
 The setup menu and expedition result use parchment pages, and the combat HUD uses dark brass-framed plates with labelled HP/stamina/mana, separate ability slots, a parchment minimap and expedition log. Existing inventory and talent controls inherit the shared dark theme. No extra assets or fonts are required. See `docs/UI_ART_DIRECTION.md` for the palette, UI roadmap and deferred audio work. Final item icons and 3D models are not included in this pass.
+
+## Illustrated satchel
+
+The inventory [I] now has a parchment equipment spread, 12 carried slots with illustrated icons, clickable weapon/shield/armour cards, and selected-item stats with contextual actions. All 25 catalog IDs have original 64×64 SVG icons; enchanted variants use their base illustration. Jewel and fallback icons are included. Existing inventory capacity, equipment replacement, scroll conditions and server-authoritative item actions are unchanged. See `docs/UI_ART_DIRECTION.md` for icon conventions and the next grimoire milestone.
