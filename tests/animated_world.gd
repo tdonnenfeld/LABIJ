@@ -1,5 +1,7 @@
 extends SceneTree
 
+const IK = preload("res://game/visuals/limb_ik.gd")
+const Ragdoll = preload("res://game/visuals/visual_ragdoll.gd")
 const Motion = preload("res://game/visuals/motion_curves.gd")
 const Assets = preload("res://game/visuals/asset_registry.gd")
 const Rig = preload("res://game/visuals/actor_rig.gd")
@@ -23,6 +25,8 @@ func run() -> void:
 	check(is_equal_approx(Motion.blend(0.2, 10.0), 1.0 - pow(1.0 - Motion.blend(0.1, 10.0), 2.0)), "Frame-rate independent smoothing")
 	check(Motion.strike(0.0) == 0.0 and Motion.strike(0.22) == 1.0 and Motion.settle(1.0) == 1.0, "Strike and recovery curve endpoints")
 	check(Motion.swing("axe") != Motion.swing("spear"), "Distinct weapon trajectories")
+	var bend := IK.elbow_position(Vector3.ZERO, Vector3(1, 0, 0), Vector3.UP, 1.0, 1.0)
+	check(is_equal_approx(bend.length(), 1.0) and is_equal_approx(bend.distance_to(Vector3.RIGHT), 1.0), "Two-bone IK preserves limb lengths")
 	var parent := Node3D.new()
 	root.add_child(parent)
 	for kind in Assets.CHARACTERS:
@@ -32,6 +36,8 @@ func run() -> void:
 		check(Assets.scenes.has(kind) and rig.body != null and rig.arm_r != null and rig.leg_l != null, "Imported articulated model: " + kind)
 		check(rig.skeleton != null and rig.skeleton.get_bone_count() >= 9, "Skeletal joints: " + kind)
 		check(rig.skeleton.clip_player.has_animation("walk") and rig.skeleton.clip_player.has_animation("run"), "Locomotion clips: " + kind)
+		check(rig.skeleton.animation_tree.tree_root is AnimationNodeBlendSpace1D, "Locomotion blend tree: " + kind)
+		check(rig.skeleton.weighted_joints.size() > 4, "Weighted limb meshes: " + kind)
 		if kind != "rat":
 			check(rig.grip_r != null and rig.grip_l != null, "Equipment sockets: " + kind)
 		rig.animate(0.1, true, 0, false, false)
@@ -40,6 +46,12 @@ func run() -> void:
 		check(rig.ever_alive and rig.speed > 0.0, "Motion sampling")
 		rig.animate(1.0, false, 0, false, false)
 		check(absf(rig.pose + PI * 0.5) < 0.001, "Corpse pose")
+		if kind == "goblin":
+			var ragdoll := Ragdoll.new()
+			rig.add_child(ragdoll)
+			ragdoll.start(rig.skeleton, Vector3.ZERO)
+			check(ragdoll.bodies.size() == rig.skeleton.get_bone_count(), "Ragdoll bodies match bones")
+			ragdoll.free()
 		rig.free()
 	check(Assets.grain().get_width() == 16, "Shared low-res texture")
 	parent.free()
