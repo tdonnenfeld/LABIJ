@@ -18,3 +18,10 @@ const ENCOUNTERS := [
 
 static func stats(id: String) -> Array:
 	return TYPES[id]
+
+static func resistance(kind: String, domain: int) -> float:
+	if kind == "guardian" and domain == 6:
+		return 0.35
+	if kind == "mage" and domain >= 6 and domain <= 9:
+		return 0.2
+	return 0.0

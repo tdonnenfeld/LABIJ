@@ -2,6 +2,7 @@ extends Node3D
 
 const Dungeon = preload("res://game/dungeon.gd")
 const Combat = preload("res://game/combat.gd")
+const Threat = preload("res://game/combat/threat.gd")
 const Bestiary = preload("res://game/monsters/bestiary.gd")
 const Spells = preload("res://game/combat/spells.gd")
 const Projectiles = preload("res://game/combat/projectiles.gd")
@@ -78,7 +79,7 @@ func build(seed_value: int, render_geometry: bool, party_size: int = 1) -> void:
 				label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 				label.position.y = float(stats[11]) * 0.5 + 0.3
 				mob.add_child(label)
-			monsters[i * 1000 + j] = {"node": mob, "kind": kind, "floor": i, "target": 0, "health": float(stats[1]), "phase": 0, "timer": 0.0, "attack_target": 0, "aim": Vector3.ZERO, "hurt": 0.0, "bleed": 0.0, "bleed_damage": 0.0, "bleed_owner": 0, "stun": 0.0, "burn": 0.0, "burn_damage": 0.0, "burn_owner": 0, "slow": 0.0}
+			monsters[i * 1000 + j] = {"node": mob, "kind": kind, "floor": i, "target": 0, "threat": {}, "health": float(stats[1]), "phase": 0, "timer": 0.0, "attack_target": 0, "aim": Vector3.ZERO, "hurt": 0.0, "bleed": 0.0, "bleed_damage": 0.0, "bleed_owner": 0, "stun": 0.0, "burn": 0.0, "burn_damage": 0.0, "burn_owner": 0, "slow": 0.0, "poison": 0.0, "poison_damage": 0.0, "poison_owner": 0}
 
 func marker(level: Node3D, at: Vector3, caption: String, color: Color) -> void:
 	var mesh := MeshInstance3D.new()
@@ -148,6 +149,7 @@ func transfer(actor, peer_id: int) -> bool:
 		var mob = followers[i]
 		mob.phase = 0
 		mob.timer = 0.0
+		mob.threat = {peer_id: maxf(Threat.PULL, mob.threat.get(peer_id, 0.0))}
 		mob.floor = destination
 		mob.node.position = arrival + Vector3(1.0 + float(i % 3) * 0.6, float(Bestiary.stats(mob.kind)[11]) * 0.5, float(i / 3) * 0.6)
 	return true
@@ -162,6 +164,7 @@ func simulate(actors: Dictionary, delta: float) -> void:
 		if mob.burn > 0:
 			var burn_elapsed := minf(delta, mob.burn)
 			mob.burn -= burn_elapsed
+			Threat.add(mob, mob.burn_owner, minf(mob.health, mob.burn_damage * burn_elapsed))
 			mob.health = maxf(0.0, mob.health - mob.burn_damage * burn_elapsed)
 			if mob.health <= 0:
 				reward_kill(mob, actors.get(mob.burn_owner), actors)
@@ -169,25 +172,45 @@ func simulate(actors: Dictionary, delta: float) -> void:
 		if mob.bleed > 0:
 			var elapsed := minf(delta, mob.bleed)
 			mob.bleed -= elapsed
+			Threat.add(mob, mob.bleed_owner, minf(mob.health, mob.bleed_damage * elapsed))
 			mob.health = maxf(0.0, mob.health - mob.bleed_damage * elapsed)
 			if mob.health <= 0:
 				reward_kill(mob, actors.get(mob.bleed_owner), actors)
+				continue
+		if mob.poison > 0:
+			var elapsed := minf(delta, mob.poison)
+			mob.poison -= elapsed
+			var damage := minf(mob.health, mob.poison_damage * elapsed)
+			Threat.add(mob, mob.poison_owner, damage)
+			mob.health -= damage
+			if mob.health <= 0:
+				reward_kill(mob, actors.get(mob.poison_owner), actors)
 				continue
 		if mob.stun > 0:
 			mob.stun = maxf(0.0, mob.stun - delta)
 			continue
 		var node: Node3D = mob.node
 		var closest := 12.0
-		var target := 0
+		var seen := 0
+		var eligible := {}
+		var distances := {}
 		for id in actors:
 			var actor = actors[id]
 			if actor.floor_id != mob.floor or actor.health <= 0:
 				continue
 			var distance := horizontal_distance(actor.position, node.position)
-			if distance < closest:
+			eligible[id] = true
+			distances[id] = distance
+			if distance < closest and Combat.clear_path(node, actor.position):
 				closest = distance
-				target = id
+				seen = id
+		var target := Threat.choose(mob, eligible, distances)
+		if target == 0 and seen != 0:
+			Threat.add(mob, seen, Threat.PULL)
+			target = seen
 		mob.target = target
+		if target != 0:
+			closest = distances[target]
 		if mob.phase != 0:
 			mob.timer -= delta
 			if mob.timer <= 0:
@@ -195,7 +218,7 @@ func simulate(actors: Dictionary, delta: float) -> void:
 					var victim = actors.get(mob.attack_target)
 					if mob.kind in ["archer", "mage"]:
 						var direction: Vector3 = mob.aim - node.position
-						projectiles.launch(mob.floor, node.position, direction, 14.0 if mob.kind == "archer" else 9.0, float(stats[3]), float(stats[2]), Color("#d8c7a0") if mob.kind == "archer" else Color("#cf73e8"), 0, true, "", -1)
+						projectiles.launch(mob.floor, node.position, direction, 14.0 if mob.kind == "archer" else 9.0, float(stats[3]), float(stats[2]), Color("#d8c7a0") if mob.kind == "archer" else Color("#cf73e8"), 0, true, "hex" if mob.kind == "mage" else "", -1)
 					elif victim != null and victim.health > 0 and victim.floor_id == mob.floor and horizontal_distance(victim.position, node.position) <= float(stats[3]) and Combat.clear_path(node, victim.position):
 						victim.take_damage(float(stats[2]), node.position)
 					elif victim != null and victim.health > 0 and victim.floor_id == mob.floor and horizontal_distance(victim.position, node.position) <= 4.0:
@@ -254,7 +277,7 @@ func monster_snapshot() -> Dictionary:
 	var states := {}
 	for id in monsters:
 		var mob = monsters[id]
-		states[id] = [mob.floor, mob.node.position, mob.health, mob.phase, mob.hurt, mob.stun, mob.bleed, mob.burn, mob.slow]
+		states[id] = [mob.floor, mob.node.position, mob.health, mob.phase, mob.hurt, mob.stun, mob.bleed, mob.burn, mob.slow, mob.target, mob.poison]
 	return states
 
 func apply_monsters(states: Dictionary) -> void:
@@ -269,9 +292,19 @@ func apply_monsters(states: Dictionary) -> void:
 			monsters[id].bleed = states[id][6]
 			monsters[id].burn = states[id][7]
 			monsters[id].slow = states[id][8]
+			monsters[id].target = states[id][9]
+			monsters[id].poison = states[id][10]
 
 func strike(actor, party: Dictionary = {}) -> bool:
 	if actor.health <= 0:
+		return false
+	var weapon = Catalog.get_item(actor.inventory.weapon)
+	if weapon.projectile_speed > 0:
+		var owner = party.find_key(actor)
+		var direction := Vector3(-sin(actor.heading), 0, -cos(actor.heading))
+		var effect := "arrow_poison" if actor.skills.learned.has("venom_arrow") else "arrow"
+		projectiles.launch(actor.floor_id, actor.position, direction, weapon.projectile_speed, actor.attack_reach(), actor.attack_damage(), weapon.tint, 0 if owner == null else owner, false, effect, 10, actor.skills.bonus("pierce", 10))
+		actor.empowered = ""
 		return false
 	var hits: Array = []
 	var nearest = null
@@ -305,6 +338,9 @@ func hit_monster(actor, mob: Dictionary, party: Dictionary) -> void:
 	if mob.phase == 2:
 		damage *= 1.0 + actor.skills.bonus("precision", domain)
 	damage *= 1.0 - float(stats[7]) * (1.0 - actor.skills.bonus("pierce", domain))
+	var peer = party.find_key(actor)
+	if peer != null:
+		Threat.add(mob, peer, minf(mob.health, damage) * (1.0 + actor.skills.bonus("threat")))
 	mob.health = maxf(0.0, mob.health - damage)
 	mob.hurt = 0.18
 	actor.skills.credit(domain, 8)
@@ -318,6 +354,10 @@ func hit_monster(actor, mob: Dictionary, party: Dictionary) -> void:
 		var owner = party.find_key(actor)
 		mob.bleed_owner = 0 if owner == null else owner
 	mob.stun = maxf(mob.stun, actor.skills.bonus("stagger", domain))
+	if Catalog.get_item(actor.inventory.weapon).poison > 0:
+		mob.poison = 5.0
+		mob.poison_damage = Catalog.get_item(actor.inventory.weapon).poison
+		mob.poison_owner = 0 if peer == null else peer
 	if actor.empowered in ["impale", "bash"]:
 		mob.stun = maxf(mob.stun, 2.0)
 		mob.phase = 0
@@ -325,6 +365,7 @@ func hit_monster(actor, mob: Dictionary, party: Dictionary) -> void:
 func reward_kill(mob: Dictionary, killer, party: Dictionary) -> void:
 	mob.phase = 0
 	mob.target = 0
+	mob.threat.clear()
 	mob.bleed = 0.0
 	var reward: int = int(Bestiary.stats(mob.kind)[8]) + mob.floor * 25
 	for teammate in party.values():
@@ -336,9 +377,9 @@ func reward_kill(mob: Dictionary, killer, party: Dictionary) -> void:
 		killer.gain_xp(reward)
 		killer.skills.credit(0, 10)
 		killer.health = minf(killer.max_health(), killer.health + killer.skills.bonus("heal_kill"))
-	var choices := ["potion", "potion", "axe", "spear", "iron_shield", "leather", "mail", "staff", "scroll_firebolt", "scroll_frostbolt", "scroll_spark", "scroll_stonebolt"]
+	var choices := ["potion", "potion", "axe", "spear", "iron_shield", "leather", "mail", "staff", "bow", "venom_dagger", "ward_mail", "scroll_firebolt", "scroll_frostbolt", "scroll_spark", "scroll_stonebolt"]
 	if mob.floor >= 1:
-		choices.append_array(["scroll_fireball", "scroll_freeze", "scroll_thunder", "scroll_boulder"])
+		choices.append_array(["longbow", "ember_staff", "scroll_fireball", "scroll_freeze", "scroll_thunder", "scroll_boulder"])
 	var at: Vector3 = mob.node.position
 	at.y = floors[mob.floor].position.y + 0.3
 	loot.spawn(choices[loot_rng.randi_range(0, choices.size() - 1)], mob.floor, at)
@@ -360,7 +401,7 @@ func discover(actor) -> bool:
 func cast(actor, owner: int, id: String) -> void:
 	var stats := Spells.get_spell(id)
 	var direction := Vector3(-sin(actor.heading), 0, -cos(actor.heading))
-	var damage: float = stats[2] * (1.0 + actor.skills.bonus("spell_damage", stats[0]))
+	var damage: float = stats[2] * (1.0 + actor.skills.bonus("spell_damage", stats[0]) + Catalog.get_item(actor.inventory.weapon).spell_power)
 	var bonus: float = actor.skills.bonus("burn_bonus", stats[0]) + actor.skills.bonus("slow_bonus", stats[0])
 	projectiles.launch(actor.floor_id, actor.position, direction, stats[3], stats[4], damage, stats[6], owner, false, stats[7], stats[0], bonus)
 
@@ -394,6 +435,10 @@ func apply_spell_damage(shot: Dictionary, mob: Dictionary, actors: Dictionary) -
 		reward_kill(mob, owner, actors)
 		return
 	match shot.effect:
+		"arrow_poison":
+			mob.poison = 5.0
+			mob.poison_damage = 2.0
+			mob.poison_owner = shot.owner
 		"burn", "blast":
 			mob.burn = 4.0
 			mob.burn_damage = 3.0 + shot.bonus

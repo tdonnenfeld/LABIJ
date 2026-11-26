@@ -17,7 +17,12 @@ const ITEMS := {
 	"scroll_boulder": preload("res://content/items/scroll_boulder.tres"),
 	"staff": preload("res://content/items/staff.tres"),
 	"leather": preload("res://content/items/leather.tres"),
-	"mail": preload("res://content/items/mail.tres")
+	"mail": preload("res://content/items/mail.tres"),
+	"bow": preload("res://content/items/bow.tres"),
+	"longbow": preload("res://content/items/longbow.tres"),
+	"venom_dagger": preload("res://content/items/venom_dagger.tres"),
+	"ember_staff": preload("res://content/items/ember_staff.tres"),
+	"ward_mail": preload("res://content/items/ward_mail.tres")
 }
 
 static func get_item(id: String) -> Resource:

@@ -14,3 +14,8 @@ extends Resource
 @export var spell_id := ""
 @export var mana_bonus := 0.0
 @export var armor := 0.0
+
+@export var projectile_speed := 0.0
+@export var poison := 0.0
+@export var spell_power := 0.0
+@export var magic_resistance := 0.0

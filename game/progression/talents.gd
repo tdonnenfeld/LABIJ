@@ -56,7 +56,14 @@ const NODES := [["vitality",0,"Vitality",25,"","hp",15,"+15 max HP",false],
 	["earth_power",9,"Density",40,"stonebolt","spell_damage",0.25,"+25% earth damage",false],
 	["boulder",9,"Boulder",65,"earth_power","active",0,"Heavy impact and stagger",false],
 	["earth_skin",9,"Stone Skin",40,"stonebolt","mitigation",0.1,"10% additional damage mitigation",false],
-	["runner",5,"Runner",40,"footwork","sprint_cost",0.25,"25% less sprint stamina consumption",false]]
+	["runner",5,"Runner",40,"footwork","sprint_cost",0.25,"25% less sprint stamina consumption",false],
+	["archery",10,"Archery",25,"","weapon",0.15,"+15% bow damage",false],
+	["quickshot",10,"Quick Shot",40,"archery","speed",0.2,"20% shorter bow cycle",false],
+	["aim",10,"Deadeye",40,"archery","reach",3,"+3m bow range",false],
+	["venom_arrow",10,"Venom Arrow",65,"aim","poison_arrow",1,"Arrows poison for 5s",false],
+	["pierce_arrow",10,"Piercing Arrow",65,"quickshot","pierce",0.6,"Ignore 60% armour",false],
+	["steady",10,"Steady Hand",50,"quickshot","cost",0.25,"25% less bow stamina",false],
+	["protector",4,"Protector",50,"guard","threat",0.5,"Generate 50% more threat from damage",false]]
 
 static func find(id: String) -> Array:
 	for node in NODES:
