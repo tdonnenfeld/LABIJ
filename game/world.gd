@@ -1,5 +1,6 @@
 extends Node3D
 
+const NetMotion = preload("res://game/network/net_motion.gd")
 const Numbers = preload("res://game/ui/numbers.gd")
 const Acoustics = preload("res://game/world/noise.gd")
 const Vision = preload("res://game/monsters/vision.gd")
@@ -21,6 +22,8 @@ var gate_label: Label3D
 const Hazards = preload("res://game/world/hazards.gd")
 var hazards := Hazards.new()
 var branch_entries: Dictionary = {}
+var escape_entries: Dictionary = {}
+var escape_labels: Dictionary = {}
 const Bestiary = preload("res://game/monsters/bestiary.gd")
 const Spells = preload("res://game/combat/spells.gd")
 const Projectiles = preload("res://game/combat/projectiles.gd")
@@ -62,10 +65,16 @@ func build(seed_value: int, render_geometry: bool, size: int = 1) -> void:
 		var room_count := (5 if i >= Routes.MAIN_COUNT else 9) + 3 * (clampi(party_size, 1, 8) - 1)
 		level.generate(seed_value + i * 7919, visual, room_count, i >= Routes.MAIN_COUNT)
 		floors[i] = level
+		if i in [2, 3, Routes.SANCTUARY] and not level.side_rooms.is_empty():
+			var cell: Vector2i = level.side_rooms[0]
+			var at := Vector3(cell.x * Dungeon.CELL, 0, cell.y * Dungeon.CELL)
+			escape_entries[i] = level.position + at
+			if visual:
+				escape_labels[i] = marker(level, at, "SEALED ESCAPE SHAFT", Color("#c6aa79"))
 		if i == 1:
 			tablet_position = level.position + Vector3(3, 0, 0)
 			if visual:
-				marker(level, Vector3(6, 0, 0), "ANCIENT TABLET [T]", Color("#8ab8a0"))
+				marker(level, Vector3(3, 0, 0), "ANCIENT TABLET [T]", Color("#8ab8a0"))
 		for branch in Routes.PARENTS:
 			if Routes.PARENTS[branch] == i:
 				var entry: Vector2i = level.end_cell if branch == Routes.SANCTUARY else branch_cell(level, rng)
@@ -86,7 +95,7 @@ func build(seed_value: int, render_geometry: bool, size: int = 1) -> void:
 			objective.jewel_position = stair_position(i, true)
 		var cells: Array[Vector2i] = []
 		for cell in level.room_tiles:
-			if Vector2(cell).length() >= 4.0 and Vector2(cell - level.end_cell).length() >= 2.0 and not near_branch_entry(i, level.position + Vector3(cell.x * Dungeon.CELL, 0, cell.y * Dungeon.CELL)):
+			if (not escape_entries.has(i) or horizontal_distance(level.position + Vector3(cell.x * Dungeon.CELL, 0, cell.y * Dungeon.CELL), escape_entries[i]) >= 4.0) and Vector2(cell).length() >= 4.0 and Vector2(cell - level.end_cell).length() >= 2.0 and not near_branch_entry(i, level.position + Vector3(cell.x * Dungeon.CELL, 0, cell.y * Dungeon.CELL)):
 				cells.append(cell)
 		cells.sort()
 		var count := mini(cells.size(), encounter_count(i, party_size))
@@ -122,7 +131,10 @@ func build(seed_value: int, render_geometry: bool, size: int = 1) -> void:
 
 func spawn_monster(id: int, floor_id: int, kind: String, at: Vector3, group_size: int, boss: bool, reserve: bool = false) -> void:
 	var stats := Bestiary.stats(kind)
-	var mob := Node3D.new()
+	var mob := CharacterBody3D.new()
+	mob.motion_mode = CharacterBody3D.MOTION_MODE_FLOATING
+	mob.collision_layer = 0 if reserve else 4
+	mob.collision_mask = 0 if reserve else 7
 	add_child(mob)
 	var hp: float = float(stats[1]) * (1.0 + 0.35 * (clampi(group_size, 1, 8) - 1) if boss else 1.0)
 	mob.position = at + Vector3.UP * float(stats[11]) * 0.5
@@ -167,6 +179,12 @@ func spawn_monster(id: int, floor_id: int, kind: String, at: Vector3, group_size
 			ring.position.y = 0.04 - float(stats[11]) * 0.5
 			ring.hide()
 
+	var collision := CollisionShape3D.new()
+	var capsule := CapsuleShape3D.new()
+	capsule.radius = stats[10]
+	capsule.height = stats[11]
+	collision.shape = capsule
+	mob.add_child(collision)
 	monsters[id] = {"node": mob, "kind": kind, "floor": floor_id, "target": 0, "threat": {}, "health": 0.0 if reserve else hp, "boss": boss, "reserve": reserve, "rewarded": false, "max_health": hp, "forced_target": 0, "force_timer": 0.0, "phase": 0, "timer": 0.0, "attack_target": 0, "aim": Vector3.ZERO, "hurt": 0.0, "bleed": 0.0, "bleed_damage": 0.0, "bleed_owner": 0, "stun": 0.0, "burn": 0.0, "burn_damage": 0.0, "burn_owner": 0, "slow": 0.0, "poison": 0.0, "poison_damage": 0.0, "poison_owner": 0, "dot_amount": {}, "dot_time": 0.0, "asleep": not boss and not reserve and awareness_rng.randf() < 0.45, "investigate": 0.0, "heard_at": at, "roam_goal": Acoustics.cell(at), "roam_wait": awareness_rng.randf_range(0.5, 3.0), "stealth_seen": {}, "ambush_used": false, "backstab_seen": {}, "step_distance": 0.0}
 	mob.visible = not reserve
 
@@ -213,6 +231,11 @@ func near_branch_entry(floor_id: int, at: Vector3) -> bool:
 	return false
 
 func route_at(id: int, at: Vector3) -> Dictionary:
+	if escape_entries.has(id) and horizontal_distance(at, escape_entries[id]) <= USE_RADIUS:
+		if not objective.started:
+			return {"locked": true, "label": "Sealed escape shaft", "step": 0}
+		var upper := 3 if id == Routes.SANCTUARY else id - 1
+		return {"destination": upper, "arrival": stair_position(upper, false), "entry": escape_entries[id], "label": "Escape shaft", "step": -1}
 	if id >= Routes.MAIN_COUNT and horizontal_distance(at, stair_position(id, false)) <= USE_RADIUS:
 		return {"destination": Routes.PARENTS[id], "arrival": branch_entries[id], "entry": stair_position(id, false), "label": "Return", "step": -1}
 	for branch in branch_entries:
@@ -237,12 +260,14 @@ func visible_floor(id: int) -> void:
 	if gate_label:
 		gate_label.text = "JEWEL SANCTUARY [E]" if objective.gate_open() else "SANCTUARY LOCKED — %d/2 RUNES" % objective.runes.size()
 	loot.visible_floor(id)
+	for label in escape_labels.values():
+		label.text = "ESCAPE SHAFT [E]" if objective.started else "SEALED ESCAPE SHAFT"
 	projectiles.visible_floor(id)
 	for key in floors:
 		floors[key].visible = key == id
 	for mob in monsters.values():
 		mob.node.visible = mob.floor == id and mob.health > 0
-		if visual:
+		if visual and mob.node.visible:
 			var mesh: MeshInstance3D = mob.node.get_child(0)
 			mesh.material_override.albedo_color = Color("#ffffff") if mob.hurt > 0 else (Color("#e5a64e") if mob.phase == 1 else (Color("#8aa7e0") if mob.stun > 0 or mob.slow > 0 else (Color("#e96c38") if mob.burn > 0 else Bestiary.stats(mob.kind)[9])))
 			var label: Label3D = mob.node.get_child(1)
@@ -258,6 +283,8 @@ func transfer(actor, peer_id: int, actors: Dictionary = {}) -> bool:
 	if interact_objective(actor, peer_id):
 		return true
 	var old: int = actor.floor_id
+	if discover_secret(actor):
+		return true
 	var route := route_at(old, actor.position)
 	if route.is_empty() or route.get("locked", false):
 		return false
@@ -274,8 +301,14 @@ func transfer(actor, peer_id: int, actors: Dictionary = {}) -> bool:
 	actor.position = landing
 	actor.velocity = Vector3.ZERO
 	actor.direction = Vector2.ZERO
+	var occupied_actors := actors.duplicate()
+	occupied_actors[peer_id] = actor
 	for i in range(followers.size()):
 		var mob = followers[i]
+		var stats := Bestiary.stats(mob.kind)
+		var landing_mob := free_landing(destination, arrival, occupied_actors, float(stats[10]), float(stats[11]) * 0.5, null, mob.node)
+		if landing_mob == Vector3.INF:
+			continue
 		mob.phase = 0
 		mob.timer = 0.0
 		mob.threat = {peer_id: maxf(Threat.PULL, mob.threat.get(peer_id, 0.0))}
@@ -284,13 +317,15 @@ func transfer(actor, peer_id: int, actors: Dictionary = {}) -> bool:
 		mob.asleep = false
 		mob.investigate = 0.0
 		mob.roam_goal = Acoustics.cell(arrival)
-		mob.node.position = follower_arrival(destination, arrival, mob.kind, i)
+		mob.node.position = landing_mob
 	return true
 
 func simulate(actors: Dictionary, delta: float) -> void:
 	if objective.result != "":
 		return
 	hazards.step(actors, delta)
+	for mob in monsters.values():
+		set_monster_collision(mob)
 	var occupied := {}
 	for actor in actors.values():
 		if actor.health > 0:
@@ -415,7 +450,7 @@ func simulate(actors: Dictionary, delta: float) -> void:
 		move_monster(mob, actors[target].position, delta, float(stats[4]) * (1.0 + 0.08 * objective.pressure()))
 
 func move_monster(mob: Dictionary, at: Vector3, delta: float, speed: float) -> void:
-	var node: Node3D = mob.node
+	var node: CharacterBody3D = mob.node
 	var level = floors[mob.floor]
 	var start := Acoustics.cell(node.position)
 	var goal := Acoustics.cell(at)
@@ -432,7 +467,15 @@ func move_monster(mob: Dictionary, at: Vector3, delta: float, speed: float) -> v
 			destination = Vector3(center.x, node.position.y, node.position.z)
 	face_toward(mob, destination)
 	var before := node.position
-	node.position = node.position.move_toward(destination, delta * speed * (0.5 if mob.slow > 0 else 1.0))
+	var motion := (destination - node.position).limit_length(delta * speed * (0.5 if mob.slow > 0 else 1.0))
+	var hit := node.move_and_collide(motion, false, 0.001)
+	if hit:
+		# Queue at a choke, but slide along other bodies when space permits.
+		var tangent := hit.get_remainder().slide(hit.get_normal())
+		tangent.y = 0.0
+		if tangent.length_squared() > 0.000001:
+			node.move_and_collide(tangent, false, 0.001)
+
 	mob.step_distance += horizontal_distance(before, node.position)
 	if mob.step_distance >= 1.5:
 		mob.step_distance = fmod(mob.step_distance, 1.5)
@@ -586,11 +629,17 @@ func monster_snapshot() -> Dictionary:
 		states[id] = [mob.floor, mob.node.position, mob.health, mob.phase, mob.hurt, mob.stun, mob.bleed, mob.burn, mob.slow, mob.target, mob.poison, mob.asleep, mob.investigate, mob.threat.duplicate(), mob.node.rotation.y]
 	return states
 
-func apply_monsters(states: Dictionary) -> void:
+func apply_monsters(states: Dictionary, smooth: bool = false) -> void:
 	for id in states:
 		if monsters.has(id):
+			var mob: Dictionary = monsters[id]
+			if smooth:
+				NetMotion.receive(mob.node, states[id][1], states[id][14], mob.floor != states[id][0] or mob.health <= 0 or states[id][2] <= 0)
+			else:
+				NetMotion.reset(mob.node)
+				mob.node.position = states[id][1]
+				mob.node.rotation.y = states[id][14]
 			monsters[id].floor = states[id][0]
-			monsters[id].node.position = states[id][1]
 			monsters[id].health = states[id][2]
 			monsters[id].phase = states[id][3]
 			monsters[id].hurt = states[id][4]
@@ -603,7 +652,7 @@ func apply_monsters(states: Dictionary) -> void:
 			monsters[id].asleep = states[id][11]
 			monsters[id].investigate = states[id][12]
 			monsters[id].threat = states[id][13]
-			monsters[id].node.rotation.y = states[id][14]
+			set_monster_collision(monsters[id])
 
 func strike(actor, party: Dictionary = {}) -> bool:
 	if actor.health <= 0:
@@ -706,6 +755,7 @@ func hit_monster(actor, mob: Dictionary, party: Dictionary) -> void:
 		mob.phase = 0
 
 func reward_kill(mob: Dictionary, killer, party: Dictionary) -> void:
+	set_monster_collision(mob)
 	if mob.get("rewarded", false):
 		return
 	mob.rewarded = true
@@ -899,6 +949,7 @@ func interact_objective(actor, peer: int) -> bool:
 			if mob.reserve and not mob.rewarded:
 				mob.health = mob.max_health
 				mob.asleep = false
+				set_monster_collision(mob)
 	return true
 
 func release_jewel(actor, peer: int) -> bool:
@@ -1026,13 +1077,16 @@ func voice_audible(speaker, listener, radius: float) -> bool:
 	return Acoustics.audible(distances, speaker.position, listener.position, radius)
 
 func arrival_position(floor_id: int, center: Vector3, actors: Dictionary, arriving = null) -> Vector3:
+	return free_landing(floor_id, center, actors, 0.32, 1.0, arriving)
+
+func free_landing(floor_id: int, center: Vector3, actors: Dictionary, radius: float, height: float, arriving = null, ignored_mob = null) -> Vector3:
 	var level = floors[floor_id]
 	var candidates: Array[Vector3] = []
 	for z in range(-2, 3):
 		for x in range(-2, 3):
 			var offset := Vector3(x * 0.85, 0, z * 0.85)
 			if offset.length() <= USE_RADIUS:
-				candidates.append(center + offset + Vector3.UP)
+				candidates.append(center + offset + Vector3.UP * height)
 	candidates.sort_custom(func(a: Vector3, b: Vector3):
 		var da := a.distance_squared_to(center)
 		var db := b.distance_squared_to(center)
@@ -1043,16 +1097,21 @@ func arrival_position(floor_id: int, center: Vector3, actors: Dictionary, arrivi
 		return a.z < b.z)
 	for at in candidates:
 		var clear := true
-		for x in [-0.36, 0.36]:
-			for z in [-0.36, 0.36]:
+		for x in [-radius - 0.12, radius + 0.12]:
+			for z in [-radius - 0.12, radius + 0.12]:
 				if not level.room_tiles.has(Acoustics.cell(at + Vector3(x, 0, z))):
 					clear = false
 		if not clear:
 			continue
 		for other in actors.values():
-			if other != arriving and other.health > 0 and other.floor_id == floor_id and horizontal_distance(at, other.position) < 0.74:
+			if other != arriving and other.health > 0 and other.floor_id == floor_id and horizontal_distance(at, other.position) < radius + 0.32 + 0.10:
 				clear = false
 				break
+		if clear:
+			for mob in monsters.values():
+				if mob.node != ignored_mob and mob.floor == floor_id and mob.health > 0 and horizontal_distance(at, mob.node.position) < radius + float(Bestiary.stats(mob.kind)[10]) + 0.10:
+					clear = false
+					break
 		if clear:
 			return at
 	return Vector3.INF
@@ -1069,3 +1128,47 @@ func follower_arrival(floor_id: int, arrival: Vector3, kind: String, index: int)
 		at.z = clampf(at.z, (bounds.position.y - 0.5) * Dungeon.CELL + clearance, (bounds.end.y - 0.5) * Dungeon.CELL - clearance)
 		break
 	return at
+
+func set_monster_collision(mob: Dictionary) -> void:
+	var alive: bool = mob.health > 0.0
+	mob.node.collision_layer = 4 if alive else 0
+	mob.node.collision_mask = 7 if alive else 0
+
+func secret_near(actor) -> bool:
+	var level = floors[actor.floor_id]
+	if level.secret_open or level.hidden_tiles.is_empty():
+		return false
+	var normal := Vector3(level.secret_direction.x, 0, level.secret_direction.y)
+	var offset: Vector3 = actor.position - level.secret_position()
+	return horizontal_distance(actor.position, level.secret_position()) <= 1.7 and offset.dot(normal) <= 0.0
+
+func discover_secret(actor) -> bool:
+	if not secret_near(actor):
+		return false
+	var level = floors[actor.floor_id]
+	if not level.reveal_secret():
+		return false
+	var cell: Vector2i = level.hidden_room
+	var at: Vector3 = level.position + Vector3(cell.x * Dungeon.CELL, 0.3, cell.y * Dungeon.CELL)
+	loot.spawn("ward_ring" if actor.floor_id < 2 else "ward_amulet", actor.floor_id, at)
+	loot.spawn("potion", actor.floor_id, at + Vector3(0.65, 0, 0), 3)
+	journal.add("Loot", "%s discovers a hidden chamber" % actor.display_name)
+	return true
+
+func secret_state() -> Array:
+	var result: Array = []
+	for id in floors:
+		if floors[id].secret_open:
+			result.append(id)
+	return result
+
+func apply_secrets(data: Array) -> void:
+	for id in data:
+		if floors.has(id):
+			floors[id].reveal_secret()
+
+func advance_network_motion(delta: float) -> void:
+	for mob in monsters.values():
+		if mob.health > 0:
+			NetMotion.advance(mob.node, delta)
+	projectiles.advance_network_motion(delta)
