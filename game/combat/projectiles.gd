@@ -12,7 +12,7 @@ func launch(floor_id: int, at: Vector3, direction: Vector3, speed: float, reach:
 	var id := next_id
 	next_id += 1
 	var node := make_node(at, color, effect)
-	shots[id] = {"node": node, "floor": floor_id, "velocity": direction.normalized() * speed, "remaining": reach, "damage": damage, "color": color, "owner": source_peer, "enemy": enemy, "effect": effect, "domain": domain, "bonus": bonus}
+	shots[id] = {"node": node, "floor": floor_id, "velocity": direction.normalized() * speed, "remaining": reach, "damage": damage, "color": color, "owner": source_peer, "enemy": enemy, "effect": effect, "domain": domain, "bonus": bonus, "fuse": 1.8, "bounces": 0}
 
 func make_node(at: Vector3, color: Color, effect: String = "") -> Node3D:
 	var node := Node3D.new()
@@ -78,10 +78,17 @@ func step(world, actors: Dictionary, delta: float) -> void:
 		var shot: Dictionary = shots[id]
 		var from: Vector3 = shot.node.position
 		if shot.effect == "blast":
+			shot.fuse -= delta
+			if shot.fuse <= 0.0:
+				world.spell_blast(shot, from, actors)
+				remove(id)
+				continue
 			shot.velocity.y -= 9.8 * delta
 		elif shot.effect.begins_with("arrow") or shot.effect == "stone":
 			shot.velocity.y -= 2.0 * delta
-		var travel: float = minf(shot.remaining, shot.velocity.length() * delta)
+		var travel: float = shot.velocity.length() * delta if shot.effect == "blast" else minf(shot.remaining, shot.velocity.length() * delta)
+		if travel < 0.00001:
+			continue
 		var to: Vector3 = from + shot.velocity.normalized() * travel
 		var query := PhysicsRayQueryParameters3D.create(from, to, 1)
 		var wall := get_world_3d().direct_space_state.intersect_ray(query)
@@ -115,6 +122,13 @@ func step(world, actors: Dictionary, delta: float) -> void:
 				if time >= 0 and time < limit:
 					limit = time
 					target = mob
+		if not shot.enemy and shot.effect != "blast":
+			var fixture_hit: float = world.projectile_fixture_hit(shot.floor, from, to, limit)
+			if fixture_hit >= 0.0:
+				if shot.effect.begins_with("arrow"):
+					world.recover_arrow(shot.floor, from.lerp(to, fixture_hit))
+				remove(id)
+				continue
 		if target != null:
 			if shot.enemy:
 				target.take_damage(shot.damage, from, shot.effect == "hex", "Enemy spell" if shot.effect == "hex" else "Enemy arrow")
@@ -123,17 +137,24 @@ func step(world, actors: Dictionary, delta: float) -> void:
 					world.spell_blast(shot, from.lerp(to, limit), actors)
 				else:
 					world.spell_hit(shot, target, actors)
+				if shot.effect.begins_with("arrow"):
+					world.recover_arrow(shot.floor, from.lerp(to, limit))
 			remove(id)
 		elif limit <= 1.0:
 			if shot.effect == "blast":
-				world.spell_blast(shot, from.lerp(to, maxf(0.0, limit - 0.01)), actors)
+				shot.node.position = wall.position + wall.normal * 0.06
+				shot.velocity = shot.velocity.bounce(wall.normal) * 0.58
+				shot.bounces += 1
+				continue
+			if not shot.enemy and shot.effect.begins_with("arrow"):
+				world.recover_arrow(shot.floor, from.lerp(to, maxf(0.0, limit - 0.02)))
 			remove(id)
 		else:
 			shot.node.position = to
 			shot.remaining -= travel
-			if shot.remaining <= 0:
-				if shot.effect == "blast":
-					world.spell_blast(shot, to, actors)
+			if shot.remaining <= 0 and shot.effect != "blast":
+				if not shot.enemy and shot.effect.begins_with("arrow"):
+					world.recover_arrow(shot.floor, to)
 				remove(id)
 
 func state() -> Dictionary:
