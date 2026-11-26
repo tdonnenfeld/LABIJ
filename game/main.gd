@@ -26,6 +26,15 @@ var action_bar: Label
 const Minimap = preload("res://game/ui/minimap.gd")
 var minimap: Control
 var map_timer := 0.0
+const Profiles = preload("res://game/progression/profiles.gd")
+const NoiseMeter = preload("res://game/ui/noise_meter.gd")
+var noise_meter: Control
+var character_name: LineEdit
+var species_selector: OptionButton
+var background_selector: OptionButton
+var profile_details: Label
+var pending_profiles: Dictionary = {}
+var selected_profile: Array = ["", 0, 0]
 var noise_label: Label
 var target_label: Label
 const Catalog = preload("res://game/items/catalog.gd")
@@ -149,6 +158,12 @@ func _ready() -> void:
 		noise_label.position = Vector2(16, 184)
 		layer.add_child(noise_label)
 		noise_label.hide()
+		noise_meter = NoiseMeter.new()
+		layer.add_child(noise_meter)
+		noise_meter.position = Vector2(16, 207)
+		noise_meter.size = Vector2(200, 12)
+		noise_meter.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		noise_meter.hide()
 		target_label = Label.new()
 		target_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		target_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -213,6 +228,25 @@ func _build_menu() -> void:
 	var title := Label.new()
 	title.text = "LABIJ — First Descent"
 	panel.add_child(title)
+	character_name = LineEdit.new()
+	character_name.placeholder_text = "Character name (optional)"
+	character_name.max_length = 24
+	panel.add_child(character_name)
+	species_selector = OptionButton.new()
+	for entry in Profiles.SPECIES:
+		species_selector.add_item(entry[0])
+	panel.add_child(species_selector)
+	background_selector = OptionButton.new()
+	for entry in Profiles.BACKGROUNDS:
+		background_selector.add_item(entry[0])
+	panel.add_child(background_selector)
+	profile_details = Label.new()
+	profile_details.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	profile_details.custom_minimum_size.x = 420
+	panel.add_child(profile_details)
+	species_selector.item_selected.connect(func(_index): refresh_profile_details())
+	background_selector.item_selected.connect(func(_index): refresh_profile_details())
+	refresh_profile_details()
 	address = LineEdit.new()
 	address.text = "127.0.0.1"
 	panel.add_child(address)
@@ -251,17 +285,20 @@ func _start() -> void:
 			party_panel.show()
 			action_bar.show()
 			noise_label.show()
+			noise_meter.show()
 			target_label.show()
 			minimap.show()
 
 func _solo() -> void:
+	selected_profile = menu_profile()
 	party_size = 1
 	new_expedition()
-	_spawn(1)
+	_spawn(1, selected_profile)
 	_start()
 
 func _host() -> void:
 	if not dedicated:
+		selected_profile = menu_profile()
 		party_size = int(party_selector.value)
 	var peer := ENetMultiplayerPeer.new()
 	var err := peer.create_server(PORT, maxi(1, party_size if dedicated else party_size - 1))
@@ -279,6 +316,7 @@ func _host() -> void:
 	_start()
 
 func _join() -> void:
+	selected_profile = menu_profile()
 	var peer := ENetMultiplayerPeer.new()
 	var err := peer.create_client(address.text.strip_edges(), PORT)
 	if err != OK:
@@ -292,6 +330,7 @@ func _connected() -> void:
 
 func _failed() -> void:
 	multiplayer.multiplayer_peer = null
+	pending_profiles.clear()
 	active = false
 	result_shown = false
 	if is_instance_valid(world):
@@ -314,6 +353,8 @@ func _failed() -> void:
 		party_panel.hide()
 		action_bar.hide()
 		noise_label.hide()
+		noise_meter.hide()
+		noise_meter.update_levels(0.0, 0.0)
 		target_label.hide()
 		minimap.hide()
 		minimap.reset()
@@ -327,7 +368,7 @@ func _failed() -> void:
 		menu.show()
 		status.text = "Choose Solo, Host or Join"
 
-func _spawn(id: int) -> void:
+func _spawn(id: int, profile: Array = ["", 0, 0]) -> void:
 	if actors.has(id):
 		return
 	var actor := Player.new()
@@ -336,10 +377,13 @@ func _spawn(id: int) -> void:
 	actor.position = Vector3(float(actors.size() % 4) * 0.85, 1.0, float(floori(float(actors.size()) / 4.0)) * 0.85)
 	actor.setup(not dedicated and id == multiplayer.get_unique_id(), not dedicated and DisplayServer.get_name() != "headless")
 	actors[id] = actor
+	var player_name := Profiles.clean_name(str(profile[0]))
+	if multiplayer.is_server() and player_name.is_empty():
+		player_name = "Player %d" % next_party_number
+	actor.configure_profile(player_name, int(profile[1]), int(profile[2]))
 	if multiplayer.is_server():
-		party_names[id] = "Player %d" % next_party_number
+		party_names[id] = actor.display_name
 		next_party_number += 1
-		actor.display_name = party_names[id]
 		world.watch_player(actor, id)
 		world.journal.add("Party", "%s enters the dungeon" % actor.display_name)
 
@@ -357,18 +401,39 @@ func _remove(id: int) -> void:
 func _peer_joined(id: int) -> void:
 	if not multiplayer.is_server():
 		return
-	if world.objective.started or world.objective.result != "" or actors.size() >= party_size:
+	if world.objective.started or world.objective.result != "" or actors.size() + pending_profiles.size() >= party_size:
+		multiplayer.multiplayer_peer.disconnect_peer(id)
+		return
+	pending_profiles[id] = 10.0
+	request_profile.rpc_id(id)
+
+@rpc("authority", "call_remote", "reliable")
+func request_profile() -> void:
+	submit_profile.rpc_id(1, str(selected_profile[0]), int(selected_profile[1]), int(selected_profile[2]))
+
+@rpc("any_peer", "call_remote", "reliable")
+func submit_profile(chosen_name: String, species: int, background: int) -> void:
+	if not multiplayer.is_server():
+		return
+	var id := multiplayer.get_remote_sender_id()
+	if not pending_profiles.has(id):
+		return
+	pending_profiles.erase(id)
+	if not Profiles.valid(species, background) or chosen_name.length() > 64 or world.objective.started or world.objective.result != "" or actors.size() >= party_size:
 		multiplayer.multiplayer_peer.disconnect_peer(id)
 		return
 	initialize_expedition.rpc_id(id, expedition_seed, party_size)
 	for existing in actors.keys():
-		spawn_remote.rpc_id(id, existing, actors[existing].floor_id, actors[existing].position, actors[existing].display_name)
-	_spawn(id)
-	spawn_remote.rpc(id, 0, actors[id].position, actors[id].display_name)
+		var member = actors[existing]
+		spawn_remote.rpc_id(id, existing, member.floor_id, member.position, member.display_name, member.species_id, member.background_id)
+	_spawn(id, [chosen_name, species, background])
+	spawn_remote.rpc(id, 0, actors[id].position, actors[id].display_name, species, background)
 	log_history.rpc_id(id, world.journal.history)
 
 func _peer_left(id: int) -> void:
 	if multiplayer.is_server():
+		if pending_profiles.erase(id) or not actors.has(id):
+			return
 		if is_instance_valid(world) and actors.has(id):
 			world.release_jewel(actors[id], id)
 			world.journal.add("Party", "%s disconnects" % actors[id].display_name)
@@ -378,8 +443,8 @@ func _peer_left(id: int) -> void:
 		remove_remote.rpc(id)
 
 @rpc("authority", "call_remote", "reliable")
-func spawn_remote(id: int, floor_id: int, at: Vector3, player_name: String) -> void:
-	_spawn(id)
+func spawn_remote(id: int, floor_id: int, at: Vector3, player_name: String, species: int, background: int) -> void:
+	_spawn(id, [player_name, species, background])
 	actors[id].floor_id = floor_id
 	actors[id].position = at
 	actors[id].display_name = player_name
@@ -480,6 +545,11 @@ func _physics_process(delta: float) -> void:
 		else:
 			submit_input.rpc_id(1, move, yaw, block, sprint, quiet)
 	if multiplayer.is_server():
+		for id in pending_profiles.keys():
+			pending_profiles[id] -= delta
+			if pending_profiles[id] <= 0:
+				pending_profiles.erase(id)
+				multiplayer.multiplayer_peer.disconnect_peer(id)
 		for id in attack_requests.keys():
 			if actors.has(id):
 				actors[id].begin_attack()
@@ -520,7 +590,7 @@ func _physics_process(delta: float) -> void:
 		if (tick % 3 == 0 or world.objective.result != "") and multiplayer.has_multiplayer_peer():
 			var states := {}
 			for id in actors:
-				states[id] = [actors[id].position, actors[id].heading, actors[id].floor_id, actors[id].health, actors[id].stamina, actors[id].blocking, actors[id].attack_phase, actors[id].hurt_timer, actors[id].swing_hit, actors[id].inventory.state(), actors[id].skills.state(), actors[id].combat_timer, actors[id].mana, actors[id].sprinting, actors[id].cast_id, actors[id].noise_level, actors[id].quiet_walking]
+				states[id] = [actors[id].position, actors[id].heading, actors[id].floor_id, actors[id].health, actors[id].stamina, actors[id].blocking, actors[id].attack_phase, actors[id].hurt_timer, actors[id].swing_hit, actors[id].inventory.state(), actors[id].skills.state(), actors[id].combat_timer, actors[id].mana, actors[id].sprinting, actors[id].cast_id, actors[id].noise_level, actors[id].quiet_walking, actors[id].noise_peak]
 			snapshot.rpc(tick, states, world.monster_snapshot(), world.loot.state(), world.projectiles.state(), world.hazards.state(), world.objective.state())
 			if world.objective.result != "":
 				finish_remote.rpc(world.objective.state())
@@ -623,6 +693,7 @@ func snapshot(sequence: int, states: Dictionary, mobs: Dictionary, drops: Dictio
 			actors[id].cast_id = states[id][14]
 			actors[id].noise_level = states[id][15]
 			actors[id].quiet_walking = states[id][16]
+			actors[id].noise_peak = states[id][17]
 			if id != multiplayer.get_unique_id():
 				actors[id].rotation.y = states[id][1]
 
@@ -771,6 +842,7 @@ func build_expedition(seed_value: int, size: int) -> void:
 	expedition_seed = seed_value
 	party_size = size
 	party_names.clear()
+	pending_profiles.clear()
 	next_party_number = 1
 	if log_panel:
 		log_panel.reset()
@@ -850,7 +922,7 @@ func update_awareness_hud(local, local_id: int) -> void:
 	var level: float = local.noise_level
 	var mode := "Quiet walk" if local.quiet_walking else ("Sprint" if local.sprinting else "Walk")
 	noise_label.text = "%s | Noise %s" % [mode, Numbers.number(level)]
-	noise_label.modulate = Color("#9ed6a1") if level < 3 else (Color("#e0bf70") if level < 9 else Color("#ed8c76"))
+	noise_meter.update_levels(level, local.noise_peak)
 	var mob: Dictionary = world.focused_enemy(local, yaw)
 	if mob.is_empty():
 		target_label.text = ""
@@ -861,3 +933,9 @@ func update_awareness_hud(local, local_id: int) -> void:
 	var mine: float = mob.threat.get(local_id, 0.0)
 	var current: float = mob.threat.get(mob.target, 0.0)
 	target_label.text = "%s | %s\n%d/%d HP%s\nTarget: %s | Threat %s / %s" % [World.Bestiary.stats(mob.kind)[0], world.awareness_name(mob), ceili(mob.health), ceili(mob.max_health), world.status_summary(mob), target_name, Numbers.number(mine), Numbers.number(current)]
+
+func menu_profile() -> Array:
+	return [Profiles.clean_name(character_name.text), species_selector.selected, background_selector.selected]
+
+func refresh_profile_details() -> void:
+	profile_details.text = "%s\n%s" % [Profiles.SPECIES[species_selector.selected][1], Profiles.BACKGROUNDS[background_selector.selected][1]]

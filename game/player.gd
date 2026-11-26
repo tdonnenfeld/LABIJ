@@ -5,12 +5,18 @@ const Inventory = preload("res://game/items/inventory.gd")
 const Catalog = preload("res://game/items/catalog.gd")
 var inventory := Inventory.new()
 const Skills = preload("res://game/progression/skills.gd")
+const Profiles = preload("res://game/progression/profiles.gd")
+var species_id := 0
+var background_id := 0
+var profile_locked := false
 const Spells = preload("res://game/combat/spells.gd")
 var mana := 100.0
 var wants_sprint := false
 var wants_quiet := false
 var quiet_walking := false
 var noise_level := 0.0
+var noise_peak := 0.0
+var noise_hold := 0.0
 var step_distance := 0.0
 var sprinting := false
 var sprint_exhausted := false
@@ -85,7 +91,7 @@ func simulate(delta: float) -> void:
 	update_sprint(delta)
 	var forward := Vector3(sin(heading), 0, cos(heading))
 	var right := Vector3(cos(heading), 0, -sin(heading))
-	var motion := (right * direction.x + forward * direction.y) * (2.5 if blocking or attack_phase == 1 else 4.5) * (1.0 + skills.bonus("move")) * (2.0 if dash_timer > 0 else (1.55 if sprinting else (0.45 * (1.0 + skills.bonus("quiet_speed")) if quiet_walking else 1.0)))
+	var motion := (right * direction.x + forward * direction.y) * (2.5 if blocking or attack_phase == 1 else 4.5) * (1.0 + skills.bonus("move")) * float(Profiles.SPECIES[species_id][3]) * (2.0 if dash_timer > 0 else (1.55 if sprinting else (0.45 * (1.0 + skills.bonus("quiet_speed")) if quiet_walking else 1.0)))
 	velocity.x = motion.x
 	velocity.z = motion.z
 	velocity.y = maxf(velocity.y - 18.0 * delta, -20.0)
@@ -133,7 +139,7 @@ func advance_combat(delta: float) -> bool:
 	blocking = wants_block and attack_phase == 0 and cast_id == "" and stamina > 0
 	if blocking:
 		block_age = block_age + delta if was_blocking else 0.0
-	mana = minf(100.0, mana + delta * 5.0 * (1.0 + Catalog.get_item(inventory.weapon).mana_bonus))
+	mana = minf(100.0, mana + delta * 5.0 * float(Profiles.SPECIES[species_id][4]) * (1.0 + Catalog.get_item(inventory.weapon).mana_bonus))
 	if not blocking and not sprinting and attack_phase == 0 and cast_id == "":
 		stamina = minf(Combat.MAX_STAMINA, stamina + delta * (18.0 + skills.bonus("regen")))
 	if attack_phase == 0:
@@ -217,7 +223,7 @@ func use_item(index: int) -> bool:
 	return false
 
 func max_health() -> float:
-	return Combat.MAX_HEALTH + skills.bonus("hp")
+	return Combat.MAX_HEALTH + float(Profiles.SPECIES[species_id][2]) + skills.bonus("hp")
 
 func gain_xp(amount: int) -> void:
 	skills.gain(amount)
@@ -327,3 +333,36 @@ func advance_cast(delta: float) -> String:
 	var id := cast_id
 	cast_id = ""
 	return id
+
+func configure_profile(chosen_name: String, species: int, background: int) -> bool:
+	if profile_locked or not Profiles.valid(species, background):
+		return false
+	display_name = Profiles.clean_name(chosen_name)
+	if display_name.is_empty():
+		display_name = "Player"
+	species_id = species
+	background_id = background
+	profile_locked = true
+	var start: Array = Profiles.BACKGROUNDS[background]
+	inventory.items.assign(start[2])
+	inventory.weapon_index = 0
+	inventory.shield_index = 1
+	inventory.armor_index = -1
+	skills.priorities.assign(start[3])
+	skills.aptitudes = Profiles.SPECIES[species][6].duplicate()
+	if start[4] >= 0:
+		skills.credit(start[4], 25.0)
+	health = max_health()
+	return true
+
+func register_noise(radius: float) -> void:
+	noise_level = maxf(noise_level, radius)
+	if radius >= noise_peak:
+		noise_peak = radius
+		noise_hold = 0.65
+
+func decay_noise(delta: float) -> void:
+	noise_level = maxf(0.0, noise_level - delta * 8.0)
+	var falling_time := maxf(0.0, delta - noise_hold)
+	noise_hold = maxf(0.0, noise_hold - delta)
+	noise_peak = maxf(noise_level, noise_peak - falling_time * 2.0)

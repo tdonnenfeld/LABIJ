@@ -457,12 +457,12 @@ func emit_noise(floor_id: int, at: Vector3, radius: float) -> void:
 			mob.heard_at = at
 
 func player_noise(actor, radius: float) -> void:
-	radius *= maxf(0.1, 1.0 - actor.skills.bonus("noise"))
-	actor.noise_level = maxf(actor.noise_level, radius)
+	radius *= maxf(0.1, 1.0 - actor.skills.bonus("noise")) * float(actor.Profiles.SPECIES[actor.species_id][5])
+	actor.register_noise(radius)
 	emit_noise(actor.floor_id, actor.position, radius)
 
 func footsteps(actor, before: Vector3, delta: float) -> void:
-	actor.noise_level = maxf(0.0, actor.noise_level - delta * 8.0)
+	actor.decay_noise(delta)
 	actor.step_distance += horizontal_distance(before, actor.position)
 	if actor.step_distance >= 1.25:
 		actor.step_distance = fmod(actor.step_distance, 1.25)
