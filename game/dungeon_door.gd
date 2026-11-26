@@ -2,6 +2,10 @@ extends StaticBody3D
 
 const Stone = preload("res://game/visuals/stone_theme.gd")
 var opened := false
+var locked := false
+var trapped := false
+var broken := false
+var durability := 65.0
 var width := 1.2
 var style := "wood"
 var leaf: Node3D
@@ -52,11 +56,14 @@ func part(parent: Node3D, at: Vector3, size: Vector3, material: String) -> void:
 	instance.position = at
 
 func set_open(value: bool) -> void:
-	opened = value
+	opened = value or broken
 	collision_layer = 0 if opened else 1
 
 func _process(delta: float) -> void:
 	if not leaf or not is_visible_in_tree():
+		return
+	if broken:
+		leaf.hide()
 		return
 	amount = move_toward(amount, 1.0 if opened else 0.0, delta * 3.0)
 	var eased := smoothstep(0.0, 1.0, amount)
@@ -69,3 +76,14 @@ func _process(delta: float) -> void:
 func obstructed(at: Vector3, radius: float = 0.55) -> bool:
 	var local := to_local(at)
 	return absf(local.x) <= width * 0.5 + radius and absf(local.z) <= radius + 0.12 and absf(local.y - 1.45) < 2.0
+
+func damage(amount_value: float) -> bool:
+	if style != "wood" or opened or broken:
+		return false
+	durability = maxf(0.0, durability - amount_value)
+	if durability == 0.0:
+		broken = true
+		locked = false
+		trapped = false
+		set_open(true)
+	return true
