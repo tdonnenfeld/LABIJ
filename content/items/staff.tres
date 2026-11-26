@@ -1,0 +1,13 @@
+[gd_resource type="Resource" load_steps=2 format=3]
+[ext_resource type="Script" path="res://game/items/item_definition.gd" id="1"]
+[resource]
+script = ExtResource("1")
+title = "Ash Staff"
+kind = "weapon"
+damage = 12.0
+reach = 2.8
+stamina_cost = 12.0
+windup = 0.35
+recovery = 0.6
+mana_bonus = 0.2
+tint = Color(0.45, 0.3, 0.65, 1)

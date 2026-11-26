@@ -17,7 +17,7 @@ func run() -> void:
 	skills.discovered.append("forgotten")
 	ok = ok and skills.buy("forgotten") and skills.assign_slot(0, "flurry")
 	ok = ok and not skills.assign_slot(3, "flurry") and not skills.assign_slot(1, "sword")
-	ok = ok and skills.refund(1) and skills.slots[0] == "" and is_equal_approx(skills.wallet[1], 91.25)
+	ok = ok and skills.learned.has("flurry") and skills.slots[0] == "flurry"
 	var copy := Skills.new()
 	copy.apply(skills.state())
 	ok = ok and copy.state() == skills.state()

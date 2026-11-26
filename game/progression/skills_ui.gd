@@ -15,9 +15,7 @@ var heading: Label
 var priority: OptionButton
 var nodes: VBoxContainer
 var slots_label: Label
-var refund: Button
 var safe_now := false
-var shrine_now := false
 var previous: Array = []
 
 func _ready() -> void:
@@ -65,10 +63,6 @@ func _ready() -> void:
 		button.text = "Clear %d" % (i + 1)
 		clear_row.add_child(button)
 		button.pressed.connect(func(): talent_action.emit("slot", "", i))
-	refund = Button.new()
-	refund.text = "Refund this domain (75% XP)"
-	column.add_child(refund)
-	refund.pressed.connect(func(): talent_action.emit("refund", "", domain))
 	hide()
 
 func select_domain(index: int) -> void:
@@ -76,13 +70,12 @@ func select_domain(index: int) -> void:
 	selected_id = ""
 	rebuild()
 
-func refresh(data: Array, can_train: bool, at_shrine: bool) -> void:
+func refresh(data: Array, can_train: bool) -> void:
 	var structural: Array = data.slice(0, 7)
 	model.apply(data)
-	if structural != previous or safe_now != can_train or shrine_now != at_shrine:
+	if structural != previous or safe_now != can_train:
 		previous = structural.duplicate(true)
 		safe_now = can_train
-		shrine_now = at_shrine
 		rebuild()
 	var captions: PackedStringArray = []
 	for i in range(Skills.SLOT_COUNT):
@@ -91,15 +84,17 @@ func refresh(data: Array, can_train: bool, at_shrine: bool) -> void:
 	slots_label.text = "  |  ".join(captions)
 
 func rebuild() -> void:
-	heading.text = "%s — %.1f XP available / %.1f lifetime [K]%s" % [Skills.TITLES[domain], model.wallet[domain], model.xp[domain], "" if safe_now else " — In combat"]
+	heading.text = "%s M%d — %.1f XP available / %.1f lifetime%s" % [Skills.TITLES[domain], model.mastery(domain), model.wallet[domain], model.xp[domain], "" if safe_now else " — In combat"]
 	priority.select(model.priorities[domain])
 	tree.build(model, domain, selected_id)
 	var node := Skills.Talents.find(selected_id)
 	details.text = "Select a talent to inspect it" if node.is_empty() else "%s — %s" % [node[2], node[7]]
+	if Skills.SCROLL_REQUIREMENTS.has(selected_id):
+		details.text += " | Scroll required, mastery %d" % Skills.SCROLL_REQUIREMENTS[selected_id]
 	learn.disabled = not safe_now or not model.can_buy(selected_id)
 	for button in equip_buttons:
 		button.disabled = not safe_now or node.is_empty() or not model.learned.has(selected_id) or node[5] != "active"
-	refund.disabled = not safe_now or not shrine_now
+
 
 func select_talent(id: String) -> void:
 	selected_id = id

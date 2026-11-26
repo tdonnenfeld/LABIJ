@@ -17,8 +17,9 @@ func generate(seed_value: int, render_geometry: bool = true) -> void:
 		floor_material.albedo_color = Color("#514d43")
 		wall_material.albedo_color = Color("#77705e")
 	var previous := Vector2i(0, 0)
+	var heading := Vector2i.RIGHT
 	for i in range(9):
-		var center := Vector2i(i * 6, rng.randi_range(-4, 4))
+		var center := previous + heading * rng.randi_range(7, 11) + Vector2i(-heading.y, heading.x) * rng.randi_range(-4, 4)
 		if i == 0:
 			center = Vector2i.ZERO
 		var size := Vector2i(rng.randi_range(3, 5), rng.randi_range(3, 5))
@@ -33,6 +34,8 @@ func generate(seed_value: int, render_geometry: bool = true) -> void:
 			p.y += signi(center.y - p.y)
 			tiles[p] = true
 		previous = center
+		if rng.randf() < 0.45:
+			heading = Vector2i.RIGHT if heading != Vector2i.RIGHT else (Vector2i.UP if rng.randf() < 0.5 else Vector2i.DOWN)
 	end_cell = previous
 	for key in tiles:
 		var p: Vector2i = key
