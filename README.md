@@ -144,3 +144,7 @@ Original reproducible glTF models for the ten enemy types and a companion advent
 ## Multiplayer initialization
 
 Host/solo starts reset view/input/tick state and activate only after a local player exists. The joining client receives the seed, roster and a reliable full initial snapshot before activating its camera and HUD; it acknowledges bootstrap before ordinary snapshots/events are sent. A reliable catch-up snapshot closes the loading gap. Pending handshakes time out; capacity counts each player once. Floors generate deterministic collision/layout immediately, but render meshes only when visited. This reduces the initial rendering workload for larger hosted expeditions. Server and clients must use the same build.
+
+## Expedition polish
+
+Join attempts can be cancelled and time out after 45 seconds; connection failures retain an explanatory menu message. Guests can join again while the existing lobby permits new members, as a new character (no session restoration or mid-expedition reconnect). The server clears held movement/block/sprint/quiet input after 350ms without updates. Network heading interpolation eases toward snapshots without extrapolation; enemy movement slows near destinations and stops on attack initiation. Nearby party members receive journal feedback for their existing shared kill XP. Seeded corner supplies and relics are cosmetic, with subtle head anticipation/idle animation on existing rigs. No new character mesh assets or combat balance changes; native multiplayer and visual playtesting remain necessary.
