@@ -31,6 +31,16 @@ const NoiseMeter = preload("res://game/ui/noise_meter.gd")
 var noise_meter: Control
 const DungeonAudio = preload("res://game/audio/dungeon_audio.gd")
 var dungeon_audio: Node3D
+const ProximityVoice = preload("res://game/audio/proximity_voice.gd")
+const VoiceCodec = preload("res://game/audio/voice_codec.gd")
+var voice_chat: Node3D
+var voice_selector: OptionButton
+var voice_label: Label
+var voice_mode := 0
+var voice_muted := false
+var voice_tokens: Dictionary = {}
+var voice_peaks: Dictionary = {}
+var voice_timer := 0.0
 var character_name: LineEdit
 var species_selector: OptionButton
 var background_selector: OptionButton
@@ -166,6 +176,11 @@ func _ready() -> void:
 		noise_meter.size = Vector2(200, 12)
 		noise_meter.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		noise_meter.hide()
+		voice_label = Label.new()
+		voice_label.position = Vector2(16, 221)
+		voice_label.add_theme_font_size_override("font_size", 12)
+		layer.add_child(voice_label)
+		voice_label.hide()
 		target_label = Label.new()
 		target_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		target_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -190,6 +205,8 @@ func _ready() -> void:
 		popup_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		dungeon_audio = DungeonAudio.new()
 		add_child(dungeon_audio)
+		voice_chat = ProximityVoice.new()
+		add_child(voice_chat)
 		feedback = Feedback.new()
 		add_child(feedback)
 		feedback.local_layer = popup_layer
@@ -262,6 +279,13 @@ func _build_menu() -> void:
 	party_selector.max_value = 8
 	party_selector.value = 2
 	panel.add_child(party_selector)
+	voice_selector = OptionButton.new()
+	for mode in ["Microphone off", "Push to talk [V]", "Open mic — sound affects monsters"]:
+		voice_selector.add_item(mode)
+	panel.add_child(voice_selector)
+	var voice_hint := Label.new()
+	voice_hint.text = "Voice reaches nearby teammates and enemies. N mutes."
+	panel.add_child(voice_hint)
 	for entry in [["Solo", _solo], ["Host", _host], ["Join", _join]]:
 		var button := Button.new()
 		button.text = entry[0]
@@ -276,6 +300,8 @@ func _start() -> void:
 	if menu:
 		menu.hide()
 	if not dedicated:
+		voice_mode = voice_selector.selected
+		voice_muted = false
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 		if hud:
 			hud.show()
@@ -290,6 +316,7 @@ func _start() -> void:
 			action_bar.show()
 			noise_label.show()
 			noise_meter.show()
+			voice_label.show()
 			target_label.show()
 			minimap.show()
 
@@ -359,6 +386,8 @@ func _failed() -> void:
 		noise_label.hide()
 		noise_meter.hide()
 		noise_meter.update_levels(0.0, 0.0)
+		voice_label.hide()
+		voice_chat.reset()
 		target_label.hide()
 		minimap.hide()
 		minimap.reset()
@@ -396,6 +425,8 @@ func _remove(id: int) -> void:
 	if actors.has(id):
 		actors[id].queue_free()
 		actors.erase(id)
+	voice_tokens.erase(id)
+	voice_peaks.erase(id)
 	party_names.erase(id)
 	item_requests.erase(id)
 	talent_requests.erase(id)
@@ -460,6 +491,11 @@ func remove_remote(id: int) -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	if not active or dedicated or world.objective.result != "":
+		return
+	if event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_N:
+		voice_muted = not voice_muted
+		if voice_muted:
+			voice_chat.stop_capture()
 		return
 	if event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_M:
 		minimap.visible = not minimap.visible
@@ -535,6 +571,7 @@ func _physics_process(delta: float) -> void:
 			move.x = float(Input.is_physical_key_pressed(KEY_D)) - float(Input.is_physical_key_pressed(KEY_A))
 			move.y = float(Input.is_physical_key_pressed(KEY_S)) - float(Input.is_physical_key_pressed(KEY_W))
 		var actor = actors[local_id]
+		update_voice(actor, delta)
 		if actor.camera:
 			actor.camera.rotation.x = pitch
 		actor.rotation.y = yaw
@@ -550,6 +587,7 @@ func _physics_process(delta: float) -> void:
 		else:
 			submit_input.rpc_id(1, move, yaw, block, sprint, quiet)
 	if multiplayer.is_server():
+		advance_voice(delta)
 		for id in pending_profiles.keys():
 			pending_profiles[id] -= delta
 			if pending_profiles[id] <= 0:
@@ -848,6 +886,9 @@ func build_expedition(seed_value: int, size: int) -> void:
 	expedition_seed = seed_value
 	party_size = size
 	party_names.clear()
+	voice_tokens.clear()
+	voice_peaks.clear()
+	voice_timer = 0.0
 	pending_profiles.clear()
 	next_party_number = 1
 	if log_panel:
@@ -887,6 +928,7 @@ func show_result() -> void:
 	if dedicated or result_shown:
 		return
 	result_shown = true
+	voice_chat.reset()
 	inventory_ui.hide()
 	skills_ui.hide()
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
@@ -970,3 +1012,66 @@ func receive_sounds(events: Array) -> void:
 	var id := multiplayer.get_unique_id()
 	if actors.has(id):
 		dungeon_audio.hear(events, world, actors[id])
+
+func update_voice(actor, delta: float) -> void:
+	var enabled: bool = voice_mode != 0 and not voice_muted and get_window().has_focus() and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and actor.health > 0
+	var speaking: bool = enabled and (voice_mode == 2 or Input.is_physical_key_pressed(KEY_V))
+	for packet in voice_chat.poll(speaking):
+		if multiplayer.is_server():
+			accept_voice(multiplayer.get_unique_id(), packet)
+		else:
+			submit_voice.rpc_id(1, packet)
+	voice_chat.advance(delta, actor.floor_id, actors)
+	if voice_mode == 0:
+		voice_label.text = "MIC OFF"
+	elif voice_muted:
+		voice_label.text = "MIC MUTED [N]"
+	elif speaking:
+		voice_label.text = "MIC LIVE | Noise %s [N]" % Numbers.number(voice_chat.level)
+	else:
+		voice_label.text = "MIC READY [V]"
+
+func advance_voice(delta: float) -> void:
+	for id in voice_tokens:
+		voice_tokens[id] = minf(8.0, voice_tokens[id] + delta * 60.0)
+	voice_timer += delta
+	if voice_timer < 0.1:
+		return
+	voice_timer = 0.0
+	for id in voice_peaks:
+		if actors.has(id):
+			world.voice_noise(actors[id], id, voice_peaks[id])
+	voice_peaks.clear()
+
+@rpc("any_peer", "call_remote", "unreliable_ordered", 3)
+func submit_voice(data: PackedByteArray) -> void:
+	if multiplayer.is_server():
+		accept_voice(multiplayer.get_remote_sender_id(), data)
+
+func accept_voice(id: int, data: PackedByteArray) -> void:
+	if not active or world.objective.result != "" or not actors.has(id) or actors[id].health <= 0 or data.size() != VoiceCodec.BYTES:
+		return
+	var tokens: float = voice_tokens.get(id, 8.0)
+	if tokens < 1.0:
+		return
+	voice_tokens[id] = tokens - 1.0
+	var radius := VoiceCodec.radius(data)
+	if radius <= 0.0:
+		return
+	voice_peaks[id] = maxf(radius, voice_peaks.get(id, 0.0))
+	var speaker = actors[id]
+	for listener_id in actors:
+		if listener_id == id or not world.voice_audible(speaker, actors[listener_id], radius):
+			continue
+		if not dedicated and listener_id == multiplayer.get_unique_id():
+			receive_voice(id, speaker.position, speaker.floor_id, radius, data)
+		elif multiplayer.has_multiplayer_peer():
+			receive_voice.rpc_id(listener_id, id, speaker.position, speaker.floor_id, radius, data)
+
+@rpc("authority", "call_remote", "unreliable_ordered", 3)
+func receive_voice(peer: int, at: Vector3, floor_id: int, radius: float, data: PackedByteArray) -> void:
+	if not active or not voice_chat or world.objective.result != "":
+		return
+	var id := multiplayer.get_unique_id()
+	if actors.has(id) and actors.has(peer) and actors[id].floor_id == floor_id and actors[peer].floor_id == floor_id:
+		voice_chat.receive(peer, at, floor_id, radius, data)
