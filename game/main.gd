@@ -20,7 +20,8 @@ var party_panel: PanelContainer
 var feedback: Node3D
 var party_names: Dictionary = {}
 var next_party_number := 1
-var action_bar: Label
+var action_bar: HBoxContainer
+var ability_cards: Array[Label] = []
 const Catalog = preload("res://game/items/catalog.gd")
 var inventory_ui: PanelContainer
 var item_requests: Dictionary = {}
@@ -129,14 +130,23 @@ func _ready() -> void:
 		party_panel.offset_right = -16
 		party_panel.offset_top = 92
 		party_panel.hide()
-		action_bar = Label.new()
-		action_bar.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		action_bar = HBoxContainer.new()
 		layer.add_child(action_bar)
-		action_bar.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
-		action_bar.offset_left = -240
-		action_bar.offset_right = 240
-		action_bar.offset_top = -58
+		action_bar.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
+		action_bar.offset_left = -470
+		action_bar.offset_right = -16
+		action_bar.offset_top = -72
 		action_bar.offset_bottom = -16
+		for i in range(3):
+			var slot_panel := PanelContainer.new()
+			slot_panel.custom_minimum_size.x = 140
+			action_bar.add_child(slot_panel)
+			var slot_label := Label.new()
+			slot_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			slot_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+			slot_label.add_theme_font_size_override("font_size", 13)
+			slot_panel.add_child(slot_label)
+			ability_cards.append(slot_label)
 		action_bar.hide()
 		var popup_layer := Control.new()
 		layer.add_child(popup_layer)
@@ -496,13 +506,12 @@ func _physics_process(delta: float) -> void:
 			hp_bar.max_value = local.max_health()
 			hp_bar.value = local.health
 			xp_label.text = "Level %d | %d XP | K: Talents | 1–3: Abilities" % [local.skills.character_level(), local.skills.total_xp]
-			var ability_text: PackedStringArray = []
 			for i in range(3):
 				var ability: String = local.skills.slots[i]
 				var node: Array = local.Skills.Talents.find(ability)
 				var cooldown: float = local.skills.cooldowns.get(ability, 0.0)
-				ability_text.append("[%d] %s%s" % [i + 1, "Empty" if node.is_empty() else node[2], " %.1fs" % cooldown if cooldown > 0 else ""])
-			action_bar.text = "    |    ".join(ability_text)
+				ability_cards[i].text = "[%d] %s\n%s" % [i + 1, "Empty" if node.is_empty() else node[2], "%.1fs" % cooldown if cooldown > 0 else ("—" if ability == "" else "Ready")]
+				ability_cards[i].modulate = Color("#b5b5b5") if ability == "" else (Color("#dbb46e") if cooldown > 0 else Color("#b4d7a3"))
 			if skills_ui and skills_ui.visible:
 				skills_ui.refresh(local.skills.state(), world.safe(local))
 			stamina_bar.value = local.stamina

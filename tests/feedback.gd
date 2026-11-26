@@ -3,6 +3,8 @@ extends SceneTree
 const World = preload("res://game/world.gd")
 const Player = preload("res://game/player.gd")
 const Journal = preload("res://game/world/journal.gd")
+const LogPanel = preload("res://game/ui/log_panel.gd")
+const PartyPanel = preload("res://game/ui/party_panel.gd")
 
 func _initialize() -> void:
 	call_deferred("run")
@@ -38,6 +40,18 @@ func run() -> void:
 	for i in range(220):
 		j.add("Party", str(i))
 	ok = ok and j.history.size() == 200 and j.drain().size() == 220 and j.drain().is_empty()
+	var log := LogPanel.new()
+	root.add_child(log)
+	log.receive(world.journal.history)
+	var received: int = log.history.size()
+	log.receive(world.journal.history)
+	ok = ok and log.history.size() == received
+	log.select_filter("XP")
+	ok = ok and log.feed.get_parsed_text().contains("gains") and not log.feed.get_parsed_text().contains("Expedition lost")
+	var party_panel := PartyPanel.new()
+	root.add_child(party_panel)
+	party_panel.refresh({1: actor, 2: partner}, 1, world)
+	ok = ok and party_panel.rows.get_child_count() == 3
 	if not ok:
 		push_error("Party defeat or combat journal test failed")
 	quit(0 if ok else 1)

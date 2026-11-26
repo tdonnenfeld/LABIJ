@@ -11,6 +11,10 @@ func show_event(event: Dictionary, local_id: int) -> void:
 		return
 	var color: Color = COLORS.get(event.style, Color.WHITE)
 	if event.target == local_id and local_layer:
+		if local_layer.get_child_count() >= 12:
+			var oldest := local_layer.get_child(0)
+			local_layer.remove_child(oldest)
+			oldest.queue_free()
 		var label := Label.new()
 		label.text = event.floating
 		label.add_theme_font_size_override("font_size", 25)
