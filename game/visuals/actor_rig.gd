@@ -99,7 +99,7 @@ func angle(part: Node3D, target: float, weight: float) -> void:
 	if part:
 		part.rotation.x = lerpf(part.rotation.x, target, weight)
 
-func animate(delta: float, alive: bool, phase: int, asleep: bool, hurt: bool, blocking: bool = false, casting: bool = false) -> void:
+func animate(delta: float, alive: bool, phase: int, asleep: bool, hurt: bool, blocking: bool = false, casting: bool = false, hit_direction: float = 0.0) -> void:
 	var at := get_parent_node_3d().global_position
 	var distance := Vector2(at.x - previous.x, at.z - previous.z).length() if sampled and absf(at.y - previous.y) < 5.0 else 0.0
 	previous = at
@@ -146,8 +146,8 @@ func animate(delta: float, alive: bool, phase: int, asleep: bool, hurt: bool, bl
 	angle(arm_l, -1.4 if blocking or casting or (kind == "archer" and phase == 1) else gait * 0.65, weight)
 	if body:
 		body.position.y = lerpf(body.position.y, absf(gait) * 0.025 + sin(clock * 0.5) * 0.006, weight)
-		body.rotation.z = lerpf(body.rotation.z, 0.16 if hurt else gait * 0.035, weight)
-		body.rotation.x = lerpf(body.rotation.x, -0.12 if phase == 1 else (0.12 if phase == 2 else 0.0), weight)
+		body.rotation.z = lerpf(body.rotation.z, (-hit_direction * 0.28) if hurt else gait * 0.035, weight)
+		body.rotation.x = lerpf(body.rotation.x, 0.18 if hurt else (-0.12 if phase == 1 else (0.12 if phase == 2 else 0.0)), weight)
 	if head:
 		head.rotation.x = lerpf(head.rotation.x, -0.12 if phase == 1 else (0.08 if hurt else sin(clock * 0.5) * 0.025), weight)
 	if tail:
