@@ -6,6 +6,9 @@ const PASSING := 1.9
 const SIDES := [Vector2i.UP, Vector2i.DOWN, Vector2i.LEFT, Vector2i.RIGHT]
 const VisualBuilder = preload("res://game/visuals/dungeon_visual_builder.gd")
 var visual_builder: Node3D
+var visual_seed := 0
+var visual_theme := 0
+var deferred_visuals := false
 var debug_geometry := false
 var tiles: Dictionary = {}
 var floor_material: StandardMaterial3D
@@ -27,7 +30,10 @@ var secret_direction := Vector2i.ZERO
 var secret_door: StaticBody3D
 var secret_open := false
 
-func generate(seed_value: int, render_geometry: bool = true, room_count: int = 9, boss_room: bool = false, theme_id: int = 0) -> void:
+func generate(seed_value: int, render_geometry: bool = true, room_count: int = 9, boss_room: bool = false, theme_id: int = 0, defer_visuals: bool = false) -> void:
+	visual_seed = seed_value
+	visual_theme = theme_id
+	deferred_visuals = defer_visuals
 	visual = render_geometry
 	debug_geometry = "--debug-geometry" in OS.get_cmdline_user_args()
 	var rng := RandomNumberGenerator.new()
@@ -52,10 +58,8 @@ func generate(seed_value: int, render_geometry: bool = true, room_count: int = 9
 	for block in corridor_blocks:
 		add_box(block[0], block[1], wall_material)
 
-	if visual and not debug_geometry:
-		visual_builder = VisualBuilder.new()
-		add_child(visual_builder)
-		visual_builder.build(tiles, seed_value, corridor_blocks, theme_id)
+	if visual and not debug_geometry and not defer_visuals:
+		ensure_visuals()
 	if not hidden_tiles.is_empty():
 		build_secret_door()
 		for cell in hidden_tiles:
@@ -304,3 +308,13 @@ func reveal_secret() -> bool:
 		secret_door.collision_layer = 0
 		secret_door.hide()
 	return true
+
+func ensure_visuals() -> void:
+	if not visual or debug_geometry or is_instance_valid(visual_builder):
+		return
+	var render_tiles := tiles.duplicate()
+	for cell in hidden_tiles:
+		render_tiles[cell] = true
+	visual_builder = VisualBuilder.new()
+	add_child(visual_builder)
+	visual_builder.build(render_tiles, visual_seed, corridor_blocks, visual_theme)

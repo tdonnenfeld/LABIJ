@@ -163,3 +163,8 @@ jobs:
           set -o pipefail
           ./Godot_v4.7.2-stable_linux.x86_64 --headless --verbose --path . --script res://tests/animated_world.gd 2>&1 | tee test.log
           ! grep -E 'SCRIPT ERROR|Parse Error|ERROR:' test.log
+      - name: Listen host and ENet join initialization tests
+        run: |
+          set -o pipefail
+          ./Godot_v4.7.2-stable_linux.x86_64 --headless --verbose --path . --script res://tests/host_startup.gd 2>&1 | tee test.log
+          ! grep -E 'SCRIPT ERROR|Parse Error|ERROR:' test.log

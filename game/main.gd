@@ -66,6 +66,9 @@ var species_selector: OptionButton
 var background_selector: OptionButton
 var profile_details: Label
 var pending_profiles: Dictionary = {}
+var ready_peers: Dictionary = {}
+var bootstrapping := false
+var connecting := false
 var selected_profile: Array = ["", 0, 0]
 var noise_label: Label
 var target_label: Label
@@ -482,6 +485,25 @@ func add_audio_slider(panel: VBoxContainer, title: String, bus: String, default_
 	slider.value_changed.connect(func(value: float): settings.set_volume(bus, value); settings.save_file())
 
 func _start() -> void:
+	if not dedicated and not actors.has(multiplayer.get_unique_id()):
+		return
+	connecting = false
+	bootstrapping = false
+	if not dedicated:
+		var actor = actors[multiplayer.get_unique_id()]
+		actor.direction = Vector2.ZERO
+		actor.wants_block = false
+		actor.wants_sprint = false
+		actor.wants_quiet = false
+		yaw = actor.heading
+		pitch = 0.0
+		actor.rotation.y = yaw
+		if actor.camera:
+			actor.camera.make_current()
+			actor.camera.rotation.x = pitch
+		world.visible_floor(actor.floor_id)
+		for id in actors:
+			actors[id].visible = id == multiplayer.get_unique_id() or actors[id].floor_id == actor.floor_id
 	active = true
 	if menu:
 		menu.hide()
@@ -510,6 +532,9 @@ func _start() -> void:
 			minimap.show()
 
 func _solo() -> void:
+	if active or connecting:
+		return
+	multiplayer.multiplayer_peer = OfflineMultiplayerPeer.new()
 	selected_profile = menu_profile()
 	party_size = 1
 	new_expedition()
@@ -517,6 +542,8 @@ func _solo() -> void:
 	_start()
 
 func _host() -> void:
+	if active or connecting:
+		return
 	if not dedicated:
 		selected_profile = menu_profile()
 		party_size = int(party_selector.value)
@@ -537,6 +564,8 @@ func _host() -> void:
 	_start()
 
 func _join() -> void:
+	if active or connecting:
+		return
 	selected_profile = menu_profile()
 	var peer := ENetMultiplayerPeer.new()
 	var err := peer.create_client(address.text.strip_edges(), PORT)
@@ -544,6 +573,7 @@ func _join() -> void:
 		status.text = "Cannot connect: " + str(err)
 		return
 	peer.host.compress(ENetConnection.COMPRESS_RANGE_CODER)
+	connecting = true
 	multiplayer.multiplayer_peer = peer
 	status.text = "Connecting..."
 
@@ -551,6 +581,10 @@ func _connected() -> void:
 	status.text = "Generating expedition..."
 
 func _failed() -> void:
+	active = false
+	connecting = false
+	bootstrapping = false
+	ready_peers.clear()
 	if is_instance_valid(escape_menu):
 		escape_menu.close_menu()
 	multiplayer.multiplayer_peer = null
@@ -647,7 +681,10 @@ func _remove(id: int) -> void:
 func _peer_joined(id: int) -> void:
 	if not multiplayer.is_server():
 		return
-	if lobby_locked or world.objective.started or world.objective.result != "" or actors.size() + pending_profiles.size() >= party_size:
+	if not active or not is_instance_valid(world):
+		multiplayer.multiplayer_peer.disconnect_peer(id)
+		return
+	if lobby_locked or world.objective.started or world.objective.result != "" or reserved_slots() >= party_size:
 		multiplayer.multiplayer_peer.disconnect_peer(id)
 		return
 	pending_profiles[id] = 10.0
@@ -662,7 +699,7 @@ func submit_profile(chosen_name: String, species: int, background: int) -> void:
 	if not multiplayer.is_server():
 		return
 	var id := multiplayer.get_remote_sender_id()
-	if not pending_profiles.has(id):
+	if not pending_profiles.has(id) or actors.has(id):
 		return
 	pending_profiles.erase(id)
 	if lobby_locked or not Profiles.valid(species, background) or chosen_name.length() > 64 or world.objective.started or world.objective.result != "" or actors.size() >= party_size:
@@ -673,13 +710,19 @@ func submit_profile(chosen_name: String, species: int, background: int) -> void:
 		var member = actors[existing]
 		spawn_remote.rpc_id(id, existing, member.floor_id, member.position, member.display_name, member.species_id, member.background_id)
 	_spawn(id, [chosen_name, species, background])
-	spawn_remote.rpc(id, 0, actors[id].position, actors[id].display_name, species, background)
+	for other in actors:
+		if other != 1:
+			spawn_remote.rpc_id(other, id, 0, actors[id].position, actors[id].display_name, species, background)
 	log_history.rpc_id(id, world.journal.history)
 	lobby_state.rpc_id(id, lobby_locked)
+	initial_state.rpc_id(id, tick, player_states(), world.monster_snapshot(), world.loot.state(), world.projectiles.state(), world.hazards.state(), world.objective.state(), world.secret_state())
+	pending_profiles[id] = 30.0
 
 func _peer_left(id: int) -> void:
 	if multiplayer.is_server():
-		if pending_profiles.erase(id) or not actors.has(id):
+		pending_profiles.erase(id)
+		ready_peers.erase(id)
+		if not actors.has(id):
 			return
 		if is_instance_valid(world) and actors.has(id):
 			world.release_jewel(actors[id], id)
@@ -687,7 +730,9 @@ func _peer_left(id: int) -> void:
 		_remove(id)
 		if is_instance_valid(world) and actors.is_empty() and world.objective.started and world.objective.result == "":
 			world.objective.result = "defeat"
-		remove_remote.rpc(id)
+		for other in actors:
+			if other != 1:
+				remove_remote.rpc_id(other, id)
 
 @rpc("authority", "call_remote", "reliable")
 func spawn_remote(id: int, floor_id: int, at: Vector3, player_name: String, species: int, background: int) -> void:
@@ -838,6 +883,8 @@ func _physics_process(delta: float) -> void:
 			pending_profiles[id] -= delta
 			if pending_profiles[id] <= 0:
 				pending_profiles.erase(id)
+				if actors.has(id):
+					_peer_left(id)
 				multiplayer.multiplayer_peer.disconnect_peer(id)
 		for id in attack_requests.keys():
 			if actors.has(id):
@@ -872,8 +919,8 @@ func _physics_process(delta: float) -> void:
 		for id in stair_requests.keys():
 			if world.objective.result == "" and actors.has(id) and stair_cooldowns.get(id, 0.0) <= 0.0 and world.transfer(actors[id], id, actors):
 				stair_cooldowns[id] = 0.75
-				if multiplayer.has_multiplayer_peer():
-					transition.rpc(tick, id, actors[id].floor_id, actors[id].position, world.monster_snapshot(), world.secret_state())
+				for peer in ready_peers:
+					transition.rpc_id(peer, tick, id, actors[id].floor_id, actors[id].position, world.monster_snapshot(), world.secret_state())
 		stair_requests.clear()
 		trade_book.sweep(actors, delta)
 		if world.objective.result == "":
@@ -884,13 +931,19 @@ func _physics_process(delta: float) -> void:
 			flush_events()
 			flush_sounds()
 		tick += 1
-		if (tick % 3 == 0 or world.objective.result != "") and multiplayer.has_multiplayer_peer():
-			var states := {}
-			for id in actors:
-				states[id] = [actors[id].position, actors[id].heading, actors[id].floor_id, actors[id].health, actors[id].stamina, actors[id].blocking, actors[id].attack_phase, actors[id].hurt_timer, actors[id].swing_hit, actors[id].inventory.state(), actors[id].skills.state(), actors[id].combat_timer, actors[id].mana, actors[id].sprinting, actors[id].cast_id, actors[id].noise_level, actors[id].quiet_walking, actors[id].noise_peak]
-			snapshot.rpc(tick, states, world.monster_snapshot(), world.loot.state(), world.projectiles.state(), world.hazards.state(), world.objective.state(), world.secret_state())
-			if world.objective.result != "":
-				finish_remote.rpc(world.objective.state())
+		if (tick % 3 == 0 or world.objective.result != "") and not ready_peers.is_empty():
+			var states := player_states()
+			var mobs: Dictionary = world.monster_snapshot()
+			var drops: Dictionary = world.loot.state()
+			var shots: Dictionary = world.projectiles.state()
+			var traps: Dictionary = world.hazards.state()
+			var objective_data: Dictionary = world.objective.state()
+			var secrets: Array = world.secret_state()
+			for peer in ready_peers:
+				snapshot.rpc_id(peer, tick, states, mobs, drops, shots, traps, objective_data, secrets)
+				if world.objective.result != "":
+					finish_remote.rpc_id(peer, objective_data)
+
 	if not dedicated and actors.has(local_id):
 		var local = actors[local_id]
 		var viewed_floor: int = local.floor_id
@@ -977,7 +1030,7 @@ func submit_input(move: Vector2, angle: float, block: bool, sprint: bool, quiet:
 	if not multiplayer.is_server() or not move.is_finite() or not is_finite(angle):
 		return
 	var id := multiplayer.get_remote_sender_id()
-	if actors.has(id):
+	if ready_peers.has(id) and actors.has(id):
 		actors[id].direction = move.limit_length()
 		actors[id].heading = angle
 		actors[id].wants_block = block
@@ -986,12 +1039,15 @@ func submit_input(move: Vector2, angle: float, block: bool, sprint: bool, quiet:
 
 @rpc("authority", "call_remote", "unreliable_ordered")
 func snapshot(sequence: int, states: Dictionary, mobs: Dictionary, drops: Dictionary, shots: Dictionary, traps: Dictionary, objective_data: Dictionary, secrets: Array = []) -> void:
-	if not is_instance_valid(world) or sequence < received_tick:
+	if not active or not is_instance_valid(world) or sequence < received_tick:
 		return
+	apply_snapshot(sequence, states, mobs, drops, shots, traps, objective_data, secrets, true)
+
+func apply_snapshot(sequence: int, states: Dictionary, mobs: Dictionary, drops: Dictionary, shots: Dictionary, traps: Dictionary, objective_data: Dictionary, secrets: Array, smooth: bool) -> void:
 	received_tick = sequence
-	world.apply_monsters(mobs, true)
+	world.apply_monsters(mobs, smooth)
 	world.loot.apply(drops)
-	world.projectiles.apply(shots, true)
+	world.projectiles.apply(shots, smooth)
 	world.hazards.apply(traps)
 	world.objective.apply(objective_data)
 	world.apply_secrets(secrets)
@@ -999,7 +1055,8 @@ func snapshot(sequence: int, states: Dictionary, mobs: Dictionary, drops: Dictio
 		if actors.has(id):
 			var actor = actors[id]
 			var snap: bool = actor.floor_id != states[id][2] or actor.health <= 0 or states[id][3] <= 0
-			NetMotion.receive(actor, states[id][0], states[id][1], snap, id != multiplayer.get_unique_id())
+			NetMotion.receive(actor, states[id][0], states[id][1], snap or not smooth, id != multiplayer.get_unique_id() or not smooth)
+			actor.heading = states[id][1]
 			actors[id].floor_id = states[id][2]
 			actors[id].health = states[id][3]
 			actors[id].stamina = states[id][4]
@@ -1189,6 +1246,21 @@ func new_expedition() -> void:
 	build_expedition(expedition_seed, party_size)
 
 func build_expedition(seed_value: int, size: int) -> void:
+	active = false
+	ready_peers.clear()
+	for id in actors.keys():
+		_remove(id)
+	tick = 0
+	received_tick = -1
+	map_timer = 0.0
+	yaw = 0.0
+	pitch = 0.0
+	result_shown = false
+	attack_requests.clear()
+	item_requests.clear()
+	talent_requests.clear()
+	stair_requests.clear()
+	stair_cooldowns.clear()
 	if is_instance_valid(world):
 		remove_child(world)
 		world.queue_free()
@@ -1214,8 +1286,10 @@ func build_expedition(seed_value: int, size: int) -> void:
 
 @rpc("authority", "call_remote", "reliable")
 func initialize_expedition(seed_value: int, size: int) -> void:
+	bootstrapping = true
 	build_expedition(seed_value, size)
-	_start()
+	if status:
+		status.text = "Synchronizing expedition..."
 
 func update_objective_hud(local_id: int) -> void:
 	var goal = world.objective
@@ -1262,8 +1336,8 @@ func flush_events() -> void:
 		return
 	if not dedicated:
 		display_events(events)
-	if multiplayer.has_multiplayer_peer():
-		combat_events.rpc(events)
+	for peer in ready_peers:
+		combat_events.rpc_id(peer, events)
 
 @rpc("authority", "call_remote", "reliable")
 func combat_events(events: Array) -> void:
@@ -1329,7 +1403,7 @@ func flush_sounds() -> void:
 			continue
 		if not dedicated and id == multiplayer.get_unique_id():
 			receive_sounds(nearby)
-		elif multiplayer.has_multiplayer_peer():
+		elif ready_peers.has(id):
 			receive_sounds.rpc_id(id, nearby)
 
 @rpc("authority", "call_remote", "unreliable_ordered", 2)
@@ -1479,12 +1553,14 @@ func apply_trade(id: int, operation: String, value: int, session_id: int, versio
 func publish_trade_views() -> void:
 	for peer in actors:
 		var data := trade_book.view(peer, actors)
+		if peer != 1 and not ready_peers.has(peer):
+			continue
 		if trade_views.get(peer, {}) == data:
 			continue
 		trade_views[peer] = data
 		if not dedicated and peer == multiplayer.get_unique_id():
 			receive_trade_view(data)
-		elif multiplayer.has_multiplayer_peer():
+		elif ready_peers.has(peer):
 			receive_trade_view.rpc_id(peer, data)
 
 @rpc("authority", "call_remote", "reliable")
@@ -1598,8 +1674,9 @@ func set_lobby_locked(locked: bool) -> void:
 	lobby_locked = locked
 	if locked:
 		for id in pending_profiles.keys():
-			pending_profiles.erase(id)
-			multiplayer.multiplayer_peer.disconnect_peer(id)
+			if not actors.has(id):
+				pending_profiles.erase(id)
+				multiplayer.multiplayer_peer.disconnect_peer(id)
 	lobby_state.rpc(lobby_locked)
 	refresh_lobby_menu()
 
@@ -1628,3 +1705,42 @@ func close_skills() -> void:
 	skills_ui.hide()
 	if active and world.objective.result == "":
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+
+func reserved_slots() -> int:
+	var count := actors.size()
+	for peer in pending_profiles:
+		if not actors.has(peer):
+			count += 1
+	return count
+
+func player_states() -> Dictionary:
+	var states := {}
+	for id in actors:
+		states[id] = [actors[id].position, actors[id].heading, actors[id].floor_id, actors[id].health, actors[id].stamina, actors[id].blocking, actors[id].attack_phase, actors[id].hurt_timer, actors[id].swing_hit, actors[id].inventory.state(), actors[id].skills.state(), actors[id].combat_timer, actors[id].mana, actors[id].sprinting, actors[id].cast_id, actors[id].noise_level, actors[id].quiet_walking, actors[id].noise_peak]
+
+	return states
+
+@rpc("authority", "call_remote", "reliable")
+func initial_state(sequence: int, states: Dictionary, mobs: Dictionary, drops: Dictionary, shots: Dictionary, traps: Dictionary, objective_data: Dictionary, secrets: Array) -> void:
+	if not bootstrapping or not is_instance_valid(world) or not actors.has(multiplayer.get_unique_id()) or not states.has(multiplayer.get_unique_id()):
+		return
+	apply_snapshot(sequence, states, mobs, drops, shots, traps, objective_data, secrets, false)
+	_start()
+	bootstrap_ready.rpc_id(1)
+
+@rpc("any_peer", "call_remote", "reliable")
+func bootstrap_ready() -> void:
+	if not multiplayer.is_server() or not active:
+		return
+	var peer := multiplayer.get_remote_sender_id()
+	if not actors.has(peer) or not pending_profiles.has(peer):
+		return
+	pending_profiles.erase(peer)
+	ready_peers[peer] = true
+	# A stair transfer or terminal result may have occurred during loading.
+	initial_state_update.rpc_id(peer, tick, player_states(), world.monster_snapshot(), world.loot.state(), world.projectiles.state(), world.hazards.state(), world.objective.state(), world.secret_state())
+
+@rpc("authority", "call_remote", "reliable")
+func initial_state_update(sequence: int, states: Dictionary, mobs: Dictionary, drops: Dictionary, shots: Dictionary, traps: Dictionary, objective_data: Dictionary, secrets: Array) -> void:
+	if active and is_instance_valid(world) and sequence >= received_tick:
+		apply_snapshot(sequence, states, mobs, drops, shots, traps, objective_data, secrets, false)
