@@ -53,7 +53,12 @@ func generate(seed_value: int, render_geometry: bool = true, room_count: int = 9
 	for key in tiles:
 		var p: Vector2i = key
 		var origin := Vector3(p.x * CELL, 0, p.y * CELL)
-		add_box(origin + Vector3(0, -0.15, 0), Vector3(CELL, 0.3, CELL), floor_material)
+		if bridge_cells.has(p):
+			var axis: Vector2i = bridge_cells[p]
+			var deck := Vector3(CELL, 0.3, PASSING) if axis.x != 0 else Vector3(PASSING, 0.3, CELL)
+			add_box(origin + Vector3.DOWN * 0.15, deck, floor_material)
+		else:
+			add_box(origin + Vector3(0, -0.15, 0), Vector3(CELL, 0.3, CELL), floor_material)
 		var height: float = ceiling_heights.get(p, 3.0)
 		add_box(origin + Vector3(0, height + 0.15, 0), Vector3(CELL, 0.3, CELL), wall_material)
 		for d in [Vector2i.UP, Vector2i.DOWN, Vector2i.LEFT, Vector2i.RIGHT]:
@@ -63,7 +68,14 @@ func generate(seed_value: int, render_geometry: bool = true, room_count: int = 9
 				add_box(origin + offset + Vector3.UP * height * 0.5, dimensions, wall_material)
 
 	for block in corridor_blocks:
-		add_box(block[0], block[1], wall_material)
+		var at: Vector3 = block[0]
+		var cell := Vector2i(roundi(at.x / CELL), roundi(at.z / CELL))
+		if bridge_cells.has(cell):
+			var dimensions: Vector3 = block[1]
+			dimensions.y = 1.1
+			add_box(Vector3(at.x, 0.55, at.z), dimensions, wall_material)
+		else:
+			add_box(at, block[1], wall_material)
 
 	if visual and not debug_geometry and not defer_visuals:
 		ensure_visuals()
