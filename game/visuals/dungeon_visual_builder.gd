@@ -1,5 +1,6 @@
 extends Node3D
 
+const Props = preload("res://game/visuals/dungeon_props.gd")
 const StoneKit = preload("res://game/visuals/stone_theme.gd")
 const CELL := 3.0
 const CHUNK := 8
@@ -11,6 +12,8 @@ var lights: Array[OmniLight3D] = []
 var light_timer := 0.0
 var theme_id := 0
 var room_styles: Dictionary = {}
+var moving_props: Array = []
+var water_time := 0.0
 const ROOM_STYLES := ["crypt", "storeroom", "library", "shrine", "prison", "cistern", "armory", "ruins"]
 const THEMES := [Color("#ffffff"), Color("#a3a09b"), Color("#7598a4"), Color("#b8a587"), Color("#8f9ca6"), Color("#b99580"), Color("#c5b69a")]
 
@@ -22,7 +25,7 @@ func box(id: String, at: Vector3, size: Vector3, angle: float = 0.0) -> void:
 	var basis := Basis(Vector3.UP, angle).scaled_local(size)
 	batches[key].transforms.append(Transform3D(basis, at))
 
-func build(tiles: Dictionary, seed_value: int, corridor_blocks: Array = [], floor_theme: int = 0, room_bounds: Array = []) -> void:
+func build(tiles: Dictionary, seed_value: int, corridor_blocks: Array = [], floor_theme: int = 0, room_bounds: Array = [], ceiling_heights: Dictionary = {}, bridge_cells: Dictionary = {}, arena_cells: Dictionary = {}, architecture: Array = [], gate_cells: Dictionary = {}) -> void:
 	theme_id = clampi(floor_theme, 0, THEMES.size() - 1)
 	for i in range(room_bounds.size()):
 		var bounds: Rect2i = room_bounds[i]
@@ -38,28 +41,47 @@ func build(tiles: Dictionary, seed_value: int, corridor_blocks: Array = [], floo
 		var cell: Vector2i = key
 		var origin := Vector3(cell.x * CELL, 0, cell.y * CELL)
 		var style: String = room_styles.get(cell, "corridor")
+		var height: float = ceiling_heights.get(cell, 3.0)
 		var tile_variant := posmod(cell.x * 73 + cell.y * 151 + seed_value, 11)
 		var floor_id := "floor" if tile_variant < 5 else "floor%d" % (1 + tile_variant % 3)
-		box(floor_id, origin + Vector3.DOWN * 0.15, Vector3(3, 0.3, 3))
+		if bridge_cells.has(cell):
+			var axis: Vector2i = bridge_cells[cell]
+			box("dark", origin + Vector3.DOWN * 2.0, Vector3(3, 0.15, 3))
+			box(floor_id, origin + Vector3.DOWN * 0.15, Vector3(3, 0.3, 1.9) if axis.x != 0 else Vector3(1.9, 0.3, 3))
+		else:
+			box(floor_id, origin + Vector3.DOWN * 0.15, Vector3(3, 0.3, 3))
 		if not narrowed.has(cell):
 			decorate_floor(origin, cell, style, seed_value)
-		box("ceiling", origin + Vector3.UP * 3.15, Vector3(3, 0.3, 3))
+		box("ceiling", origin + Vector3.UP * (height + 0.15), Vector3(3, 0.3, 3))
+		if height > 3.0:
+			vault(origin, height)
+		if bridge_cells.has(cell):
+			bridge(origin, bridge_cells[cell])
+		if gate_cells.has(cell):
+			open_gate(origin, gate_cells[cell])
+		if arena_cells.has(cell):
+			arena_tile(origin, cell, seed_value)
 		for side in SIDES:
 			if tiles.has(cell + side):
+				var neighbor: float = ceiling_heights.get(cell + side, 3.0)
+				if height > neighbor:
+					var edge := origin + Vector3(side.x, 0, side.y) * 1.5
+					box("wall", edge + Vector3.UP * (height + neighbor) * 0.5, Vector3(3, height - neighbor, 0.2), PI / 2.0 if side.x != 0 else 0.0)
 				continue
 			var normal := Vector3(side.x, 0, side.y)
 			var angle := PI / 2.0 if side.x != 0 else 0.0
 			var at := origin + normal * 1.5
 			var wall_variant := posmod(cell.x * 31 + cell.y * 79 + side.x * 11 + side.y * 17 + seed_value, 9)
 			var wall_id := "wall" if wall_variant < 5 else "wall%d" % (1 + wall_variant % 3)
-			box(wall_id, at + Vector3.UP * 1.5, Vector3(3, 3, 0.2), angle)
+			box(wall_id, at + Vector3.UP * height * 0.5, Vector3(3, height, 0.2), angle)
 			box("trim", at - normal * 0.025 + Vector3.UP * 0.12, Vector3(3, 0.24, 0.22), angle)
-			box("trim", at - normal * 0.025 + Vector3.UP * 2.88, Vector3(3, 0.24, 0.22), angle)
+			box("trim", at - normal * 0.025 + Vector3.UP * (height - 0.12), Vector3(3, 0.24, 0.22), angle)
 			var hash_value := posmod(cell.x * 73 + cell.y * 151 + side.x * 17 + side.y * 31 + seed_value, 19)
 			if hash_value == 0 and not narrowed.has(cell):
 				add_torch(at, normal, angle)
 			if not narrowed.has(cell) and abs(cell.x) + abs(cell.y) > 2:
 				decorate_wall(at, normal, angle, style, hash_value)
+				decorate_special(at, normal, angle, style, hash_value)
 			if hash_value in [4, 11] and not narrowed.has(cell):
 				box("wall", at - normal * 0.04 + Vector3.UP * 1.5, Vector3(0.34, 3.0, 0.20), angle)
 		add_arch(tiles, cell, origin)
@@ -68,7 +90,19 @@ func build(tiles: Dictionary, seed_value: int, corridor_blocks: Array = [], floo
 			decorate_corner(tiles, cell, origin, style, seed_value)
 			decorate_theme(tiles, cell, origin, seed_value)
 	for block in corridor_blocks:
-		box("wall", block[0], block[1])
+		var at: Vector3 = block[0]
+		var cell := Vector2i(roundi(at.x / CELL), roundi(at.z / CELL))
+		if bridge_cells.has(cell):
+			var size: Vector3 = block[1]
+			size.y = 1.1
+			# The parapet is open above its collision boundary.
+			box("dark", Vector3(at.x, 0.55, at.z), size)
+		else:
+			box("wall", at, block[1])
+	for feature in architecture:
+		if feature.kind == "dais":
+			for i in range(3):
+				box("trim", feature.at + Vector3.UP * (0.05 + i * 0.09), Vector3(0.62 - i * 0.12, 0.10, 0.62 - i * 0.12))
 	flush_batches()
 	for i in range(LIGHT_LIMIT):
 		var light := OmniLight3D.new()
@@ -136,6 +170,19 @@ func update_lighting(viewer: Vector3, delta: float) -> void:
 			lights[i].visible = i < nearest.size()
 			if lights[i].visible:
 				lights[i].position = nearest[i]
+	water_time += delta
+	for entry in moving_props:
+		var node: Node3D = entry.node
+		if node.position.distance_squared_to(viewer) > 20.0 * 20.0:
+			continue
+		if entry.kind == "water":
+			node.scale.y = 1.0 + sin(water_time * 4.0 + entry.phase) * 0.07
+		elif entry.kind == "chain":
+			node.rotation.z = sin(water_time * 1.5 + entry.phase) * 0.05
+		else:
+			var cloth := node.get_node_or_null("Cloth") as Node3D
+			if cloth:
+				cloth.rotation.x = sin(water_time * 2.0 + entry.phase) * 0.08
 	var time := float(Time.get_ticks_msec()) / 1000.0
 	for i in range(lights.size()):
 		if lights[i].visible:
@@ -336,3 +383,71 @@ func decorate_corner(tiles: Dictionary, cell: Vector2i, origin: Vector3, style: 
 		_:
 			for j in range(4):
 				box("rubble", at - n * j * 0.07 + Vector3.UP * (0.07 + j * 0.045), Vector3(0.25, 0.13, 0.22), float(j) * 0.9)
+
+func vault(origin: Vector3, height: float) -> void:
+	for side in [-1.0, 1.0]:
+		for i in range(4):
+			var x := side * (1.34 - i * 0.34)
+			var y := height - 0.85 + sqrt(maxf(0.0, 0.85 * 0.85 - x * x * 0.35))
+			box("trim", origin + Vector3(x, y, 0), Vector3(0.38, 0.17, 0.20))
+		box("wall", origin + Vector3(side * 1.34, height - 0.75, 0), Vector3(0.22, 0.8, 0.25))
+
+func bridge(origin: Vector3, axis: Vector2i) -> void:
+	var along := Vector3(axis.x, 0, axis.y)
+	var across := Vector3(-axis.y, 0, axis.x)
+	var angle := PI / 2.0 if axis.x != 0 else 0.0
+	for i in range(10):
+		box("wood", origin + along * (-1.35 + i * 0.30) + Vector3.UP * 0.018, Vector3(1.82, 0.035, 0.27), angle)
+	for side in [-1.0, 1.0]:
+		box("iron", origin + across * side * 0.90 + Vector3.UP * 0.73, Vector3(0.055, 0.055, 3), angle)
+		for step in [-1.1, 0.0, 1.1]:
+			box("wood", origin + across * side * 0.90 + along * step + Vector3.UP * 0.39, Vector3(0.10, 0.78, 0.10))
+
+func arena_tile(origin: Vector3, cell: Vector2i, seed_value: int) -> void:
+	var roll := posmod(cell.x * 19 + cell.y * 43 + seed_value, 5)
+	for side in [-1.0, 1.0]:
+		box("gold", origin + Vector3(side * 1.28, 0.025, 0), Vector3(0.08, 0.02, 2.8))
+	if roll == 0:
+		box("marble", origin + Vector3.UP * 0.024, Vector3(0.9, 0.025, 0.9), PI / 4.0)
+		box("ash", origin + Vector3.UP * 0.041, Vector3(0.55, 0.02, 0.55), PI / 4.0)
+
+func decorate_special(at: Vector3, normal: Vector3, angle: float, style: String, roll: int) -> void:
+	var cross := Vector3(normal.z, 0, -normal.x)
+	var base := at - normal * 0.35
+	if roll == 3 and style in ["shrine", "crypt", "armory"]:
+		Props.make(self, "column", base + cross * 1.1)
+	elif roll == 6 and style in ["storeroom", "library"]:
+		Props.make(self, "barrel" if style == "storeroom" else "table", base - normal * 0.12 + cross * 0.85)
+	elif roll == 10 and style in ["cistern", "ruins"]:
+		Props.make(self, "mushrooms", base + cross * 0.8)
+	elif roll == 12 and style == "prison":
+		var chain := Props.chain(self, base + Vector3.UP * 2.7)
+		moving_props.append({"node": chain, "kind": "chain", "phase": at.x})
+	elif roll == 14 and style in ["shrine", "armory"]:
+		var banner := Props.banner(self, base + Vector3.UP * 2.5, angle)
+		moving_props.append({"node": banner, "kind": "banner", "phase": at.z})
+	elif roll == 15 and style == "cistern":
+		var water := Node3D.new()
+		add_child(water)
+		water.position = base + Vector3.UP * 1.25
+		Props.block(water, Vector3.ZERO, Vector3(0.58, 2.45, 0.075), "water").rotation.y = angle
+		moving_props.append({"node": water, "kind": "water", "phase": at.x})
+
+func open_gate(origin: Vector3, data: Dictionary) -> void:
+	var axis: Vector2i = data.axis
+	var across := Vector3(-axis.y, 0, axis.x)
+	var angle := PI / 2.0 if axis.x != 0 else 0.0
+	var width: float = data.width
+	var material := "wood" if data.kind == "door" else "iron"
+	for side in [-1.0, 1.0]:
+		box("trim", origin + across * side * (width * 0.5 + 0.07) + Vector3.UP * 1.45, Vector3(0.14, 2.9, 0.22), angle)
+	box(material, origin + Vector3.UP * 2.80, Vector3(width, 0.18, 0.24), angle)
+	if data.kind == "portcullis":
+		for i in range(7):
+			box("iron", origin + across * (-width * 0.45 + width * 0.15 * i) + Vector3.UP * 2.66, Vector3(0.055, 0.48, 0.055))
+	elif data.kind == "gate":
+		for side in [-1.0, 1.0]:
+			box("iron", origin + across * side * (width * 0.5 + 0.03) + Vector3.UP * 1.25, Vector3(0.06, 2.5, 0.4), angle)
+	else:
+		for side in [-1.0, 1.0]:
+			box("wood", origin + across * side * (width * 0.5 + 0.04) + Vector3.UP * 1.2, Vector3(0.065, 2.4, 0.6), angle)

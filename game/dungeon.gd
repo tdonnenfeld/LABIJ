@@ -29,6 +29,11 @@ var secret_anchor := Vector2i.ZERO
 var secret_direction := Vector2i.ZERO
 var secret_door: StaticBody3D
 var secret_open := false
+var ceiling_heights: Dictionary = {}
+var bridge_cells: Dictionary = {}
+var arena_cells: Dictionary = {}
+var architecture: Array = []
+var gate_cells: Dictionary = {}
 
 func generate(seed_value: int, render_geometry: bool = true, room_count: int = 9, boss_room: bool = false, theme_id: int = 0, defer_visuals: bool = false) -> void:
 	visual_seed = seed_value
@@ -44,19 +49,38 @@ func generate(seed_value: int, render_geometry: bool = true, room_count: int = 9
 		floor_material.albedo_color = Color("#514d43")
 		wall_material.albedo_color = Color("#77705e")
 	make_layout(rng, maxi(1, room_count), boss_room)
+	plan_architecture(seed_value, boss_room)
 	for key in tiles:
 		var p: Vector2i = key
 		var origin := Vector3(p.x * CELL, 0, p.y * CELL)
-		add_box(origin + Vector3(0, -0.15, 0), Vector3(CELL, 0.3, CELL), floor_material)
-		add_box(origin + Vector3(0, 3.15, 0), Vector3(CELL, 0.3, CELL), wall_material)
+		if bridge_cells.has(p):
+			var axis: Vector2i = bridge_cells[p]
+			var deck := Vector3(CELL, 0.3, PASSING) if axis.x != 0 else Vector3(PASSING, 0.3, CELL)
+			add_box(origin + Vector3.DOWN * 0.15, deck, floor_material)
+		else:
+			add_box(origin + Vector3(0, -0.15, 0), Vector3(CELL, 0.3, CELL), floor_material)
+		var height: float = ceiling_heights.get(p, 3.0)
+		add_box(origin + Vector3(0, height + 0.15, 0), Vector3(CELL, 0.3, CELL), wall_material)
 		for d in [Vector2i.UP, Vector2i.DOWN, Vector2i.LEFT, Vector2i.RIGHT]:
 			if not tiles.has(p + d):
 				var offset := Vector3(d.x, 0, d.y) * CELL * 0.5
-				var dimensions := Vector3(0.2, 3, CELL) if d.x != 0 else Vector3(CELL, 3, 0.2)
-				add_box(origin + offset + Vector3.UP * 1.5, dimensions, wall_material)
+				var dimensions := Vector3(0.2, height, CELL) if d.x != 0 else Vector3(CELL, height, 0.2)
+				add_box(origin + offset + Vector3.UP * height * 0.5, dimensions, wall_material)
 
+	for feature in architecture:
+		if feature.kind == "dais":
+			# Shallow corner steps do not alter the navigation centreline.
+			for i in range(3):
+				add_box(feature.at + Vector3.UP * (0.05 + i * 0.09), Vector3(0.62 - i * 0.12, 0.10, 0.62 - i * 0.12), floor_material)
 	for block in corridor_blocks:
-		add_box(block[0], block[1], wall_material)
+		var at: Vector3 = block[0]
+		var cell := Vector2i(roundi(at.x / CELL), roundi(at.z / CELL))
+		if bridge_cells.has(cell):
+			var dimensions: Vector3 = block[1]
+			dimensions.y = 1.1
+			add_box(Vector3(at.x, 0.55, at.z), dimensions, wall_material)
+		else:
+			add_box(at, block[1], wall_material)
 
 	if visual and not debug_geometry and not defer_visuals:
 		ensure_visuals()
@@ -92,6 +116,8 @@ func make_layout(rng: RandomNumberGenerator, count: int, boss_room: bool) -> voi
 			dimensions = Vector2i(3, 3)
 		if i == count - 1 and boss_room:
 			dimensions = Vector2i(5, 5)
+		elif i > 0 and i < count - 1 and i % 4 == 2:
+			dimensions = Vector2i(5, 5)
 		if i > 0:
 			center = previous + Vector2i(rng.randi_range(6, 8), rng.randi_range(-4, 4))
 		var bounds := Rect2i(center - Vector2i(floori(dimensions.x * 0.5), floori(dimensions.y * 0.5)), dimensions)
@@ -100,6 +126,8 @@ func make_layout(rng: RandomNumberGenerator, count: int, boss_room: bool) -> voi
 		for y in range(bounds.position.y, bounds.end.y):
 			for x in range(bounds.position.x, bounds.end.x):
 				var cell := Vector2i(x, y)
+				if dimensions == Vector2i(5, 5) and abs(cell.x - center.x) == 2 and abs(cell.y - center.y) == 2:
+					continue
 				tiles[cell] = true
 				room_tiles[cell] = true
 		if i > 0:
@@ -321,4 +349,32 @@ func ensure_visuals() -> void:
 	styles.append_array(side_bounds)
 	if not hidden_tiles.is_empty():
 		styles.append(Rect2i(hidden_room - Vector2i.ONE, Vector2i(3, 3)))
-	visual_builder.build(render_tiles, visual_seed, corridor_blocks, visual_theme, styles)
+	visual_builder.build(render_tiles, visual_seed, corridor_blocks, visual_theme, styles, ceiling_heights, bridge_cells, arena_cells, architecture, gate_cells)
+
+func plan_architecture(seed_value: int, boss_room: bool) -> void:
+	for i in range(room_bounds.size()):
+		var bounds: Rect2i = room_bounds[i]
+		var tall := i > 0 and (i % 3 == 1 or (boss_room and i == room_bounds.size() - 1))
+		for y in range(bounds.position.y, bounds.end.y):
+			for x in range(bounds.position.x, bounds.end.x):
+				var cell := Vector2i(x, y)
+				if not tiles.has(cell):
+					continue
+				if tall:
+					ceiling_heights[cell] = 4.6
+				if boss_room and i == room_bounds.size() - 1:
+					arena_cells[cell] = true
+	for cell in corridor_widths:
+		var data: Dictionary = corridor_widths[cell]
+		if data.width >= PASSING and posmod(cell.x * 71 + cell.y * 19 + seed_value, 9) == 0:
+			bridge_cells[cell] = data.axis
+		elif posmod(cell.x * 41 + cell.y * 67 + seed_value, 13) == 0:
+			gate_cells[cell] = {"axis": data.axis, "kind": ["door", "gate", "portcullis"][posmod(cell.x + cell.y + seed_value, 3)], "width": data.width}
+	for i in range(1, room_bounds.size()):
+		var bounds: Rect2i = room_bounds[i]
+		var cell := bounds.position
+		if not tiles.has(cell) or corridor_widths.has(cell):
+			continue
+		var corner := Vector3(cell.x * CELL - 1.15, 0, cell.y * CELL - 1.15)
+		if not tiles.has(cell + Vector2i.LEFT) and not tiles.has(cell + Vector2i.UP):
+			architecture.append({"kind": "dais", "at": corner})

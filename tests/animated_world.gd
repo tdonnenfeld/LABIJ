@@ -81,11 +81,14 @@ func run() -> void:
 	for batch in builder.batches.values():
 		material_ids[batch.material] = true
 	check(material_ids.has("floor") and material_ids.has("floor1") and material_ids.has("wall1"), "Varied tile materials")
+	check(not dungeon.ceiling_heights.is_empty(), "Tall chambers generated")
+	check(dungeon.room_bounds[2].size == Vector2i(5, 5) and not dungeon.room_tiles.has(dungeon.room_bounds[2].position), "Clipped corner chamber")
 	var layout := dungeon.tiles.duplicate()
 	var plain := Dungeon.new()
 	root.add_child(plain)
 	plain.generate(123, false, 9, false, 2)
 	check(plain.tiles == layout and plain.corridor_blocks == dungeon.corridor_blocks, "Visual variety preserves collision layout")
+	check(plain.ceiling_heights == dungeon.ceiling_heights and plain.bridge_cells == dungeon.bridge_cells and plain.gate_cells == dungeon.gate_cells, "Architecture deterministic with or without rendering")
 	dungeon.free()
 	plain.free()
 	var world := World.new()

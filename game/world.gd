@@ -9,6 +9,7 @@ const VoiceCodec = preload("res://game/audio/voice_codec.gd")
 var sounds: Array = []
 var awareness_rng := RandomNumberGenerator.new()
 
+const Props = preload("res://game/visuals/dungeon_props.gd")
 const Dungeon = preload("res://game/dungeon.gd")
 const Combat = preload("res://game/combat.gd")
 const Threat = preload("res://game/combat/threat.gd")
@@ -101,6 +102,18 @@ func build(seed_value: int, render_geometry: bool, size: int = 1) -> void:
 				if near_branch_entry(i, at) or (escape_entries.has(i) and horizontal_distance(at, escape_entries[i]) < 3.0):
 					continue
 				add_fixture(i * 10 + n, i, at, ["chest", "crate", "inscription"][n - 1])
+			for n in range(4, mini(8, level.rooms.size() - 1)):
+				var cell: Vector2i = level.rooms[n]
+				var at := level.position + Vector3(cell.x * Dungeon.CELL - 1.0, 0, cell.y * Dungeon.CELL + 1.0)
+				if not near_branch_entry(i, at) and (not escape_entries.has(i) or horizontal_distance(at, escape_entries[i]) >= 3.0):
+					add_fixture(10000 + i * 100 + n, i, at, "pot" if n % 2 == 0 else "table")
+			if level.rooms.size() >= 5:
+				var first: Vector2i = level.rooms[1]
+				var second: Vector2i = level.rooms[2]
+				var reward: Vector2i = level.rooms[3]
+				add_fixture(20000 + i * 10, i, level.position + Vector3(first.x * Dungeon.CELL - 1.0, 0, first.y * Dungeon.CELL - 1.0), "rune")
+				add_fixture(20001 + i * 10, i, level.position + Vector3(second.x * Dungeon.CELL - 1.0, 0, second.y * Dungeon.CELL - 1.0), "rune")
+				add_fixture(20002 + i * 10, i, level.position + Vector3(reward.x * Dungeon.CELL - 1.0, 0, reward.y * Dungeon.CELL - 1.0), "rune_chest")
 		if i == Routes.SANCTUARY:
 			objective.jewel_position = stair_position(i, true)
 		var cells: Array[Vector2i] = []
@@ -927,7 +940,7 @@ func spell_hit(shot: Dictionary, mob: Dictionary, actors: Dictionary) -> void:
 
 func spell_blast(shot: Dictionary, at: Vector3, actors: Dictionary) -> void:
 	for entry in fixtures.values():
-		if not entry.used and entry.kind == "crate" and entry.floor == shot.floor and entry.at.distance_to(at) <= 2.5:
+		if not entry.used and entry.kind in ["crate", "pot", "table"] and entry.floor == shot.floor and entry.at.distance_to(at) <= 2.5:
 			var ray := PhysicsRayQueryParameters3D.create(at, entry.at + Vector3.UP * 0.4, 1)
 			if get_world_3d().direct_space_state.intersect_ray(ray).is_empty():
 				destroy_crate(entry)
@@ -1087,7 +1100,7 @@ func objective_hint(actor, peer: int) -> String:
 		return "E: Take the Jewel"
 	for fixture in fixtures.values():
 		if not fixture.used and fixture.floor == actor.floor_id and horizontal_distance(actor.position, fixture.at) <= 1.7:
-			return "Attack: Break crate" if fixture.kind == "crate" else ("E: Open chest" if fixture.kind == "chest" else "E: Read inscription")
+			return "Attack: Break " + fixture.kind if fixture.kind in ["crate", "pot", "table"] else ("E: Activate rune" if fixture.kind == "rune" else ("E: Open chest" if fixture.kind in ["chest", "rune_chest"] else "E: Read inscription"))
 	if objective.carrier == peer:
 		return "G: Drop Jewel for teammate"
 	return ""
@@ -1324,19 +1337,9 @@ func add_fixture(id: int, floor_id: int, at: Vector3, kind: String) -> void:
 	fixtures[id] = entry
 	if not visual:
 		return
-	var prop := Node3D.new()
-	floors[floor_id].add_child(prop)
-	prop.position = at - floors[floor_id].position
-	var mesh := MeshInstance3D.new()
-	var box := BoxMesh.new()
-	box.size = Vector3(0.75, 0.5, 0.48) if kind != "inscription" else Vector3(0.48, 0.9, 0.26)
-	mesh.mesh = box
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color("#8a653b") if kind != "inscription" else Color("#8b9292")
-	mesh.material_override = mat
-	prop.add_child(mesh)
-	mesh.position.y = box.size.y * 0.5
-	marker(prop, Vector3.ZERO, "CHEST [E]" if kind == "chest" else ("CRATE" if kind == "crate" else "INSCRIPTION [E]"), Color("#d3ae76"))
+	var prop := Props.make(floors[floor_id], "chest" if kind == "rune_chest" else kind, at - floors[floor_id].position)
+	var labels := {"chest":"CHEST [E]", "crate":"CRATE", "inscription":"INSCRIPTION [E]", "pot":"POTTERY", "table":"FURNITURE", "rune":"RUNE [E]", "rune_chest":"SEALED CHEST [E]"}
+	marker(prop, Vector3.ZERO, labels.get(kind, kind.to_upper()), Color("#d3ae76"))
 	entry.node = prop
 
 func mark_fixture_used(entry: Dictionary) -> void:
@@ -1346,12 +1349,20 @@ func mark_fixture_used(entry: Dictionary) -> void:
 
 func interact_fixture(actor) -> bool:
 	for entry in fixtures.values():
-		if entry.used or entry.kind == "crate" or entry.floor != actor.floor_id or horizontal_distance(actor.position, entry.at) > 1.7:
+		if entry.used or entry.kind in ["crate", "pot", "table"] or entry.floor != actor.floor_id or horizontal_distance(actor.position, entry.at) > 1.7:
 			continue
 		if not Combat.clear_path(actor, entry.at + Vector3.UP * 0.5):
 			continue
+		if entry.kind == "rune_chest":
+			var base: int = 20000 + entry.floor * 10
+			if not fixtures[base].used or not fixtures[base + 1].used:
+				journal.add("Exploration", "Two runes must be activated before the chest opens.")
+				return true
 		mark_fixture_used(entry)
-		if entry.kind == "chest":
+		if entry.kind == "rune":
+			journal.add("Exploration", "A rune resonates. Find its counterpart.")
+			return true
+		if entry.kind in ["chest", "rune_chest"]:
 			loot.spawn("potion", entry.floor, entry.at + Vector3.UP * 0.3)
 			journal.add("Loot", "%s opens a forgotten chest" % actor.display_name)
 			sound(entry.floor, entry.at, 4.0, "pickup")
@@ -1363,13 +1374,11 @@ func interact_fixture(actor) -> bool:
 
 func break_fixture(actor) -> bool:
 	for entry in fixtures.values():
-		if entry.used or entry.kind != "crate" or entry.floor != actor.floor_id:
+		if entry.used or not entry.kind in ["crate", "pot", "table"] or entry.floor != actor.floor_id:
 			continue
 		if not Combat.can_hit(actor.position, entry.at + Vector3.UP * 0.5, actor.heading, actor.attack_reach()) or not Combat.clear_path(actor, entry.at + Vector3.UP * 0.5):
 			continue
-		mark_fixture_used(entry)
-		loot.spawn("noise_stone", entry.floor, entry.at + Vector3.UP * 0.3, 2)
-		journal.add("Loot", "%s breaks a supply crate" % actor.display_name)
+		destroy_crate(entry)
 		return true
 	return false
 
@@ -1390,8 +1399,11 @@ func destroy_crate(entry: Dictionary) -> void:
 	if entry.used:
 		return
 	mark_fixture_used(entry)
-	loot.spawn("noise_stone", entry.floor, entry.at + Vector3.UP * 0.3, 2)
-	journal.add("Exploration", "A supply crate breaks")
+	if entry.kind == "crate":
+		loot.spawn("noise_stone", entry.floor, entry.at + Vector3.UP * 0.3, 2)
+	elif entry.kind == "pot":
+		loot.spawn("noise_stone", entry.floor, entry.at + Vector3.UP * 0.3, 1)
+	journal.add("Exploration", "%s breaks" % entry.kind.capitalize())
 	sound(entry.floor, entry.at, 5.0, "impact")
 
 func projectile_fixture_hit(floor_id: int, from: Vector3, to: Vector3, limit: float) -> float:
