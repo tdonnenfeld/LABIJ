@@ -1,0 +1,22 @@
+name: Godot validation
+on:
+  pull_request:
+  push:
+    branches: [main]
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Godot
+        run: |
+          curl -fL -o godot.zip https://github.com/godotengine/godot-builds/releases/download/4.3-stable/Godot_v4.3-stable_linux.x86_64.zip
+          unzip godot.zip
+          chmod +x Godot_v4.3-stable_linux.x86_64
+      - name: Import project
+        run: ./Godot_v4.3-stable_linux.x86_64 --headless --path . --editor --import
+      - name: Smoke test
+        run: |
+          set -o pipefail
+          ./Godot_v4.3-stable_linux.x86_64 --headless --path . --quit-after 10 -- --server 2>&1 | tee smoke.log
+          ! grep -E 'SCRIPT ERROR|Parse Error|ERROR:' smoke.log
