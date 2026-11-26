@@ -28,3 +28,9 @@ Build one representative dungeon room with stone walls, uneven floor, archway, t
 6. Profile CPU/GPU in a populated multiplayer scene and select rendering settings.
 
 Asset sources can be original Blender work, commissioned art or compatible licensed packs. Verify asset licenses before committing; avoid importing copyrighted game assets. Procedural and AI-generated references can inform concept art, but actual game assets require usable meshes, textures and animations.
+
+## Phase 1 implementation: Old Stone Crypt
+
+The runtime kit is generated in Godot, with no external asset dependencies. `stone_theme.gd` creates original 128x128 nearest-filtered stone textures and shared materials; `dungeon_visual_builder.gd` batches the existing 3m cells into 8x8-cell chunks. Floor/ceiling/wall dimensions and physics remain unchanged. Wall base/crown trim, narrow corridor entrance lintels and jambs, wall pilasters, torch sconces and decorative route stair plaques are render-only. Stairs are shallow visual markers, not physical stair geometry: the existing E transfer remains authoritative. Four nearest torch lights per viewed floor use a small pool of non-shadow-casting warm lights with flicker. Distance fog and a softer player light establish atmosphere. The original primitive render path remains available using `-- --debug-geometry`. Dedicated/headless generation does not build art unless explicitly requested by a test. A graphical playtest is necessary to tune brightness and assess actual performance; this is not final art.
+
+Future Blender kit dimensions: floor/ceiling 3 x 0.3 x 3m; wall 3 x 3 x 0.2m (width, height, depth); doorway trim within the 3m cell, full walkable clearance; sconce wall anchor at 1.7m; creature and weapon scenes remain next. Replace the generated meshes through the visual builder, not collision generation.
