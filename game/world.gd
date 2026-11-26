@@ -10,7 +10,6 @@ const Catalog = preload("res://game/items/catalog.gd")
 const Loot = preload("res://game/items/loot.gd")
 var loot := Loot.new()
 var loot_rng := RandomNumberGenerator.new()
-var shrine_position := Vector3.ZERO
 var tablet_position := Vector3.ZERO
 var secret_id := ""
 const COUNT := 4
@@ -21,25 +20,23 @@ var floors: Dictionary = {}
 var monsters: Dictionary = {}
 var visual := false
 
-func build(seed_value: int, render_geometry: bool) -> void:
+func build(seed_value: int, render_geometry: bool, party_size: int = 1) -> void:
 	visual = render_geometry
 	projectiles.visual = visual
 	add_child(projectiles)
 	loot.visual = visual
 	add_child(loot)
 	loot_rng.seed = seed_value + 53
+	var rng := RandomNumberGenerator.new()
+	rng.seed = seed_value + 97
 	var secrets := ["forgotten", "stone", "ancient"]
-	secret_id = secrets[randi_range(0, 2)]
+	secret_id = secrets[rng.randi_range(0, 2)]
 	for i in range(COUNT):
 		var level := Dungeon.new()
 		add_child(level)
 		level.position.y = -i * SPACING
 		level.generate(seed_value + i * 7919, visual)
 		floors[i] = level
-		if i == 2:
-			shrine_position = level.position + Vector3(6, 0, 0)
-			if visual:
-				marker(level, Vector3(6, 0, 0), "RESPEC SHRINE [K]", Color("#ae8ed8"))
 		if i == 1:
 			tablet_position = level.position + Vector3(6, 0, 0)
 			if visual:
@@ -50,14 +47,21 @@ func build(seed_value: int, render_geometry: bool) -> void:
 			if i < COUNT - 1:
 				var end: Vector2i = level.end_cell
 				marker(level, Vector3(end.x * Dungeon.CELL, 0, end.y * Dungeon.CELL), "DOWN [E]", Color("#d3ae55"))
-		for j in range(Bestiary.ENCOUNTERS[i].size()):
-			var kind: String = Bestiary.ENCOUNTERS[i][j]
+		var cells: Array[Vector2i] = []
+		for cell in level.tiles:
+			if Vector2(cell).length() >= 7.0 and Vector2(cell - level.end_cell).length() >= 2.0:
+				cells.append(cell)
+		cells.sort()
+		var count := mini(cells.size(), encounter_count(i, party_size))
+		for j in range(count):
+			var pool: Array = Bestiary.ENCOUNTERS[i]
+			var kind: String = pool[rng.randi_range(0, pool.size() - 1)]
 			var stats := Bestiary.stats(kind)
 			var mob := Node3D.new()
 			add_child(mob)
-			var cell: Vector2i = level.end_cell - Vector2i(j % 3 + 1, floori(float(j) / 3.0))
-			if not level.tiles.has(cell):
-				cell = level.end_cell
+			var pick := rng.randi_range(0, cells.size() - 1)
+			var cell: Vector2i = cells[pick]
+			cells.remove_at(pick)
 			mob.position = level.position + Vector3(cell.x * Dungeon.CELL, float(stats[11]) * 0.5, cell.y * Dungeon.CELL)
 			if visual:
 				var mesh := MeshInstance3D.new()
@@ -74,7 +78,7 @@ func build(seed_value: int, render_geometry: bool) -> void:
 				label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 				label.position.y = float(stats[11]) * 0.5 + 0.3
 				mob.add_child(label)
-			monsters[i * 10 + j] = {"node": mob, "kind": kind, "floor": i, "target": 0, "health": float(stats[1]), "phase": 0, "timer": 0.0, "attack_target": 0, "aim": Vector3.ZERO, "hurt": 0.0, "bleed": 0.0, "bleed_damage": 0.0, "bleed_owner": 0, "stun": 0.0, "burn": 0.0, "burn_damage": 0.0, "burn_owner": 0, "slow": 0.0}
+			monsters[i * 1000 + j] = {"node": mob, "kind": kind, "floor": i, "target": 0, "health": float(stats[1]), "phase": 0, "timer": 0.0, "attack_target": 0, "aim": Vector3.ZERO, "hurt": 0.0, "bleed": 0.0, "bleed_damage": 0.0, "bleed_owner": 0, "stun": 0.0, "burn": 0.0, "burn_damage": 0.0, "burn_owner": 0, "slow": 0.0}
 
 func marker(level: Node3D, at: Vector3, caption: String, color: Color) -> void:
 	var mesh := MeshInstance3D.new()
@@ -332,7 +336,9 @@ func reward_kill(mob: Dictionary, killer, party: Dictionary) -> void:
 		killer.gain_xp(reward)
 		killer.skills.credit(0, 10)
 		killer.health = minf(killer.max_health(), killer.health + killer.skills.bonus("heal_kill"))
-	var choices := ["potion", "potion", "axe", "spear", "iron_shield"]
+	var choices := ["potion", "potion", "axe", "spear", "iron_shield", "leather", "mail", "staff", "scroll_firebolt", "scroll_frostbolt", "scroll_spark", "scroll_stonebolt"]
+	if mob.floor >= 1:
+		choices.append_array(["scroll_fireball", "scroll_freeze", "scroll_thunder", "scroll_boulder"])
 	var at: Vector3 = mob.node.position
 	at.y = floors[mob.floor].position.y + 0.3
 	loot.spawn(choices[loot_rng.randi_range(0, choices.size() - 1)], mob.floor, at)
@@ -344,9 +350,6 @@ func safe(actor) -> bool:
 		if mob.health > 0 and mob.floor == actor.floor_id and horizontal_distance(mob.node.position, actor.position) <= 12.0:
 			return false
 	return true
-
-func near_shrine(actor) -> bool:
-	return actor.floor_id == 2 and horizontal_distance(actor.position, shrine_position) <= 2.5
 
 func discover(actor) -> bool:
 	if actor.health <= 0 or actor.floor_id != 1 or horizontal_distance(actor.position, tablet_position) > 2.5 or actor.skills.discovered.has(secret_id):
@@ -402,3 +405,6 @@ func apply_spell_damage(shot: Dictionary, mob: Dictionary, actors: Dictionary) -
 			mob.phase = 0
 		"shock", "stone":
 			mob.stun = maxf(mob.stun, 0.5)
+
+static func encounter_count(floor_id: int, party_size: int) -> int:
+	return ceili((6.0 + floor_id * 2.0) * (1.0 + 0.65 * (clampi(party_size, 1, 8) - 1)))

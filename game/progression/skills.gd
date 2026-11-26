@@ -3,6 +3,8 @@ extends RefCounted
 const Talents = preload("res://game/progression/talents.gd")
 const TITLES := ["Fighting", "Long Blades", "Axes", "Polearms", "Shields", "Dodging", "Fire Magic", "Ice Magic", "Air Magic", "Earth Magic"]
 const SLOT_COUNT := 3
+const Spells = preload("res://game/combat/spells.gd")
+const SCROLL_REQUIREMENTS := {"firebolt": 1, "frostbolt": 1, "spark": 1, "stonebolt": 1, "fireball": 2, "freeze": 2, "thunder": 2, "boulder": 2}
 var total_xp := 0
 var xp: Array[float] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 var wallet: Array[float] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
@@ -48,7 +50,7 @@ func visible(node: Array) -> bool:
 
 func can_buy(id: String) -> bool:
 	var node := Talents.find(id)
-	return not node.is_empty() and visible(node) and not learned.has(id) and wallet[node[1]] >= node[3] and (node[4] == "" or learned.has(node[4]))
+	return not node.is_empty() and not SCROLL_REQUIREMENTS.has(id) and visible(node) and not learned.has(id) and wallet[node[1]] >= node[3] and (node[4] == "" or learned.has(node[4]))
 
 func buy(id: String) -> bool:
 	if not can_buy(id):
@@ -71,21 +73,6 @@ func assign_slot(index: int, id: String) -> bool:
 	slots[index] = id
 	return true
 
-func refund(domain: int) -> bool:
-	if domain < 0 or domain >= TITLES.size():
-		return false
-	var changed := false
-	for id in learned.duplicate():
-		var node := Talents.find(id)
-		if node[1] == domain:
-			wallet[domain] += float(node[3]) * 0.75
-			learned.erase(id)
-			for i in range(SLOT_COUNT):
-				if slots[i] == id:
-					slots[i] = ""
-			changed = true
-	return changed
-
 func bonus(effect: String, domain: int = -1) -> float:
 	var result := 0.0
 	for id in learned:
@@ -106,3 +93,17 @@ func apply(data: Array) -> void:
 	discovered.assign(data[5])
 	slots.assign(data[6])
 	cooldowns = data[7].duplicate()
+
+func mastery(domain: int) -> int:
+	if domain < 0 or domain >= TITLES.size():
+		return 0
+	return int(sqrt(xp[domain] / 25.0))
+
+func read_scroll(id: String) -> bool:
+	if not SCROLL_REQUIREMENTS.has(id) or learned.has(id):
+		return false
+	var node := Talents.find(id)
+	if node.is_empty() or mastery(node[1]) < SCROLL_REQUIREMENTS[id]:
+		return false
+	learned.append(id)
+	return true

@@ -14,13 +14,16 @@ func run() -> void:
 	var actor := Player.new()
 	root.add_child(actor)
 	actor.setup(false, false)
-	var ok: bool = world.monsters.size() == 16 and Bestiary.stats("brute")[1] > Bestiary.stats("rat")[1]
+	var ok: bool = world.monsters.size() == 36 and Bestiary.stats("brute")[1] > Bestiary.stats("rat")[1]
 	actor.skills.credit(1, 200)
 	ok = ok and actor.buy_talent("sword") and actor.buy_talent("quick") and actor.buy_talent("keen")
 	var mob: Dictionary = world.monsters[0]
+	mob.health = 22.0
 	world.hit_monster(actor, mob, {1: actor})
 	ok = ok and mob.health == 0 and world.loot.drops.size() == 1
-	var guardian: Dictionary = world.monsters[20 + 3]
+	var guardian: Dictionary = world.monsters[2000 + 3]
+	guardian.kind = "guardian"
+	guardian.health = 85.0
 	world.hit_monster(actor, guardian, {1: actor})
 	ok = ok and guardian.health > 0 and guardian.bleed == 4.0 and guardian.bleed_owner == 1
 	var before: float = guardian.health

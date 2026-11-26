@@ -22,7 +22,7 @@ func run() -> void:
 	ok = ok and not player.sprinting
 	player.wants_block = false
 	player.skills.credit(6, 100)
-	ok = ok and player.buy_talent("firebolt") and player.skills.assign_slot(0, "firebolt")
+	ok = ok and player.skills.read_scroll("firebolt") and player.skills.assign_slot(0, "firebolt")
 	ok = ok and player.activate(0) and player.mana == 85.0
 	ok = ok and player.advance_cast(0.2) == "" and player.advance_cast(0.3) == "firebolt"
 	ok = ok and not player.activate(0)
@@ -32,6 +32,7 @@ func run() -> void:
 	root.add_child(world)
 	world.build(42069, false)
 	var mob: Dictionary = world.monsters[2]
+	mob.health = 50.0
 	world.apply_spell_damage({"owner": 1, "damage": 15.0, "effect": "burn", "domain": 6, "bonus": 0.0}, mob, {1: player})
 	ok = ok and mob.burn == 4.0 and mob.health == 35.0
 	world.apply_spell_damage({"owner": 1, "damage": 10.0, "effect": "slow", "domain": 7, "bonus": 0.0}, mob, {1: player})

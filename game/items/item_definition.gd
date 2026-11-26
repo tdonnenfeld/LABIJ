@@ -10,3 +10,7 @@ extends Resource
 @export var reduction := 0.0
 @export var heal := 0.0
 @export var tint := Color.WHITE
+
+@export var spell_id := ""
+@export var mana_bonus := 0.0
+@export var armor := 0.0

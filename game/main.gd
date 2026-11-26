@@ -12,7 +12,9 @@ const Catalog = preload("res://game/items/catalog.gd")
 var inventory_ui: PanelContainer
 var item_requests: Dictionary = {}
 const PORT := 7777
-const SEED := 42069
+var expedition_seed := 0
+var party_size := 1
+var party_selector: SpinBox
 
 var actors: Dictionary = {}
 var world: Node3D
@@ -47,15 +49,15 @@ func _ready() -> void:
 		settings.ambient_light_energy = 0.35
 		environment.environment = settings
 		add_child(environment)
-	world = World.new()
-	add_child(world)
-	world.build(SEED, not dedicated and DisplayServer.get_name() != "headless")
 	multiplayer.peer_connected.connect(_peer_joined)
 	multiplayer.peer_disconnected.connect(_peer_left)
 	multiplayer.connected_to_server.connect(_connected)
 	multiplayer.connection_failed.connect(_failed)
 	multiplayer.server_disconnected.connect(_failed)
 	if dedicated:
+		for arg in OS.get_cmdline_user_args():
+			if arg.begins_with("--party-size="):
+				party_size = clampi(int(arg.get_slice("=", 1)), 1, 8)
 		_host()
 	else:
 		_build_menu()
@@ -118,6 +120,14 @@ func _build_menu() -> void:
 	address = LineEdit.new()
 	address.text = "127.0.0.1"
 	panel.add_child(address)
+	var party_label := Label.new()
+	party_label.text = "Expected party size (Host)"
+	panel.add_child(party_label)
+	party_selector = SpinBox.new()
+	party_selector.min_value = 1
+	party_selector.max_value = 8
+	party_selector.value = 2
+	panel.add_child(party_selector)
 	for entry in [["Solo", _solo], ["Host", _host], ["Join", _join]]:
 		var button := Button.new()
 		button.text = entry[0]
@@ -142,12 +152,16 @@ func _start() -> void:
 			xp_label.show()
 
 func _solo() -> void:
+	party_size = 1
+	new_expedition()
 	_spawn(1)
 	_start()
 
 func _host() -> void:
+	if not dedicated:
+		party_size = int(party_selector.value)
 	var peer := ENetMultiplayerPeer.new()
-	var err := peer.create_server(PORT, 8 if dedicated else 7)
+	var err := peer.create_server(PORT, maxi(1, party_size if dedicated else party_size - 1))
 	if err != OK:
 		if status:
 			status.text = "Cannot host: " + str(err)
@@ -156,6 +170,7 @@ func _host() -> void:
 			get_tree().quit(1)
 		return
 	multiplayer.multiplayer_peer = peer
+	new_expedition()
 	if not dedicated:
 		_spawn(1)
 	_start()
@@ -170,11 +185,15 @@ func _join() -> void:
 	status.text = "Connecting..."
 
 func _connected() -> void:
-	_start()
+	status.text = "Generating expedition..."
 
 func _failed() -> void:
 	multiplayer.multiplayer_peer = null
 	active = false
+	if is_instance_valid(world):
+		remove_child(world)
+		world.queue_free()
+		world = null
 	received_tick = -1
 	if hud:
 		hud.hide()
@@ -217,6 +236,10 @@ func _remove(id: int) -> void:
 func _peer_joined(id: int) -> void:
 	if not multiplayer.is_server():
 		return
+	if actors.size() >= party_size:
+		multiplayer.multiplayer_peer.disconnect_peer(id)
+		return
+	initialize_expedition.rpc_id(id, expedition_seed, party_size)
 	for existing in actors.keys():
 		spawn_remote.rpc_id(id, existing, actors[existing].floor_id, actors[existing].position)
 	_spawn(id)
@@ -383,7 +406,7 @@ func _physics_process(delta: float) -> void:
 				if ability != "":
 					xp_label.text += "\n%d: %s %.1fs" % [i + 1, ability, local.skills.cooldowns.get(ability, 0.0)]
 			if skills_ui and skills_ui.visible:
-				skills_ui.refresh(local.skills.state(), world.safe(local), world.near_shrine(local))
+				skills_ui.refresh(local.skills.state(), world.safe(local))
 			stamina_bar.value = local.stamina
 			mana_bar.value = local.mana
 			if local.camera:
@@ -415,7 +438,7 @@ func submit_input(move: Vector2, angle: float, block: bool, sprint: bool) -> voi
 
 @rpc("authority", "call_remote", "unreliable_ordered")
 func snapshot(sequence: int, states: Dictionary, mobs: Dictionary, drops: Dictionary, shots: Dictionary) -> void:
-	if sequence < received_tick:
+	if not is_instance_valid(world) or sequence < received_tick:
 		return
 	received_tick = sequence
 	world.apply_monsters(mobs)
@@ -489,6 +512,8 @@ func apply_item_action(actor, index: int, drop: bool) -> void:
 			at.y = world.floors[actor.floor_id].position.y + 0.3
 			world.loot.spawn(item, actor.floor_id, at)
 	else:
+		if index >= 0 and index < actor.inventory.items.size() and Catalog.get_item(actor.inventory.items[index]).kind == "scroll" and not world.safe(actor):
+			return
 		actor.use_item(index)
 
 func _skill_action(index: int, value: int) -> void:
@@ -516,7 +541,7 @@ func _talent_action(action: String, id: String, index: int) -> void:
 func request_talent(action: String, id: String, index: int) -> void:
 	if multiplayer.is_server():
 		var peer := multiplayer.get_remote_sender_id()
-		if actors.has(peer) and id.length() <= 64 and action in ["buy", "slot", "refund", "activate", "discover"]:
+		if actors.has(peer) and id.length() <= 64 and action in ["buy", "slot", "activate", "discover"]:
 			talent_requests[peer] = [action, id, index]
 
 func apply_talent(actor, request: Array) -> void:
@@ -533,6 +558,22 @@ func apply_talent(actor, request: Array) -> void:
 	match request[0]:
 		"buy": actor.buy_talent(request[1])
 		"slot": actor.skills.assign_slot(request[2], request[1])
-		"refund":
-			if world.near_shrine(actor):
-				actor.refund_talents(request[2])
+
+func new_expedition() -> void:
+	expedition_seed = randi()
+	build_expedition(expedition_seed, party_size)
+
+func build_expedition(seed_value: int, size: int) -> void:
+	if is_instance_valid(world):
+		remove_child(world)
+		world.queue_free()
+	expedition_seed = seed_value
+	party_size = size
+	world = World.new()
+	add_child(world)
+	world.build(seed_value, not dedicated and DisplayServer.get_name() != "headless", size)
+
+@rpc("authority", "call_remote", "reliable")
+func initialize_expedition(seed_value: int, size: int) -> void:
+	build_expedition(seed_value, size)
+	_start()

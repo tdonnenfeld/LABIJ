@@ -125,7 +125,7 @@ func advance_combat(delta: float) -> bool:
 	blocking = wants_block and attack_phase == 0 and cast_id == "" and stamina > 0
 	if blocking:
 		block_age = block_age + delta if was_blocking else 0.0
-	mana = minf(100.0, mana + delta * 5.0)
+	mana = minf(100.0, mana + delta * 5.0 * (1.0 + Catalog.get_item(inventory.weapon).mana_bonus))
 	if not blocking and not sprinting and attack_phase == 0 and cast_id == "":
 		stamina = minf(Combat.MAX_STAMINA, stamina + delta * (18.0 + skills.bonus("regen")))
 	if attack_phase == 0:
@@ -152,6 +152,8 @@ func take_damage(amount: float, source: Vector3) -> void:
 		if skills.bonus("parry") > 0 and block_age <= 0.25:
 			amount = 0.0
 	combat_timer = 5.0
+	if inventory.armor_index >= 0:
+		amount *= 1.0 - Catalog.get_item(inventory.items[inventory.armor_index]).armor
 	amount *= (1.0 - skills.bonus("mitigation")) * (0.5 if fortify_timer > 0 else 1.0) * (0.25 if escape_timer > 0 else 1.0)
 	health = maxf(0.0, health - amount)
 	hurt_timer = 0.25
@@ -181,6 +183,11 @@ func use_item(index: int) -> bool:
 	if health <= 0 or attack_phase != 0 or cast_id != "" or index < 0 or index >= inventory.items.size():
 		return false
 	var item = Catalog.get_item(inventory.items[index])
+	if item.kind == "scroll":
+		if not skills.read_scroll(item.spell_id):
+			return false
+		inventory.remove(index)
+		return true
 	if item.kind == "consumable":
 		if health >= max_health():
 			return false
@@ -266,16 +273,6 @@ func buy_talent(id: String) -> bool:
 	if not skills.buy(id):
 		return false
 	health = minf(max_health(), health + max_health() - old)
-	return true
-
-func refund_talents(domain: int) -> bool:
-	if not skills.refund(domain):
-		return false
-	health = minf(health, max_health())
-	empowered = ""
-	fortify_timer = 0.0
-	dash_timer = 0.0
-	escape_timer = 0.0
 	return true
 
 func update_sprint(delta: float) -> void:
