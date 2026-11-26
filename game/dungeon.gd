@@ -2,14 +2,19 @@ extends Node3D
 
 const CELL := 3.0
 var tiles: Dictionary = {}
-var floor_material := StandardMaterial3D.new()
-var wall_material := StandardMaterial3D.new()
+var floor_material: StandardMaterial3D
+var wall_material: StandardMaterial3D
+var visual := true
 
-func generate(seed_value: int) -> void:
+func generate(seed_value: int, render_geometry: bool = true) -> void:
+	visual = render_geometry
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed_value
-	floor_material.albedo_color = Color("#514d43")
-	wall_material.albedo_color = Color("#77705e")
+	if visual:
+		floor_material = StandardMaterial3D.new()
+		wall_material = StandardMaterial3D.new()
+		floor_material.albedo_color = Color("#514d43")
+		wall_material.albedo_color = Color("#77705e")
 	var previous := Vector2i(0, 0)
 	for i in range(9):
 		var center := Vector2i(i * 6, rng.randi_range(-4, 4))
@@ -40,16 +45,17 @@ func generate(seed_value: int) -> void:
 
 func add_box(at: Vector3, dimensions: Vector3, material: StandardMaterial3D) -> void:
 	var body := StaticBody3D.new()
-	var mesh := MeshInstance3D.new()
-	var box := BoxMesh.new()
-	box.size = dimensions
-	mesh.mesh = box
-	mesh.material_override = material
+	if visual:
+		var mesh := MeshInstance3D.new()
+		var box := BoxMesh.new()
+		box.size = dimensions
+		mesh.mesh = box
+		mesh.material_override = material
+		body.add_child(mesh)
 	var collision := CollisionShape3D.new()
 	var shape := BoxShape3D.new()
 	shape.size = dimensions
 	collision.shape = shape
-	body.add_child(mesh)
 	body.add_child(collision)
 	add_child(body)
 	body.position = at

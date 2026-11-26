@@ -5,13 +5,15 @@ var heading := 0.0
 var look_pitch := 0.0
 var camera: Camera3D
 
-func setup(local: bool) -> void:
+func setup(local: bool, visual: bool = true) -> void:
 	var collision := CollisionShape3D.new()
 	var capsule := CapsuleShape3D.new()
 	capsule.radius = 0.32
 	capsule.height = 1.7
 	collision.shape = capsule
 	add_child(collision)
+	if not visual:
+		return
 	var mesh := MeshInstance3D.new()
 	var model := CapsuleMesh.new()
 	model.radius = 0.32

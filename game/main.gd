@@ -16,24 +16,25 @@ var address: LineEdit
 var status: Label
 
 func _ready() -> void:
-	var environment := WorldEnvironment.new()
-	var settings := Environment.new()
-	settings.background_mode = Environment.BG_COLOR
-	settings.background_color = Color("#141311")
-	settings.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	settings.ambient_light_color = Color("#a7a08d")
-	settings.ambient_light_energy = 0.35
-	environment.environment = settings
-	add_child(environment)
+	dedicated = "--server" in OS.get_cmdline_user_args()
+	if not dedicated and DisplayServer.get_name() != "headless":
+		var environment := WorldEnvironment.new()
+		var settings := Environment.new()
+		settings.background_mode = Environment.BG_COLOR
+		settings.background_color = Color("#141311")
+		settings.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+		settings.ambient_light_color = Color("#a7a08d")
+		settings.ambient_light_energy = 0.35
+		environment.environment = settings
+		add_child(environment)
 	var dungeon := Dungeon.new()
 	add_child(dungeon)
-	dungeon.generate(SEED)
+	dungeon.generate(SEED, not dedicated and DisplayServer.get_name() != "headless")
 	multiplayer.peer_connected.connect(_peer_joined)
 	multiplayer.peer_disconnected.connect(_peer_left)
 	multiplayer.connected_to_server.connect(_connected)
 	multiplayer.connection_failed.connect(_failed)
 	multiplayer.server_disconnected.connect(_failed)
-	dedicated = "--server" in OS.get_cmdline_user_args()
 	if dedicated:
 		_host()
 	else:
@@ -115,7 +116,7 @@ func _spawn(id: int) -> void:
 	actor.name = str(id)
 	add_child(actor)
 	actor.position = Vector3(float(actors.size() % 4) * 0.85, 1.0, float(actors.size() / 4) * 0.85)
-	actor.setup(not dedicated and id == multiplayer.get_unique_id())
+	actor.setup(not dedicated and id == multiplayer.get_unique_id(), not dedicated and DisplayServer.get_name() != "headless")
 	actors[id] = actor
 
 func _remove(id: int) -> void:
