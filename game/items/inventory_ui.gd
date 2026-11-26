@@ -1,5 +1,7 @@
 extends PanelContainer
 
+const Numbers = preload("res://game/ui/numbers.gd")
+
 const Skills = preload("res://game/progression/skills.gd")
 const Catalog = preload("res://game/items/catalog.gd")
 signal action(index: int, drop: bool)
@@ -58,23 +60,23 @@ func update_details() -> void:
 	use_button.text = "Equip / use"
 	match item.kind:
 		"weapon":
-			details.text = "Damage %s | Reach %s m | Stamina %s" % [String.num(item.damage, 2), String.num(item.reach, 2), String.num(item.stamina_cost, 2)]
+			details.text = "Damage %s | Reach %s m | Stamina %s" % [Numbers.number(item.damage), Numbers.number(item.reach), Numbers.number(item.stamina_cost)]
 			if item.projectile_speed > 0:
 				details.text += " | Ranged"
 			if item.poison > 0:
-				details.text += " | Poison %s/s" % String.num(item.poison, 2)
+				details.text += " | Poison %s/s" % Numbers.number(item.poison)
 			if item.spell_power > 0:
-				details.text += " | Spell power +%s%%" % String.num(item.spell_power * 100, 2)
+				details.text += " | Spell power +%s%%" % Numbers.number(item.spell_power * 100)
 		"scroll":
 			var node := Skills.Talents.find(item.spell_id)
 			details.text = "Read to learn permanently | %s mastery %d" % [Skills.TITLES[node[1]], Skills.SCROLL_REQUIREMENTS[item.spell_id]]
 			use_button.text = "Read scroll"
 		"armor":
-			details.text = "Damage reduction: %s%% | Magic resist: %s%%" % [String.num(item.armor * 100, 2), String.num(item.magic_resistance * 100, 2)]
+			details.text = "Damage reduction: %s%% | Magic resist: %s%%" % [Numbers.number(item.armor * 100), Numbers.number(item.magic_resistance * 100)]
 		"shield":
-			details.text = "Damage blocked: %s%%" % String.num(item.reduction * 100, 2)
+			details.text = "Damage blocked: %s%%" % Numbers.number(item.reduction * 100)
 		_:
-			details.text = "Restores %s HP" % String.num(item.heal, 2)
+			details.text = "Restores %s HP" % Numbers.number(item.heal)
 
 func send(drop: bool) -> void:
 	var selected := list.get_selected_items()

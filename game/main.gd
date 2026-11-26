@@ -1,5 +1,7 @@
 extends Node3D
 
+const Numbers = preload("res://game/ui/numbers.gd")
+
 const World = preload("res://game/world.gd")
 const Player = preload("res://game/player.gd")
 const InventoryUI = preload("res://game/items/inventory_ui.gd")
@@ -636,7 +638,7 @@ func apply_item_action(actor, index: int, drop: bool) -> void:
 		if actor.use_item(index):
 			world.journal.add("Loot", "%s %s %s" % [actor.display_name, "reads" if item.kind == "scroll" else ("uses" if item.kind == "consumable" else "equips"), item.title])
 			if actor.health > before:
-				world.journal.add("Combat", "%s restores %s HP" % [actor.display_name, String.num(actor.health - before, 2)], actor.floor_id, actor.position + Vector3.UP, "+%d" % roundi(actor.health - before), "heal", int(actor.name))
+				world.journal.add("Combat", "%s restores %s HP" % [actor.display_name, Numbers.number(actor.health - before)], actor.floor_id, actor.position + Vector3.UP, "+%d" % roundi(actor.health - before), "heal", int(actor.name))
 
 func _skill_action(index: int, value: int) -> void:
 	if multiplayer.is_server():

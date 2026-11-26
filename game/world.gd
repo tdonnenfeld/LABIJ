@@ -1,5 +1,7 @@
 extends Node3D
 
+const Numbers = preload("res://game/ui/numbers.gd")
+
 const Dungeon = preload("res://game/dungeon.gd")
 const Combat = preload("res://game/combat.gd")
 const Threat = preload("res://game/combat/threat.gd")
@@ -711,7 +713,7 @@ func objective_hint(actor, peer: int) -> String:
 func watch_player(actor, peer: int) -> void:
 	actor.damage_event.connect(func(amount, blocked, parried, source_name): player_hit(actor, peer, amount, blocked, parried, source_name))
 	actor.xp_event.connect(func(amount): journal.add("XP", "%s gains %d XP" % [actor.display_name, amount], actor.floor_id, actor.position + Vector3.UP, "+%d XP" % amount, "xp", peer))
-	actor.skills.usage_xp.connect(func(domain, amount): journal.add("XP", "%s gains %s %s XP" % [actor.display_name, String.num(amount, 2), actor.Skills.TITLES[domain]]))
+	actor.skills.usage_xp.connect(func(domain, amount): journal.add("XP", "%s gains %s %s XP" % [actor.display_name, Numbers.number(amount), actor.Skills.TITLES[domain]]))
 
 func player_hit(actor, peer: int, amount: float, blocked: bool, parried: bool, source_name: String) -> void:
 	var effect := "Parried" if parried else ("Blocked" if blocked else "")
