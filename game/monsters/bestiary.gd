@@ -32,3 +32,19 @@ static func resistance(kind: String, domain: int) -> float:
 	if kind == "mage" and domain >= 6 and domain <= 9:
 		return 0.2
 	return 0.0
+
+# Extra reach to initiate a moving attack, windup speed multiplier, preferred ranged spacing.
+const TACTICS := {
+	"rat": [0.85, 1.10, 0.0],
+	"goblin": [0.9, 0.85, 0.0],
+	"brute": [1.3, 0.75, 0.0],
+	"archer": [0.0, 0.35, 4.0],
+	"guardian": [0.65, 0.6, 0.0],
+	"mage": [0.0, 0.25, 3.0],
+	"crypt_warden": [1.0, 0.6, 0.0],
+	"ember_oracle": [0.0, 0.2, 3.5],
+	"jewel_sentinel": [1.2, 0.65, 0.0],
+	"jewel_hunter": [1.3, 1.05, 0.0]
+}
+static func tactics(kind: String) -> Array:
+	return TACTICS[kind]
