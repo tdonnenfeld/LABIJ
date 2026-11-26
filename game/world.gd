@@ -947,6 +947,9 @@ func discover(actor) -> bool:
 
 func cast(actor, source_peer: int, id: String, party: Dictionary = {}) -> void:
 	player_noise(actor, Acoustics.MAGIC, "magic")
+	if actor.announce_spell:
+		actor.announce_spell = false
+		sound(actor.floor_id, actor.position, 12.0, "spell_voice:%d:%s" % [actor.spell_voice, id])
 	var stats := Spells.get_spell(id)
 	var direction := Combat.aim_direction(actor.heading, actor.look_pitch)
 	var damage: float = stats[2] * (1.0 + actor.skills.bonus("spell_damage", stats[0]) + Catalog.get_item(actor.inventory.weapon).spell_power)
