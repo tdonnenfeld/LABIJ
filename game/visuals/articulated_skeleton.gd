@@ -4,6 +4,9 @@ var joints: Dictionary = {}
 var attachments: Dictionary = {}
 var rests: Dictionary = {}
 var clip_player: AnimationPlayer
+var animation_tree: AnimationTree
+var last_clock := 0.0
+var gait_started := false
 var drivers: Dictionary = {}
 
 func add_joint(id: String, parent_id: String, at: Transform3D) -> int:
@@ -103,9 +106,9 @@ func build_clips() -> void:
 	clip_player.name = "LocomotionClips"
 	add_child(clip_player)
 	var library := AnimationLibrary.new()
-	for clip_id in ["walk", "run"]:
+	for clip_id in ["idle", "walk", "run"]:
 		var clip := Animation.new()
-		clip.length = 1.0 if clip_id == "walk" else 0.65
+		clip.length = 1.0
 		clip.loop_mode = Animation.LOOP_LINEAR
 		for id in ["KneeR", "KneeL"]:
 			if not drivers.has(id):
@@ -113,7 +116,7 @@ func build_clips() -> void:
 			var track := clip.add_track(Animation.TYPE_VALUE)
 			var driver: Node3D = drivers[id]
 			clip.track_set_path(track, NodePath(str(get_path_to(driver)) + ":rotation:x"))
-			var amplitude := 0.65 if clip_id == "walk" else 1.05
+			var amplitude := 0.0 if clip_id == "idle" else (0.65 if clip_id == "walk" else 1.05)
 			for i in range(9):
 				var fraction := float(i) / 8.0
 				var bend := maxf(0.0, sin(fraction * TAU + (PI if id == "KneeR" else 0.0))) * amplitude
@@ -121,16 +124,31 @@ func build_clips() -> void:
 		library.add_animation(clip_id, clip)
 	clip_player.add_animation_library("", library)
 	clip_player.root_node = NodePath("..")
+	var space := AnimationNodeBlendSpace1D.new()
+	space.min_space = 0.0
+	space.max_space = 4.5
+	space.sync = true
+	for pair in [["idle", 0.0], ["walk", 2.2], ["run", 4.5]]:
+		var node := AnimationNodeAnimation.new()
+		node.animation = pair[0]
+		space.add_blend_point(node, pair[1])
+	animation_tree = AnimationTree.new()
+	animation_tree.name = "LocomotionBlend"
+	add_child(animation_tree)
+	animation_tree.root_node = NodePath("..")
+	animation_tree.anim_player = animation_tree.get_path_to(clip_player)
+	animation_tree.tree_root = space
+	animation_tree.callback_mode_process = AnimationMixer.ANIMATION_CALLBACK_MODE_PROCESS_MANUAL
+	animation_tree.active = true
 
 func sample_gait(clock: float, speed: float, weight: float) -> void:
-	if not clip_player:
+	if not animation_tree:
 		return
-	var clip_id := "run" if speed > 3.2 else "walk"
-	if clip_player.current_animation != clip_id:
-		clip_player.play(clip_id)
-	clip_player.pause()
-	var clip := clip_player.get_animation(clip_id)
-	clip_player.seek(fposmod(clock / TAU, 1.0) * clip.length, true)
+	var elapsed := maxf(0.0, clock - last_clock) / TAU if gait_started else 0.0
+	last_clock = clock
+	gait_started = true
+	animation_tree.set("parameters/blend_position", clampf(speed, 0.0, 4.5))
+	animation_tree.advance(elapsed)
 	for id in ["KneeR", "KneeL"]:
 		if drivers.has(id):
 			drivers[id].rotation.x *= weight
