@@ -4,13 +4,13 @@ var shots: Dictionary = {}
 var next_id := 1
 var visual := false
 
-func launch(floor_id: int, at: Vector3, direction: Vector3, speed: float, reach: float, damage: float, color: Color, owner: int, enemy: bool, effect: String, domain: int, bonus: float = 0.0) -> void:
+func launch(floor_id: int, at: Vector3, direction: Vector3, speed: float, reach: float, damage: float, color: Color, source_peer: int, enemy: bool, effect: String, domain: int, bonus: float = 0.0) -> void:
 	if direction.length_squared() < 0.001:
 		return
 	var id := next_id
 	next_id += 1
 	var node := make_node(at, color)
-	shots[id] = {"node": node, "floor": floor_id, "velocity": direction.normalized() * speed, "remaining": reach, "damage": damage, "color": color, "owner": owner, "enemy": enemy, "effect": effect, "domain": domain, "bonus": bonus}
+	shots[id] = {"node": node, "floor": floor_id, "velocity": direction.normalized() * speed, "remaining": reach, "damage": damage, "color": color, "owner": source_peer, "enemy": enemy, "effect": effect, "domain": domain, "bonus": bonus}
 
 func make_node(at: Vector3, color: Color) -> Node3D:
 	var node := Node3D.new()

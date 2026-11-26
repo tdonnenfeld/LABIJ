@@ -11,20 +11,20 @@ func show_event(event: Dictionary, local_id: int) -> void:
 		return
 	var color: Color = COLORS.get(event.style, Color.WHITE)
 	if event.target == local_id and local_layer:
-		var label := Label.new()
-		label.text = event.floating
-		label.add_theme_font_size_override("font_size", 25)
-		label.add_theme_color_override("font_color", color)
-		label.add_theme_color_override("font_outline_color", Color.BLACK)
-		label.add_theme_constant_override("outline_size", 5)
-		label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		local_layer.add_child(label)
-		label.position = local_layer.size * Vector2(0.60, 0.49) + Vector2(0, float(screen_count % 4) * 25)
+		var screen_label := Label.new()
+		screen_label.text = event.floating
+		screen_label.add_theme_font_size_override("font_size", 25)
+		screen_label.add_theme_color_override("font_color", color)
+		screen_label.add_theme_color_override("font_outline_color", Color.BLACK)
+		screen_label.add_theme_constant_override("outline_size", 5)
+		screen_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		local_layer.add_child(screen_label)
+		screen_label.position = local_layer.size * Vector2(0.60, 0.49) + Vector2(0, float(screen_count % 4) * 25)
 		screen_count += 1
-		var tween := label.create_tween().set_parallel(true)
-		tween.tween_property(label, "position:y", label.position.y - 65, 1.1)
-		tween.tween_property(label, "modulate:a", 0.0, 0.45).set_delay(0.65)
-		tween.chain().tween_callback(label.queue_free)
+		var tween := screen_label.create_tween().set_parallel(true)
+		tween.tween_property(screen_label, "position:y", screen_label.position.y - 65, 1.1)
+		tween.tween_property(screen_label, "modulate:a", 0.0, 0.45).set_delay(0.65)
+		tween.chain().tween_callback(screen_label.queue_free)
 		return
 	if texts.size() >= 64:
 		var old: Dictionary = texts.pop_front()
