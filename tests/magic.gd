@@ -69,6 +69,29 @@ func run() -> void:
 	var drops_before := world.loot.drops.size()
 	world.recover_arrow(0, Vector3.ZERO)
 	ok = ok and world.loot.drops.size() == drops_before + 1
+	var arena := World.new()
+	root.add_child(arena)
+	arena.add_child(arena.projectiles)
+	var wall := StaticBody3D.new()
+	arena.add_child(wall)
+	wall.position = Vector3(0, 20, -2)
+	var collider := CollisionShape3D.new()
+	var shape := BoxShape3D.new()
+	shape.size = Vector3(4, 4, 0.12)
+	collider.shape = shape
+	wall.add_child(collider)
+	await physics_frame
+	await physics_frame
+	var origin := Vector3(0, 20, 0)
+	var hit := Projectiles.sweep(arena.get_world_3d().direct_space_state, origin, origin + Vector3.FORWARD * 8.0, 0.20, 1)
+	ok = ok and not hit.is_empty() and float(hit.get("fraction", 1.0)) < 0.25
+	arena.projectiles.launch(0, origin, Vector3.FORWARD, 40.0, 15.0, 30.0, Color.ORANGE, 1, false, "blast", 6)
+	arena.projectiles.step(arena, {}, 0.1)
+	var bounced: Dictionary = arena.projectiles.shots.get(1, {})
+	ok = ok and not bounced.is_empty() and bounced.get("bounces", 0) == 1 and bounced.velocity.z > 0.0 and bounced.node.position.z > -1.8
+	arena.projectiles.step(arena, {}, 0.025)
+	ok = ok and arena.projectiles.shots.has(1) and arena.projectiles.shots[1].node.position.z > -1.8
+	arena.free()
 	if not ok:
-		push_error("Magic and sprint tests failed")
+		push_error("Magic, sprint and fireball collision tests failed")
 	quit(0 if ok else 1)
