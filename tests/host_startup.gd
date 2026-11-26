@@ -64,7 +64,7 @@ func run() -> void:
 	host.leave_expedition(false)
 	await process_frame
 	for game in [host, guest]:
-		var viewport := game.get_parent()
+		var viewport: Node = game.get_parent()
 		set_multiplayer(null, viewport.get_path())
 		viewport.queue_free()
 	await process_frame
