@@ -312,7 +312,7 @@ func _host() -> void:
 	multiplayer.multiplayer_peer = peer
 	new_expedition()
 	if not dedicated:
-		_spawn(1)
+		_spawn(1, selected_profile)
 	_start()
 
 func _join() -> void:
