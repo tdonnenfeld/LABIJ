@@ -510,7 +510,7 @@ func _start() -> void:
 		actor.wants_sprint = false
 		actor.wants_quiet = false
 		yaw = actor.heading
-		pitch = 0.0
+		pitch = actor.look_pitch
 		actor.rotation.y = yaw
 		if actor.camera:
 			actor.camera.make_current()
@@ -899,8 +899,9 @@ func _physics_process(delta: float) -> void:
 			actor.wants_quiet = quiet
 			actor.direction = move.limit_length()
 			actor.heading = yaw
+			actor.look_pitch = pitch
 		else:
-			submit_input.rpc_id(1, move, yaw, block, sprint, quiet)
+			submit_input.rpc_id(1, move, yaw, block, sprint, quiet, pitch)
 	if multiplayer.is_server():
 		advance_voice(delta)
 		for peer in ready_peers:
@@ -1063,14 +1064,15 @@ func _physics_process(delta: float) -> void:
 						hud.text += " ×%d" % world.loot.drops[drop_id].amount
 
 @rpc("any_peer", "call_remote", "unreliable_ordered")
-func submit_input(move: Vector2, angle: float, block: bool, sprint: bool, quiet: bool) -> void:
-	if not multiplayer.is_server() or not move.is_finite() or not is_finite(angle):
+func submit_input(move: Vector2, angle: float, block: bool, sprint: bool, quiet: bool, vertical: float = 0.0) -> void:
+	if not multiplayer.is_server() or not move.is_finite() or not is_finite(angle) or not is_finite(vertical):
 		return
 	var id := multiplayer.get_remote_sender_id()
 	if remote_gameplay_ready(id):
 		input_age[id] = 0.0
 		actors[id].direction = move.limit_length()
-		actors[id].heading = angle
+		actors[id].heading = wrapf(angle, -PI, PI)
+		actors[id].look_pitch = clampf(vertical, -1.4, 1.4)
 		actors[id].wants_block = block
 		actors[id].wants_sprint = sprint
 		actors[id].wants_quiet = quiet
@@ -1111,6 +1113,8 @@ func apply_snapshot(sequence: int, states: Dictionary, mobs: Dictionary, drops: 
 			actors[id].noise_level = states[id][15]
 			actors[id].quiet_walking = states[id][16]
 			actors[id].noise_peak = states[id][17]
+			if states[id].size() > 18:
+				actor.look_pitch = states[id][18]
 			actors[id].collision_layer = 2 if actors[id].health > 0 else 0
 			actors[id].collision_mask = 7 if actors[id].health > 0 else 0
 
@@ -1673,7 +1677,7 @@ func open_escape_menu() -> void:
 			actors[id].wants_quiet = false
 			attack_requests.erase(id)
 		else:
-			submit_input.rpc_id(1, Vector2.ZERO, yaw, false, false, false)
+			submit_input.rpc_id(1, Vector2.ZERO, yaw, false, false, false, pitch)
 	refresh_lobby_menu()
 	escape_menu.open_menu(voice_mode, voice_muted)
 
@@ -1767,7 +1771,7 @@ func reserved_slots() -> int:
 func player_states() -> Dictionary:
 	var states := {}
 	for id in actors:
-		states[id] = [actors[id].position, actors[id].heading, actors[id].floor_id, actors[id].health, actors[id].stamina, actors[id].blocking, actors[id].attack_phase, actors[id].hurt_timer, actors[id].swing_hit, actors[id].inventory.state(), actors[id].skills.state(), actors[id].combat_timer, actors[id].mana, actors[id].sprinting, actors[id].cast_id, actors[id].noise_level, actors[id].quiet_walking, actors[id].noise_peak]
+		states[id] = [actors[id].position, actors[id].heading, actors[id].floor_id, actors[id].health, actors[id].stamina, actors[id].blocking, actors[id].attack_phase, actors[id].hurt_timer, actors[id].swing_hit, actors[id].inventory.state(), actors[id].skills.state(), actors[id].combat_timer, actors[id].mana, actors[id].sprinting, actors[id].cast_id, actors[id].noise_level, actors[id].quiet_walking, actors[id].noise_peak, actors[id].look_pitch]
 
 	return states
 
