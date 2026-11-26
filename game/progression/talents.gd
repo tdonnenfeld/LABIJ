@@ -73,7 +73,10 @@ const NODES := [["vitality",0,"Vitality",25,"","hp",15,"+15 max HP",false],
 	["deep_cut",11,"Deep Cut",65,"ambush","ambush_bleed",3,"Ambushes inflict 3 bleed damage/s for 4s",false],
 	["misdirection",11,"Misdirection",50,"concealment","distraction",0.5,"50% more distraction noise radius",false],
 	["shadowstep",11,"Shadow Step",65,"concealment","quiet_speed",0.35,"35% faster quiet walking",false],
-	["backstab",11,"Backstab",50,"ambush","backstab",0.35,"+35% base melee damage from behind against awake enemies not targeting you",false]]
+	["backstab",11,"Backstab",50,"ambush","backstab",0.35,"+35% base melee damage from behind against awake enemies not targeting you",false],
+	["lockpick",11,"Lockpicking",45,"soft_step","lockpick",1,"Open locked doors without a key",false],
+	["disarm",11,"Trapcraft",50,"concealment","disarm",1,"Disarm nearby traps and trapped doors",false],
+	["bodyguard",4,"Bodyguard",55,"protector","bodyguard",0.25,"Reduce incoming melee damage to nearby allies while guarding",false]]
 
 static func find(id: String) -> Array:
 	for node in NODES:
