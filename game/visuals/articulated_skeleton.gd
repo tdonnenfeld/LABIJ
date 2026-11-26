@@ -3,6 +3,7 @@ extends Skeleton3D
 var joints: Dictionary = {}
 var attachments: Dictionary = {}
 var rests: Dictionary = {}
+var clip_player: AnimationPlayer
 var drivers: Dictionary = {}
 
 func add_joint(id: String, parent_id: String, at: Transform3D) -> int:
@@ -77,6 +78,7 @@ func build(body: Node3D, head: Node3D, arms: Array, legs: Array, tail: Node3D, r
 		parts[id].set_meta("bone_driver", true)
 	for id in parts:
 		attach_part(id, parts[id])
+	build_clips()
 
 func sync_parts() -> void:
 	for id in attachments:
@@ -95,3 +97,40 @@ func pose_joint(id: String, angle: Vector3) -> void:
 
 func joint_position(id: String) -> Vector3:
 	return get_bone_global_pose(joints[id]).origin if joints.has(id) else Vector3.ZERO
+
+func build_clips() -> void:
+	clip_player = AnimationPlayer.new()
+	clip_player.name = "LocomotionClips"
+	add_child(clip_player)
+	var library := AnimationLibrary.new()
+	for clip_id in ["walk", "run"]:
+		var clip := Animation.new()
+		clip.length = 1.0 if clip_id == "walk" else 0.65
+		clip.loop_mode = Animation.LOOP_LINEAR
+		for id in ["KneeR", "KneeL"]:
+			if not drivers.has(id):
+				continue
+			var track := clip.add_track(Animation.TYPE_VALUE)
+			var driver: Node3D = drivers[id]
+			clip.track_set_path(track, NodePath(str(get_path_to(driver)) + ":rotation:x"))
+			var amplitude := 0.65 if clip_id == "walk" else 1.05
+			for i in range(9):
+				var fraction := float(i) / 8.0
+				var bend := maxf(0.0, sin(fraction * TAU + (PI if id == "KneeR" else 0.0))) * amplitude
+				clip.track_insert_key(track, fraction * clip.length, bend)
+		library.add_animation(clip_id, clip)
+	clip_player.add_animation_library("", library)
+	clip_player.root_node = NodePath("..")
+
+func sample_gait(clock: float, speed: float, weight: float) -> void:
+	if not clip_player:
+		return
+	var clip_id := "run" if speed > 3.2 else "walk"
+	if clip_player.current_animation != clip_id:
+		clip_player.play(clip_id)
+	clip_player.pause()
+	var clip := clip_player.get_animation(clip_id)
+	clip_player.seek(fposmod(clock / TAU, 1.0) * clip.length, true)
+	for id in ["KneeR", "KneeL"]:
+		if drivers.has(id):
+			drivers[id].rotation.x *= weight
