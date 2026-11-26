@@ -4,6 +4,7 @@ const Combat = preload("res://game/combat.gd")
 const Player = preload("res://game/player.gd")
 const Projectiles = preload("res://game/combat/projectiles.gd")
 const World = preload("res://game/world.gd")
+const DungeonAudio = preload("res://game/audio/dungeon_audio.gd")
 
 func _initialize() -> void:
 	call_deferred("run")
@@ -16,6 +17,8 @@ func run() -> void:
 	player.wants_sprint = true
 	player.update_sprint(1.0)
 	var ok: bool = player.sprinting and player.stamina == 78.0
+	for id in World.Spells.SPELLS:
+		ok = ok and DungeonAudio.SPELL_VOICES.has(id) and DungeonAudio.SPELL_VOICES[id].get_length() > 0.1
 	player.advance_combat(0.5)
 	ok = ok and player.stamina == 78.0
 	player.wants_block = true

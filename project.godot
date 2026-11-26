@@ -16,6 +16,3 @@ renderer/rendering_method.mobile="gl_compatibility"
 [audio]
 driver/enable_input=true
 
-[accessibility]
-
-tts/enabled=true

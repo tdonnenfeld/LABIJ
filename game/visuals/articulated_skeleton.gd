@@ -149,7 +149,7 @@ func build_clips() -> void:
 	for pair in [["idle", 0.0], ["walk", 2.2], ["run", 4.5]]:
 		var node := AnimationNodeAnimation.new()
 		node.animation = pair[0]
-		space.add_blend_point(node, pair[1])
+		space.add_blend_point(node, pair[1], -1, StringName(pair[0]))
 	animation_tree = AnimationTree.new()
 	animation_tree.name = "LocomotionBlend"
 	add_child(animation_tree)
