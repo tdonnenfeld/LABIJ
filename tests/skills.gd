@@ -9,14 +9,15 @@ func _initialize() -> void:
 func run() -> void:
 	var skills := Skills.new()
 	skills.gain(200)
-	var ok := skills.total_xp == 200 and skills.xp[0] == 50 and skills.xp[1] == 100 and skills.xp[4] == 50
-	ok = ok and skills.skill_level(0) == 1 and skills.skill_level(2) == 0
-	ok = ok and not skills.set_priority(-1, 2) and not skills.set_priority(0, 3)
-	for i in range(Skills.IDS.size()):
-		skills.set_priority(i, 0)
-	skills.set_priority(2, 2)
-	skills.gain(150)
-	ok = ok and skills.skill_level(2) == 2 and skills.weapon_level("axe") == 2
+	var ok := skills.wallet[0] == 50 and skills.wallet[1] == 100
+	ok = ok and not skills.buy("quick") and skills.buy("sword") and skills.buy("flurry")
+	ok = ok and skills.wallet[1] == 35 and skills.xp[1] == 100
+	ok = ok and not skills.buy("forgotten")
+	skills.credit(1, 20)
+	skills.discovered.append("forgotten")
+	ok = ok and skills.buy("forgotten") and skills.assign_slot(0, "flurry")
+	ok = ok and not skills.assign_slot(3, "flurry") and not skills.assign_slot(1, "sword")
+	ok = ok and skills.refund(1) and skills.slots[0] == "" and is_equal_approx(skills.wallet[1], 91.25)
 	var copy := Skills.new()
 	copy.apply(skills.state())
 	ok = ok and copy.state() == skills.state()
@@ -24,8 +25,11 @@ func run() -> void:
 	root.add_child(player)
 	player.setup(false, false)
 	player.gain_xp(200)
-	ok = ok and player.max_health() == 104 and player.health == 104
-	ok = ok and player.attack_damage() > 25 and player.attack_cost() < 20
+	ok = ok and player.buy_talent("vitality") and player.max_health() == 115
+	player.skills.credit(0, 50)
+	ok = ok and player.buy_talent("wind") and player.skills.assign_slot(0, "wind")
+	player.stamina = 40
+	ok = ok and player.activate(0) and player.stamina == 75 and not player.activate(0)
 	if not ok:
-		push_error("Skills test failed")
+		push_error("Talent tests failed")
 	quit(0 if ok else 1)
