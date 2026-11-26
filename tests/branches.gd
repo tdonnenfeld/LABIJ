@@ -22,13 +22,13 @@ func run() -> void:
 	ok = ok and world.transfer(actor, 1) and actor.floor_id == 1 and actor.position == entry
 	var bosses := 0
 	for mob in world.monsters.values():
-		if mob.boss:
+		if mob.boss and mob.floor != World.Routes.SANCTUARY:
 			bosses += 1
 			ok = ok and mob.health > float(world.Bestiary.stats(mob.kind)[1])
 	ok = ok and bosses == 2
 	var population: int = world.monsters.size()
 	for enemy in world.monsters.values():
-		if not enemy.boss:
+		if not enemy.boss or enemy.floor == World.Routes.SANCTUARY:
 			continue
 		actor.floor_id = enemy.floor
 		enemy.health = 1.0
