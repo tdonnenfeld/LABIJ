@@ -304,10 +304,10 @@ func transfer(actor, peer_id: int, actors: Dictionary = {}) -> bool:
 	var old: int = actor.floor_id
 	if discover_secret(actor):
 		return true
-	if interact_fixture(actor):
-		return true
 	var route := route_at(old, actor.position)
-	if route.is_empty() or route.get("locked", false):
+	if route.is_empty():
+		return interact_fixture(actor)
+	if route.get("locked", false):
 		return false
 	var destination: int = route.destination
 	var arrival: Vector3 = route.arrival
@@ -435,10 +435,10 @@ func simulate(actors: Dictionary, delta: float) -> void:
 		if target != 0:
 			closest = distances[target]
 		if mob.phase != 0:
-			if mob.phase == 1:
+			if mob.phase == 1 or (mob.phase == 2 and float(tactics[2]) > 0.0):
 				var moving_target = actors.get(mob.attack_target)
 				if moving_target != null and moving_target.health > 0 and moving_target.floor_id == mob.floor:
-					if float(tactics[2]) == 0.0 and horizontal_distance(node.position, moving_target.position) > float(stats[3]) * 0.65:
+					if mob.phase == 1 and float(tactics[2]) == 0.0 and horizontal_distance(node.position, moving_target.position) > float(stats[3]) * 0.65:
 						move_monster(mob, moving_target.position, delta, float(stats[4]) * float(tactics[1]))
 					elif float(tactics[2]) > 0.0 and horizontal_distance(node.position, moving_target.position) < float(tactics[2]):
 						retreat_monster(mob, moving_target.position, delta, float(stats[4]) * float(tactics[1]))
@@ -480,6 +480,8 @@ func simulate(actors: Dictionary, delta: float) -> void:
 			mob.timer = float(stats[5])
 			mob.attack_target = target
 			mob.aim = actors[target].position
+			if mob.kind in ["goblin", "guardian", "jewel_hunter"]:
+				emit_noise(mob.floor, node.position, 6.0)
 			continue
 		move_monster(mob, actors[target].position, delta, float(stats[4]) * (1.0 + 0.08 * objective.pressure()))
 
