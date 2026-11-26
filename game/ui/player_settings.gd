@@ -24,6 +24,11 @@ const AUDIO_DEFAULTS := {"Master": 1.0, Mix.EFFECTS: 0.85, Mix.AMBIENCE: 0.65, M
 var bindings: Dictionary = DEFAULTS.duplicate()
 var volumes: Dictionary = AUDIO_DEFAULTS.duplicate()
 var sensitivity := 1.0
+const RESOLUTIONS := [Vector2i(960, 540), Vector2i(1280, 720), Vector2i(1600, 900), Vector2i(1920, 1080), Vector2i(2560, 1440)]
+const DEFAULT_RESOLUTION := Vector2i(1280, 720)
+const DISPLAY_MODES := ["Windowed", "Maximized", "Fullscreen"]
+var resolution := DEFAULT_RESOLUTION
+var display_mode := 0
 
 static func code_for(event: InputEvent) -> int:
 	if event is InputEventKey and event.pressed and not event.echo:
@@ -90,6 +95,10 @@ func load_file(path: String = FILE) -> void:
 			used.append(code)
 		if valid:
 			bindings = candidate
+		var saved_size: Variant = cfg.get_value("display", "resolution", DEFAULT_RESOLUTION)
+		var saved_mode: Variant = cfg.get_value("display", "mode", 0)
+		resolution = saved_size if saved_size is Vector2i and saved_size in RESOLUTIONS else DEFAULT_RESOLUTION
+		display_mode = saved_mode if saved_mode is int and saved_mode >= 0 and saved_mode < DISPLAY_MODES.size() else 0
 		var speed := float(cfg.get_value("controls", "sensitivity", 1.0))
 		if is_finite(speed):
 			sensitivity = clampf(speed, 0.25, 3.0)
@@ -105,4 +114,26 @@ func save_file(path: String = FILE) -> Error:
 	for bus in volumes:
 		cfg.set_value("audio", bus, volumes[bus])
 	cfg.set_value("controls", "sensitivity", sensitivity)
+	cfg.set_value("display", "resolution", resolution)
+	cfg.set_value("display", "mode", display_mode)
 	return cfg.save(path)
+
+static func fit_window(requested: Vector2i, usable: Vector2i) -> Vector2i:
+	var scale := minf(1.0, minf(float(usable.x) / requested.x, float(usable.y) / requested.y))
+	return Vector2i(maxi(1, floori(requested.x * scale)), maxi(1, floori(requested.y * scale)))
+
+func apply_display(window: Window) -> void:
+	if DisplayServer.get_name() == "headless":
+		return
+	match display_mode:
+		1:
+			window.mode = Window.MODE_MAXIMIZED
+		2:
+			window.mode = Window.MODE_FULLSCREEN
+		_:
+			window.mode = Window.MODE_WINDOWED
+			var area := DisplayServer.screen_get_usable_rect(window.current_screen)
+			# Leave space for title bar and borders.
+			var usable := Vector2i(maxi(1, area.size.x - 24), maxi(1, area.size.y - 64))
+			window.size = fit_window(resolution, usable)
+			window.position = area.position + Vector2i(Vector2(area.size - window.size) * 0.5)

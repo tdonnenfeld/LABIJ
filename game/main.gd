@@ -3,6 +3,8 @@ extends Node3D
 const NetMotion = preload("res://game/network/net_motion.gd")
 const PlayerSettings = preload("res://game/ui/player_settings.gd")
 const EscapeMenu = preload("res://game/ui/escape_menu.gd")
+const DisplayControls = preload("res://game/ui/display_controls.gd")
+var main_display: VBoxContainer
 var settings := PlayerSettings.new()
 var escape_menu: Control
 var lobby_locked := false
@@ -127,6 +129,7 @@ func _ready() -> void:
 	else:
 		AudioMix.ensure()
 		settings.load_file()
+		settings.apply_display(get_window())
 		_build_menu()
 		var canvas := CanvasLayer.new()
 		add_child(canvas)
@@ -445,6 +448,10 @@ func _build_menu() -> void:
 	audio_panel.add_child(audio_title)
 	for entry in [["Master", "Master", 1.0], ["Effects", AudioMix.EFFECTS, 0.85], ["Ambience", AudioMix.AMBIENCE, 0.65], ["Voice playback", AudioMix.VOICE, 1.0]]:
 		add_audio_slider(audio_panel, entry[0], entry[1], entry[2])
+	audio_panel.add_child(HSeparator.new())
+	main_display = DisplayControls.new()
+	main_display.settings = settings
+	audio_panel.add_child(main_display)
 	var credit := Label.new()
 	credit.text = "Fire Loop — Iwan \"qubodup\" Gabovitch\nCC BY 3.0 · see art/audio/CREDITS.md"
 	credit.add_theme_font_size_override("font_size", 11)
@@ -585,6 +592,7 @@ func _failed() -> void:
 		_remove(id)
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	if menu:
+		main_display.refresh()
 		menu.show()
 		status.text = "Choose Solo, Host or Join"
 
