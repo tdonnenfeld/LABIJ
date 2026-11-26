@@ -44,6 +44,14 @@ var monsters: Dictionary = {}
 var visual := false
 var fixtures: Dictionary = {}
 var floor_keys: Dictionary = {}
+var mist_floors: Dictionary = {}
+var event_clock := 0.0
+var plate_charge: Dictionary = {}
+var arena_wards: Dictionary = {}
+var extinguished: Dictionary = {}
+var traces: Array = []
+var trace_serial := 0
+var trace_nodes: Dictionary = {}
 
 func build(seed_value: int, render_geometry: bool, size: int = 1) -> void:
 	party_size = size
@@ -113,6 +121,17 @@ func build(seed_value: int, render_geometry: bool, size: int = 1) -> void:
 				add_fixture(11000 + i * 10 + n, i, level.position + Vector3(room.x * Dungeon.CELL - 1.0, 0, room.y * Dungeon.CELL - 1.0), "seal")
 			var chamber: Vector2i = level.rooms[4]
 			add_fixture(11004 + i * 10, i, level.position + Vector3(chamber.x * Dungeon.CELL - 1.0, 0, chamber.y * Dungeon.CELL - 1.0), "sealed_chest")
+		if level.rooms.size() >= 5:
+			var puzzle: Vector2i = level.rooms[2]
+			for n in range(2):
+				add_fixture(12000 + i * 10 + n, i, level.position + Vector3(puzzle.x * Dungeon.CELL + (n * 2 - 1) * 1.0, 0, puzzle.y * Dungeon.CELL), "plate")
+			var reward_room: Vector2i = level.rooms[3]
+			add_fixture(12002 + i * 10, i, level.position + Vector3(reward_room.x * Dungeon.CELL, 0, reward_room.y * Dungeon.CELL - 1.0), "plate_cache")
+		if i >= Routes.MAIN_COUNT:
+			var center: Vector2i = level.end_cell
+			for n in range(2):
+				add_fixture(13000 + i * 10 + n, i, level.position + Vector3(center.x * Dungeon.CELL + (n * 2 - 1) * 3.0, 0, center.y * Dungeon.CELL + 3.0), "ward")
+			arena_wards[i] = 2
 		if i == Routes.SANCTUARY:
 			objective.jewel_position = stair_position(i, true)
 		var cells: Array[Vector2i] = []
@@ -361,6 +380,7 @@ func simulate(actors: Dictionary, delta: float) -> void:
 	if objective.result != "":
 		return
 	hazards.step(actors, delta)
+	step_dungeon_events(actors, delta)
 	for mob in monsters.values():
 		set_monster_collision(mob)
 	var occupied := {}
@@ -804,6 +824,8 @@ func hit_monster(actor, mob: Dictionary, party: Dictionary) -> void:
 	var stats := Bestiary.stats(mob.kind)
 	var domain: int = actor.skills.weapon_domain(actor.inventory.weapon)
 	var damage: float = actor.attack_damage()
+	if mob.boss and arena_wards.get(mob.floor, 0) > 0:
+		damage *= 0.75
 	if mob.stun > 0.0 and mob.slow > 0.0 and domain in [2, 3]:
 		damage *= 1.3
 	if ambush:
@@ -894,6 +916,8 @@ func reward_kill(mob: Dictionary, killer, party: Dictionary) -> void:
 		item_id = Routes.REWARDS[mob.kind]
 	elif loot_rng.randf() < minf(0.35, 0.12 + Routes.depth(mob.floor) * 0.035):
 		item_id = Catalog.enchant(item_id, loot_rng)
+		if item_id.contains(":"):
+			item_id += ":unknown"
 	if not mob.boss and mob.kind == "archer":
 		loot.spawn("arrows", mob.floor, at, 12)
 	else:
@@ -935,6 +959,8 @@ func spell_hit(shot: Dictionary, mob: Dictionary, actors: Dictionary) -> void:
 		var visited: Array = [mob]
 		var source: Node3D = mob.node
 		var damage: float = shot.damage
+	if mob.boss and arena_wards.get(mob.floor, 0) > 0:
+		damage *= 0.75
 		for hop in range(2):
 			var nearest: Dictionary = {}
 			var best := 4.0
@@ -1124,7 +1150,7 @@ func objective_hint(actor, peer: int) -> String:
 		return "E: Close door" if door.opened else "E: Open door"
 	for fixture in fixtures.values():
 		if not fixture.used and fixture.floor == actor.floor_id and horizontal_distance(actor.position, fixture.at) <= 1.7:
-			return {"crate":"Attack: Break crate", "chest":"E: Open chest", "key":"E: Take floor key", "lever":"E: Pull lever", "seal":"E: Activate seal", "sealed_chest":"E: Open sealed cache", "inscription":"E: Read inscription"}.get(fixture.kind, "E: Interact")
+			return {"crate":"Attack: Break crate", "chest":"E: Open chest", "key":"E: Take floor key", "lever":"E: Pull lever", "seal":"E: Activate seal", "sealed_chest":"E: Open sealed cache", "plate":"Stand on plate", "plate_cache":"E: Open plate cache", "ward":"E: Disable arena ward", "inscription":"E: Read inscription"}.get(fixture.kind, "E: Interact")
 	if actor.skills.bonus("disarm") > 0:
 		for trap in hazards.traps.values():
 			if trap.floor == actor.floor_id and trap.phase < 2 and horizontal_distance(actor.position, trap.node.position) <= 1.8:
@@ -1347,6 +1373,13 @@ func secret_state() -> Array:
 			result.append(["door_detail", id, cell, door.locked, door.trapped, door.broken, door.durability])
 		if floor_keys.get(id, false):
 			result.append(["key", id])
+		result.append(["mist", id, mist_floors.get(id, false)])
+		if arena_wards.has(id):
+			result.append(["wards", id, arena_wards[id]])
+		if plate_charge.get(id, {}).get("solved", false):
+			result.append(["plates", id])
+		if extinguished.has(id):
+			result.append(["torches", id, extinguished[id].duplicate()])
 	for id in fixtures:
 		if fixtures[id].used:
 			result.append(["fixture", id])
@@ -1365,6 +1398,14 @@ func apply_secrets(data: Array) -> void:
 				door.durability = float(id[6])
 				if door.broken:
 					door.set_open(true)
+			elif id.size() == 3 and id[0] == "mist":
+				mist_floors[id[1]] = bool(id[2])
+			elif id.size() == 3 and id[0] == "wards":
+				arena_wards[id[1]] = int(id[2])
+			elif id.size() == 2 and id[0] == "plates":
+				plate_charge[id[1]] = {"solved":true}
+			elif id.size() == 3 and id[0] == "torches":
+				extinguished[id[1]] = id[2].duplicate()
 			elif id.size() == 2 and id[0] == "key":
 				floor_keys[id[1]] = true
 			elif id.size() == 2 and id[0] == "fixture" and fixtures.has(id[1]):
@@ -1389,13 +1430,21 @@ func add_fixture(id: int, floor_id: int, at: Vector3, kind: String) -> void:
 	var mesh := MeshInstance3D.new()
 	var box := BoxMesh.new()
 	box.size = Vector3(0.75, 0.5, 0.48) if kind != "inscription" else Vector3(0.48, 0.9, 0.26)
+	if kind == "plate":
+		box.size = Vector3(1.05, 0.04, 1.05)
+	elif kind == "ward":
+		box.size = Vector3(0.45, 1.1, 0.45)
 	mesh.mesh = box
 	var mat := StandardMaterial3D.new()
 	mat.albedo_color = Color("#8a653b") if kind != "inscription" else Color("#8b9292")
+	if kind in ["ward", "plate"]:
+		mat.albedo_color = Color("#599c9b")
+		mat.emission_enabled = true
+		mat.emission = Color("#376969")
 	mesh.material_override = mat
 	prop.add_child(mesh)
 	mesh.position.y = box.size.y * 0.5
-	var labels := {"chest":"CHEST [E]", "crate":"CRATE", "inscription":"INSCRIPTION [E]", "key":"FLOOR KEY [E]", "lever":"GATE LEVER [E]", "seal":"RUNE SEAL [E]", "sealed_chest":"SEALED CACHE [E]"}
+	var labels := {"chest":"CHEST [E]", "crate":"CRATE", "inscription":"INSCRIPTION [E]", "key":"FLOOR KEY [E]", "lever":"GATE LEVER [E]", "seal":"RUNE SEAL [E]", "sealed_chest":"SEALED CACHE [E]", "plate":"PRESSURE PLATE", "plate_cache":"PLATE CACHE [E]", "ward":"ARENA WARD [E]"}
 	marker(prop, Vector3.ZERO, labels.get(kind, kind.to_upper()), Color("#d3ae76"))
 	entry.node = prop
 
@@ -1406,21 +1455,32 @@ func mark_fixture_used(entry: Dictionary) -> void:
 
 func interact_fixture(actor) -> bool:
 	for entry in fixtures.values():
-		if entry.used or entry.kind == "crate" or entry.floor != actor.floor_id or horizontal_distance(actor.position, entry.at) > 1.7:
+		if entry.used or entry.kind in ["crate", "plate"] or entry.floor != actor.floor_id or horizontal_distance(actor.position, entry.at) > 1.7:
 			continue
 		if not Combat.clear_path(actor, entry.at + Vector3.UP * 0.5):
 			continue
+		if entry.kind == "plate_cache" and not plate_charge.get(entry.floor, {}).get("solved", false):
+			journal.add("Exploration", "Hold both pressure plates to unlock the cache")
+			return true
 		if entry.kind == "sealed_chest":
 			var base: int = 11000 + entry.floor * 10
 			if not fixtures[base + 2].used or not fixtures[base + 3].used:
 				journal.add("Exploration", "Activate both rune seals to unlock this cache")
 				return true
 		mark_fixture_used(entry)
+		if entry.kind == "ward":
+			arena_wards[entry.floor] = maxi(0, int(arena_wards.get(entry.floor, 0)) - 1)
+			journal.add("Combat", "An arena ward collapses")
+			return true
+		if entry.kind == "plate_cache":
+			var choice: String = ["iron_boots:relic", "ward_amulet:relic", "staff:relic", "mail:relic", "ward_ring:relic", "iron_helm:relic", "sword:relic"][entry.floor % 7] + ":unknown"
+			loot.spawn(choice, entry.floor, entry.at + Vector3.UP * 0.3)
+			return true
 		if entry.kind == "seal":
 			journal.add("Party", "A rune seal resonates through the dungeon")
 			return true
 		if entry.kind == "sealed_chest":
-			var choice: String = ["sword:runic", "mail:warded", "ward_ring:vital"][entry.floor % 3]
+			var choice: String = ["sword:relic", "mail:relic", "iron_helm:relic", "iron_boots:relic", "staff:relic", "ward_amulet:relic", "ward_ring:relic"][entry.floor % 7] + ":unknown"
 			loot.spawn(choice, entry.floor, entry.at + Vector3.UP * 0.3)
 			journal.add("Loot", "The party opens a runebound cache")
 			return true
@@ -1602,3 +1662,37 @@ func guarded_hit(victim, damage: float, source: Vector3, source_name: String, ac
 		guard.skills.credit(4, 4)
 		journal.add("Party", "%s protects %s" % [guard.display_name, victim.display_name])
 	victim.take_damage(damage * (1.0 - reduction), source, false, source_name)
+
+func step_dungeon_events(actors: Dictionary, delta: float) -> void:
+	event_clock += delta
+	for floor_id in floors:
+		var mist := floor_id >= 2 and fmod(event_clock + float(floor_id) * 11.0, 95.0) > 73.0
+		if mist and not mist_floors.get(floor_id, false):
+			for actor in actors.values():
+				if actor.floor_id == floor_id and actor.health > 0:
+					journal.add("Exploration", "Cold mist rolls into the chamber")
+					break
+		mist_floors[floor_id] = mist
+		var base: int = 12000 + floor_id * 10
+		if not fixtures.has(base) or not fixtures.has(base + 1):
+			continue
+		var state: Dictionary = plate_charge.get(floor_id, {"solved":false, "time":0.0, "first":0.0, "second":0.0})
+		if state.solved:
+			continue
+		var active: Array[bool] = [false, false]
+		var living := 0
+		for actor in actors.values():
+			if actor.health <= 0 or actor.floor_id != floor_id:
+				continue
+			living += 1
+			for n in range(2):
+				if horizontal_distance(actor.position, fixtures[base + n].at) <= 0.62:
+					active[n] = true
+		state.first = 5.0 if active[0] else maxf(0.0, float(state.first) - delta)
+		state.second = 5.0 if active[1] else maxf(0.0, float(state.second) - delta)
+		var engaged: bool = (active[0] and active[1]) if living >= 2 else (state.first > 0 and state.second > 0)
+		state.time = float(state.time) + delta if engaged else 0.0
+		if state.time >= 0.7:
+			state.solved = true
+			journal.add("Party", "The paired pressure plates unlock a cache")
+		plate_charge[floor_id] = state
