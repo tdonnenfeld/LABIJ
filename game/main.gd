@@ -956,7 +956,7 @@ func _physics_process(delta: float) -> void:
 		for id in actors:
 			var spell_id: String = actors[id].advance_cast(delta)
 			if spell_id != "":
-				world.cast(actors[id], id, spell_id)
+				world.cast(actors[id], id, spell_id, actors)
 		world.simulate(actors, delta)
 		if world.objective.result == "":
 			world.projectiles.step(world, actors, delta)
@@ -1450,7 +1450,9 @@ func display_events(events: Array) -> void:
 			feedback.show_event(event, local_id)
 			if event.target == local_id and event.style in ["incoming", "blocked"]:
 				damage_direction.hit(event.get("source", Vector3.INF), event.style == "blocked")
-			if DisplayServer.get_name() != "headless" and event.target != local_id:
+			if DisplayServer.get_name() != "headless" and event.style == "lightning":
+				combat_fx.lightning(event.source, event.position, event.floor, event.id)
+			elif DisplayServer.get_name() != "headless" and event.target != local_id:
 				combat_fx.burst(event.position - Vector3.UP * 0.35, event.floor, event.style, event.id)
 
 func update_awareness_hud(local, local_id: int) -> void:
