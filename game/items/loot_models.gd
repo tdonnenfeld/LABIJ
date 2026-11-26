@@ -94,6 +94,20 @@ static func build(id: String, parent: Node3D) -> Node3D:
 				box(model, Vector3(x, 0, -0.12), Vector3(0.16, 0.09, 0.19), LEATHER if base == "leather" else STEEL)
 			box(model, Vector3(0, 0.07, 0.12), Vector3(0.37, 0.025, 0.055), WOOD)
 			gem(model, Vector3(0, 0.08, 0), 0.055, Color("#a38ab3") if base == "ward_mail" else BRASS)
+		"iron_helm":
+			gem(model, Vector3(0, 0.08, 0), 0.17, STEEL)
+			box(model, Vector3(0, 0.02, -0.13), Vector3(0.20, 0.13, 0.06), STEEL)
+		"leather_gloves", "iron_boots":
+			for x in [-0.10, 0.10]:
+				box(model, Vector3(x, 0.04, 0), Vector3(0.13, 0.10, 0.24), LEATHER if base == "leather_gloves" else STEEL)
+		"ward_amulet", "ward_ring":
+			var loop := TorusMesh.new()
+			loop.inner_radius = 0.07
+			loop.outer_radius = 0.10
+			loop.rings = 8
+			loop.ring_segments = 6
+			part(model, loop, Vector3.ZERO, BRASS)
+			gem(model, Vector3(0, 0.04, -0.09), 0.045, Color("#8c73a2"))
 		"potion":
 			cylinder(model, Vector3(0, 0.06, 0), 0.11, 0.20, Color("#9b4641"), 0.08)
 			cylinder(model, Vector3(0, 0.20, 0), 0.045, 0.08, Color("#a0b7aa"))

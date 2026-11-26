@@ -82,3 +82,7 @@ Replace the 12 equal slots with 8×5 leather cells. Equipment cards remain outsi
 ## Backpack expansion
 
 Rotation and compacting are explicit controls in the satchel. A four-dose leather belt appears above the action bar with keys 4–7; use parchment inventory buttons to load/return potions. Companion exchange is a separate parchment window opened with J: clear offered quantities and explicit confirmation status. Current trades exchange one stack per side or gifts. Ground loot uses original procedural low-poly silhouettes (blade, axe, bow, staff, shield, armour, bottle, scroll, stone, arrows) with material colours from the icon palette; no collision added. Meshes are presentation only and remain replaceable with authored glTF assets. Visual and network playtesting still required.
+
+## Paper doll and placement preview
+
+Three-column parchment spread: backpack on left, original ink character silhouette in centre with nine labelled leather slots, inspection on right. The drop preview uses exactly the same inventory operation on a copy of the current server state, including stacks, rotations and equipped-to-grid moves. Green for valid, red for blocked, gold for merge; equipment targets highlight when valid. Right-click gear to equip/unequip. Head, chest, gloves, boots, amulet and two rings are functional slots. The character is a static illustrated silhouette with equipped item icons, not a 3D outfit preview.

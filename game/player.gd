@@ -112,7 +112,7 @@ func hand_item(at: Vector3, size: Vector3, color: Color) -> MeshInstance3D:
 
 func begin_attack() -> bool:
 	var weapon = Catalog.get_item(inventory.weapon)
-	if health <= 0 or attack_phase != 0 or cast_id != "" or blocking or wants_block or stamina < attack_cost():
+	if health <= 0 or attack_phase != 0 or cast_id != "" or blocking or (wants_block and inventory.shield_index >= 0) or stamina < attack_cost():
 		return false
 	if weapon.projectile_speed > 0 and inventory.count("arrows") == 0:
 		return false
@@ -139,7 +139,7 @@ func advance_combat(delta: float) -> bool:
 	if health <= 0:
 		return false
 	var was_blocking := blocking
-	blocking = wants_block and attack_phase == 0 and cast_id == "" and stamina > 0
+	blocking = inventory.shield_index >= 0 and wants_block and attack_phase == 0 and cast_id == "" and stamina > 0
 	if blocking:
 		block_age = block_age + delta if was_blocking else 0.0
 	mana = minf(100.0, mana + delta * 5.0 * float(Profiles.SPECIES[species_id][4]) * (1.0 + Catalog.get_item(inventory.weapon).mana_bonus))
@@ -163,7 +163,7 @@ func take_damage(amount: float, source: Vector3, magical: bool = false, source_n
 	var before := health
 	var blocked := false
 	var parried := false
-	if blocking and stamina >= block_cost() and Combat.facing(heading, source - position):
+	if inventory.shield_index >= 0 and blocking and stamina >= block_cost() and Combat.facing(heading, source - position):
 		blocked = true
 		stamina -= block_cost()
 		amount *= 1.0 - minf(0.95, Catalog.get_item(inventory.shield).reduction + skills.bonus("reduction"))
@@ -174,11 +174,12 @@ func take_damage(amount: float, source: Vector3, magical: bool = false, source_n
 			amount = 0.0
 			parried = true
 	combat_timer = 5.0
-	if inventory.armor_index >= 0:
-		var armor = Catalog.get_item(inventory.items[inventory.armor_index])
-		amount *= 1.0 - armor.armor
-		if magical:
-			amount *= 1.0 - armor.magic_resistance
+	for index in [inventory.armor_index] + inventory.accessories:
+		if index >= 0:
+			var armor = Catalog.get_item(inventory.items[index])
+			amount *= 1.0 - armor.armor
+			if magical:
+				amount *= 1.0 - armor.magic_resistance
 	amount *= (1.0 - skills.bonus("mitigation")) * (0.5 if fortify_timer > 0 else 1.0) * (0.25 if escape_timer > 0 else 1.0)
 	health = maxf(0.0, health - amount)
 	damage_event.emit(before - health, blocked, parried, source_name)
@@ -199,11 +200,11 @@ func update_hands(delta: float) -> void:
 	sword.rotation.x = lerpf(sword.rotation.x, -0.95 if attack_phase == 2 else (0.65 if attack_phase == 1 else 0.0), minf(1.0, delta * 14.0))
 	shield.position.y = lerpf(shield.position.y, -0.12 if blocking else -0.38, minf(1.0, delta * 14.0))
 	var weapon = Catalog.get_item(inventory.weapon)
-	sword.scale.y = weapon.reach / 2.4
+	sword.scale.y = 0.22 if inventory.weapon_index < 0 else weapon.reach / 2.4
 	sword.material_override.albedo_color = weapon.tint
 	shield.material_override.albedo_color = Catalog.get_item(inventory.shield).tint
 	sword.visible = health > 0
-	shield.visible = health > 0
+	shield.visible = health > 0 and inventory.shield_index >= 0
 
 func use_item(index: int) -> bool:
 	if health <= 0 or attack_phase != 0 or cast_id != "" or index < 0 or index >= inventory.items.size():

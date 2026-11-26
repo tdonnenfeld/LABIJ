@@ -6,6 +6,8 @@ const HEIGHT := 5
 const CAPACITY := WIDTH * HEIGHT
 const WORN := Vector2i(-1, -1)
 const BELT_CAPACITY := 4
+const SLOT_KINDS := ["weapon", "shield", "armor", "helmet", "gloves", "boots", "amulet", "ring", "ring"]
+var accessories: Array[int] = [-1, -1, -1, -1, -1, -1]
 var items: Array[String] = []
 var positions: Array[Vector2i] = []
 var quantities: Array[int] = []
@@ -17,10 +19,10 @@ var shield_index := 1
 var armor_index := -1
 var weapon: String:
 	get:
-		return items[weapon_index]
+		return items[weapon_index] if weapon_index >= 0 else "unarmed"
 var shield: String:
 	get:
-		return items[shield_index]
+		return items[shield_index] if shield_index >= 0 else "empty_shield"
 
 func _init() -> void:
 	reset_items(["sword", "shield", "potion"])
@@ -34,6 +36,7 @@ func reset_items(initial: Array) -> void:
 	weapon_index = 0
 	shield_index = 1
 	armor_index = -1
+	accessories.assign([-1, -1, -1, -1, -1, -1])
 	for i in range(items.size()):
 		positions.append(WORN)
 		quantities.append(1)
@@ -43,7 +46,7 @@ func reset_items(initial: Array) -> void:
 	revision += 1
 
 func is_equipped(index: int) -> bool:
-	return index >= 0 and index in [weapon_index, shield_index, armor_index]
+	return index >= 0 and (index in [weapon_index, shield_index, armor_index] or index in accessories)
 
 func quantity(index: int) -> int:
 	return quantities[index] if index >= 0 and index < quantities.size() else 0
@@ -94,7 +97,7 @@ func first_fit(id: String, ignore: int = -1, turned: bool = false) -> Vector2i:
 	return WORN
 
 func add(id: String, amount: int = 1) -> bool:
-	if Catalog.get_item(id) == null or amount <= 0 or amount > Catalog.stack_limit(id):
+	if id in ["unarmed", "empty_shield"] or Catalog.get_item(id) == null or amount <= 0 or amount > Catalog.stack_limit(id):
 		return false
 	var before := state()
 	var remaining := amount
@@ -118,18 +121,41 @@ func add(id: String, amount: int = 1) -> bool:
 	revision += 1
 	return true
 
-func equip(index: int) -> bool:
+func slot_index(slot: int) -> int:
+	match slot:
+		0: return weapon_index
+		1: return shield_index
+		2: return armor_index
+		_: return accessories[slot - 3] if slot >= 3 and slot < SLOT_KINDS.size() else -1
+
+func set_slot(slot: int, index: int) -> void:
+	match slot:
+		0: weapon_index = index
+		1: shield_index = index
+		2: armor_index = index
+		_: accessories[slot - 3] = index
+
+func equipped_slot(index: int) -> int:
+	if index < 0:
+		return -1
+	for slot in range(SLOT_KINDS.size()):
+		if slot_index(slot) == index:
+			return slot
+	return -1
+
+func equip(index: int, slot: int = -1) -> bool:
 	if index < 0 or index >= items.size():
 		return false
-	if is_equipped(index):
-		return true
 	var kind: String = Catalog.get_item(items[index]).kind
-	var previous := -1
-	match kind:
-		"weapon": previous = weapon_index
-		"shield": previous = shield_index
-		"armor": previous = armor_index
-		_: return false
+	if slot == -1:
+		slot = SLOT_KINDS.find(kind)
+		if kind == "ring" and slot_index(7) >= 0 and slot_index(8) < 0:
+			slot = 8
+	if slot < 0 or slot >= SLOT_KINDS.size() or SLOT_KINDS[slot] != kind:
+		return false
+	if is_equipped(index):
+		return equipped_slot(index) == slot
+	var previous := slot_index(slot)
 	var source := positions[index]
 	positions[index] = WORN
 	if previous >= 0:
@@ -142,18 +168,35 @@ func equip(index: int) -> bool:
 			positions[index] = source
 			return false
 		positions[previous] = at
-	match kind:
-		"weapon": weapon_index = index
-		"shield": shield_index = index
-		"armor": armor_index = index
+	set_slot(slot, index)
+	revision += 1
+	return true
+
+func unequip(index: int, at: Vector2i = WORN) -> bool:
+	var slot := equipped_slot(index)
+	if slot < 0:
+		return false
+	var turned := rotated[index]
+	if at == WORN:
+		at = first_fit(items[index], index, turned)
+		if at == WORN:
+			at = first_fit(items[index], index, not turned)
+			turned = not turned
+	if at == WORN or not fits(items[index], at, index, turned):
+		return false
+	positions[index] = at
+	rotated[index] = turned
+	set_slot(slot, -1)
 	revision += 1
 	return true
 
 func move_item(index: int, at: Vector2i, split: bool = false) -> bool:
-	if index < 0 or index >= items.size() or is_equipped(index):
+	if index < 0 or index >= items.size():
 		return false
 	if at.x < 0 or at.y < 0 or at.x >= WIDTH or at.y >= HEIGHT:
 		return false
+	if is_equipped(index):
+		return not split and unequip(index, at)
 	var id := items[index]
 	var other := item_at(at, index)
 	if split:
@@ -197,6 +240,9 @@ func erase_entry(index: int) -> void:
 		shield_index -= 1
 	if armor_index > index:
 		armor_index -= 1
+	for i in range(accessories.size()):
+		if accessories[i] > index:
+			accessories[i] -= 1
 
 func remove(index: int) -> String:
 	if index < 0 or index >= items.size() or is_equipped(index):
@@ -217,7 +263,7 @@ func remove_stack(index: int) -> String:
 	return id
 
 func state() -> Array:
-	return [items.duplicate(), weapon_index, shield_index, armor_index, positions.duplicate(), quantities.duplicate(), revision, rotated.duplicate(), belt]
+	return [items.duplicate(), weapon_index, shield_index, armor_index, positions.duplicate(), quantities.duplicate(), revision, rotated.duplicate(), belt, accessories.duplicate()]
 
 func apply(data: Array) -> void:
 	items.assign(data[0])
@@ -229,6 +275,7 @@ func apply(data: Array) -> void:
 	revision = data[6]
 	rotated.assign(data[7])
 	belt = data[8]
+	accessories.assign(data[9])
 
 func rotate_item(index: int) -> bool:
 	if index < 0 or index >= items.size() or is_equipped(index):

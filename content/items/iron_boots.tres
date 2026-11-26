@@ -1,0 +1,9 @@
+[gd_resource type="Resource" load_steps=2 format=3]
+[ext_resource type="Script" path="res://game/items/item_definition.gd" id="1"]
+[resource]
+script = ExtResource("1")
+title = "Iron Boots"
+kind = "boots"
+armor = 0.035
+magic_resistance = 0.000
+tint = Color(0.51, 0.54, 0.50, 1)

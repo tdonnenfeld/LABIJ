@@ -1,6 +1,13 @@
 extends RefCounted
 
+const UNARMED = preload("res://content/items/unarmed.tres")
+const EMPTY_SHIELD = preload("res://content/items/empty_shield.tres")
 const ITEMS := {
+	"iron_helm": preload("res://content/items/iron_helm.tres"),
+	"leather_gloves": preload("res://content/items/leather_gloves.tres"),
+	"iron_boots": preload("res://content/items/iron_boots.tres"),
+	"ward_amulet": preload("res://content/items/ward_amulet.tres"),
+	"ward_ring": preload("res://content/items/ward_ring.tres"),
 	"arrows": preload("res://content/items/arrows.tres"),
 	"sword": preload("res://content/items/sword.tres"),
 	"axe": preload("res://content/items/axe.tres"),
@@ -33,6 +40,10 @@ const AFFIXES := ["keen", "swift", "venom"]
 static var variants: Dictionary = {}
 
 static func get_item(id: String) -> Resource:
+	if id == "unarmed":
+		return UNARMED
+	if id == "empty_shield":
+		return EMPTY_SHIELD
 	if ITEMS.has(id):
 		return ITEMS[id]
 	if variants.has(id):
@@ -76,6 +87,8 @@ static func noise_multiplier(id: String) -> float:
 
 static func dimensions(id: String) -> Vector2i:
 	match id.get_slice(":", 0):
+		"iron_helm", "iron_boots": return Vector2i(2, 2)
+		"leather_gloves": return Vector2i(2, 1)
 		"sword", "staff", "ember_staff", "oracle_staff": return Vector2i(1, 3)
 		"spear": return Vector2i(1, 4)
 		"axe", "bow", "longbow": return Vector2i(2, 3)

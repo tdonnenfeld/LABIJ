@@ -49,6 +49,7 @@ func gain(amount: int) -> void:
 
 func weapon_domain(id: String) -> int:
 	match id.get_slice(":", 0):
+		"unarmed": return 0
 		"axe": return 2
 		"spear": return 3
 		"bow", "longbow": return 10
