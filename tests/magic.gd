@@ -72,6 +72,8 @@ func run() -> void:
 	var arena := World.new()
 	root.add_child(arena)
 	arena.add_child(arena.projectiles)
+	arena.add_child(arena.hazards)
+	arena.add_child(arena.loot)
 	var wall := StaticBody3D.new()
 	arena.add_child(wall)
 	wall.position = Vector3(0, 20, -2)
