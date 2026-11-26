@@ -86,3 +86,7 @@ The first environment theme uses original procedural low-resolution stone textur
 ## Recorded audio assets
 
 Stone footsteps now use six CC0 Fantozzi recordings, enemy footsteps use four CC0 Kenney RPG Audio variants, and hit/block sounds use two Kenney Impact Sounds samples. Variants avoid immediate repetition, with presentation-only randomized pitch and volume. Quiet movement uses softer playback; sprinting uses louder, slightly lower-pitched playback. Existing authoritative noise radius, voice chat and enemy detection are unchanged. Other cues retain synthesized placeholders. Assets are committed, so no external download is needed at runtime. See `art/audio/CREDITS.md` for provenance.
+
+## Expanded sound library
+
+24 more CC0 sounds are bundled under `art/audio/`: melee swings, bow, magic, explosions, stone impacts, a second shield block, three creature wake cues, plus future inventory, doors, chainmail, cloth, potion, bite and UI assets. Current combat/wake events select the new samples; future assets are staged but not triggered yet. Variants avoid immediate repetition. Simulation and voice noise rules are unchanged. See `art/audio/CREDITS.md` for source paths and checksums. Dungeon ambience and torch/water loops remain to be acquired; no runtime asset downloads are required.

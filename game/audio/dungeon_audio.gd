@@ -18,7 +18,17 @@ const ENEMY_STEPS := [
 	preload("res://art/audio/steps/kenney_06.ogg"),
 	preload("res://art/audio/steps/kenney_09.ogg")
 ]
-const BLOCK_SOUND = preload("res://art/audio/impacts/impactMetal_heavy_001.ogg")
+const CUES := {
+	"melee": [preload("res://art/audio/combat/swing_01.wav"), preload("res://art/audio/combat/swing_02.wav")],
+	"bow": [preload("res://art/audio/combat/bow.wav")],
+	"magic": [preload("res://art/audio/magic/cast.wav")],
+	"explosion": [preload("res://art/audio/magic/explosion_01.wav"), preload("res://art/audio/magic/explosion_02.wav")],
+	"stone": [preload("res://art/audio/combat/stone_01.ogg"), preload("res://art/audio/combat/stone_02.ogg")],
+	"block": [preload("res://art/audio/impacts/impactMetal_heavy_001.ogg"), preload("res://art/audio/combat/block_02.ogg")],
+	"wake_ogre": [preload("res://art/audio/creatures/ogre_01.wav")],
+	"wake_beast": [preload("res://art/audio/creatures/beast_01.wav")],
+	"wake_shade": [preload("res://art/audio/creatures/shade.wav")]
+}
 const IMPACT_SOUND = preload("res://art/audio/impacts/impactMining_002.ogg")
 var streams: Dictionary = {}
 var previous_variant: Dictionary = {}
@@ -76,13 +86,15 @@ func sound_for(kind: String) -> AudioStream:
 		variants = STONE_STEPS
 	elif kind == "enemy_step":
 		variants = ENEMY_STEPS
-	elif kind == "block":
-		return BLOCK_SOUND
+	elif CUES.has(kind):
+		variants = CUES[kind]
 	elif kind == "impact":
 		return IMPACT_SOUND
 	else:
 		return sample(kind)
-	var group := "enemy_step" if kind == "enemy_step" else "player_step"
+	if variants.size() == 1:
+		return variants[0]
+	var group := "player_step" if kind in ["step", "quiet", "sprint"] else kind
 	var index := audio_rng.randi_range(0, variants.size() - 2)
 	var previous: int = previous_variant.get(group, -1)
 	if previous < 0:

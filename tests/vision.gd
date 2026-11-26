@@ -63,4 +63,12 @@ func run() -> void:
 		check(first is AudioStreamOggVorbis and first.get_length() > 0.0, "Recorded step: " + kind)
 		check(first != second, "No consecutive repeated step: " + kind)
 	check(audio.sound_for("block") is AudioStreamOggVorbis and audio.sound_for("impact") is AudioStreamOggVorbis, "Recorded impacts")
+	for kind in DungeonAudio.CUES:
+		var recorded: AudioStream = audio.sound_for(kind)
+		check(recorded != null and recorded.get_length() > 0.0, "Imported cue: " + kind)
+		if DungeonAudio.CUES[kind].size() > 1:
+			check(recorded != audio.sound_for(kind), "No consecutive repeated cue: " + kind)
+	for path in ["res://art/audio/items/chainmail.wav", "res://art/audio/items/potion.wav", "res://art/audio/items/coin.ogg", "res://art/audio/items/scroll.ogg", "res://art/audio/items/equip.ogg", "res://art/audio/world/door_open.ogg", "res://art/audio/world/door_close.ogg", "res://art/audio/world/latch.ogg", "res://art/audio/items/cloth.ogg", "res://art/audio/creatures/bite.wav", "res://art/audio/ui/click.ogg", "res://art/audio/ui/confirm.ogg"]:
+		var asset := load(path) as AudioStream
+		check(asset != null and asset.get_length() > 0.0, "Future audio asset: " + path)
 	quit(0 if failures == 0 else 1)
