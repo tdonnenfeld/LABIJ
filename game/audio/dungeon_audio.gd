@@ -35,6 +35,16 @@ const CUES := {
 	"wake_beast": [preload("res://art/audio/creatures/beast_01.wav")],
 	"wake_shade": [preload("res://art/audio/creatures/shade.wav")]
 }
+const SPELL_VOICES := {
+	"firebolt": preload("res://art/audio/spells/firebolt.wav"),
+	"fireball": preload("res://art/audio/spells/fireball.wav"),
+	"frostbolt": preload("res://art/audio/spells/frostbolt.wav"),
+	"freeze": preload("res://art/audio/spells/freeze.wav"),
+	"spark": preload("res://art/audio/spells/spark.wav"),
+	"thunder": preload("res://art/audio/spells/thunder.wav"),
+	"stonebolt": preload("res://art/audio/spells/stonebolt.wav"),
+	"boulder": preload("res://art/audio/spells/boulder.wav")
+}
 const IMPACT_SOUND = preload("res://art/audio/impacts/impactMining_002.ogg")
 var streams: Dictionary = {}
 var previous_variant: Dictionary = {}
@@ -86,7 +96,7 @@ func hear(events: Array, world, listener) -> void:
 			continue
 		var cue: String = event[3]
 		if cue.begins_with("spell_voice:"):
-			spell_voice(cue, distance, radius)
+			spell_voice(cue, at, radius)
 		else:
 			play_sound(cue, at, radius)
 
@@ -143,33 +153,33 @@ func play_sound(kind: String, at: Vector3, radius: float) -> void:
 	voice.play()
 
 func reset() -> void:
-	if DisplayServer.get_name() != "headless":
-		DisplayServer.tts_stop()
 	for voice in voices:
 		voice.stop()
 		voice.stream = null
 		voice.queue_free()
 	voices.clear()
 
-func spell_voice(cue: String, distance: float, radius: float) -> void:
+func spell_voice(cue: String, at: Vector3, radius: float) -> void:
 	if DisplayServer.get_name() == "headless":
 		return
 	var parts := cue.split(":")
-	if parts.size() != 3:
-		return
-	var names := {"firebolt":"Fire Bolt", "fireball":"Fireball", "frostbolt":"Frost Bolt", "freeze":"Flash Freeze", "spark":"Spark", "thunder":"Thunderbolt", "stonebolt":"Stone Bolt", "boulder":"Boulder"}
-	if not names.has(parts[2]):
-		return
-	var available := DisplayServer.tts_get_voices_for_language("en")
-	if available.is_empty():
+	if parts.size() != 3 or not SPELL_VOICES.has(parts[2]):
 		return
 	var profile := clampi(int(parts[1]), 0, 7)
-	var voice: String = available[profile % available.size()]
-	var volume := roundi(85.0 * clampf(1.0 - distance / maxf(radius, 1.0), 0.15, 1.0))
-	var bus := AudioServer.get_bus_index(Mix.VOICE)
-	if bus >= 0:
-		if AudioServer.is_bus_mute(bus) or AudioServer.is_bus_mute(0):
-			return
-		volume = roundi(volume * clampf(db_to_linear(AudioServer.get_bus_volume_db(bus) + AudioServer.get_bus_volume_db(0)), 0.0, 1.0))
-	if volume > 0:
-		DisplayServer.tts_speak(names[parts[2]], voice, volume, 0.78 + profile * 0.065, 1.05, 0, true)
+	if voices.size() >= LIMIT:
+		var oldest: AudioStreamPlayer3D = voices.pop_front()
+		oldest.stop()
+		oldest.stream = null
+		oldest.queue_free()
+	var voice := AudioStreamPlayer3D.new()
+	voice.stream = SPELL_VOICES[parts[2]]
+	voice.bus = Mix.VOICE
+	voice.unit_size = maxf(1.0, radius * 0.4)
+	voice.max_distance = maxf(1.5, radius)
+	voice.volume_db = -4.0
+	voice.pitch_scale = 0.80 + profile * 0.065
+	add_child(voice)
+	voice.global_position = at
+	voices.append(voice)
+	voice.finished.connect(func(): voices.erase(voice); voice.queue_free())
+	voice.play()
