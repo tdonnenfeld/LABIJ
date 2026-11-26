@@ -959,8 +959,6 @@ func spell_hit(shot: Dictionary, mob: Dictionary, actors: Dictionary) -> void:
 		var visited: Array = [mob]
 		var source: Node3D = mob.node
 		var damage: float = shot.damage
-	if mob.boss and arena_wards.get(mob.floor, 0) > 0:
-		damage *= 0.75
 		for hop in range(2):
 			var nearest: Dictionary = {}
 			var best := 4.0
@@ -1666,7 +1664,7 @@ func guarded_hit(victim, damage: float, source: Vector3, source_name: String, ac
 func step_dungeon_events(actors: Dictionary, delta: float) -> void:
 	event_clock += delta
 	for floor_id in floors:
-		var mist := floor_id >= 2 and fmod(event_clock + float(floor_id) * 11.0, 95.0) > 73.0
+		var mist: bool = floor_id >= 2 and fmod(event_clock + float(floor_id) * 11.0, 95.0) > 73.0
 		if mist and not mist_floors.get(floor_id, false):
 			for actor in actors.values():
 				if actor.floor_id == floor_id and actor.health > 0:
