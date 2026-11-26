@@ -2,6 +2,7 @@ extends Node3D
 
 const Dungeon = preload("res://game/dungeon.gd")
 const Combat = preload("res://game/combat.gd")
+const Bestiary = preload("res://game/monsters/bestiary.gd")
 const Catalog = preload("res://game/items/catalog.gd")
 const Loot = preload("res://game/items/loot.gd")
 var loot := Loot.new()
@@ -44,22 +45,31 @@ func build(seed_value: int, render_geometry: bool) -> void:
 			if i < COUNT - 1:
 				var end: Vector2i = level.end_cell
 				marker(level, Vector3(end.x * Dungeon.CELL, 0, end.y * Dungeon.CELL), "DOWN [E]", Color("#d3ae55"))
-		for j in range(3):
+		for j in range(Bestiary.ENCOUNTERS[i].size()):
+			var kind: String = Bestiary.ENCOUNTERS[i][j]
+			var stats := Bestiary.stats(kind)
 			var mob := Node3D.new()
 			add_child(mob)
-			var cell: Vector2i = level.end_cell - Vector2i(j + 1, 0)
-			mob.position = level.position + Vector3(cell.x * Dungeon.CELL, 0.7, cell.y * Dungeon.CELL)
+			var cell: Vector2i = level.end_cell - Vector2i(j % 3 + 1, floori(float(j) / 3.0))
+			if not level.tiles.has(cell):
+				cell = level.end_cell
+			mob.position = level.position + Vector3(cell.x * Dungeon.CELL, float(stats[11]) * 0.5, cell.y * Dungeon.CELL)
 			if visual:
 				var mesh := MeshInstance3D.new()
 				var shape := CapsuleMesh.new()
-				shape.radius = 0.35
-				shape.height = 1.4
+				shape.radius = stats[10]
+				shape.height = stats[11]
 				mesh.mesh = shape
 				var mat := StandardMaterial3D.new()
-				mat.albedo_color = Color("#a64e48")
+				mat.albedo_color = stats[9]
 				mesh.material_override = mat
 				mob.add_child(mesh)
-			monsters[i * 3 + j] = {"node": mob, "floor": i, "target": 0, "health": 50.0, "phase": 0, "timer": 0.0, "attack_target": 0, "hurt": 0.0}
+				var label := Label3D.new()
+				label.text = stats[0]
+				label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+				label.position.y = float(stats[11]) * 0.5 + 0.3
+				mob.add_child(label)
+			monsters[i * 10 + j] = {"node": mob, "kind": kind, "floor": i, "target": 0, "health": float(stats[1]), "phase": 0, "timer": 0.0, "attack_target": 0, "aim": Vector3.ZERO, "hurt": 0.0, "bleed": 0.0, "bleed_damage": 0.0, "bleed_owner": 0, "stun": 0.0}
 
 func marker(level: Node3D, at: Vector3, caption: String, color: Color) -> void:
 	var mesh := MeshInstance3D.new()
@@ -105,7 +115,7 @@ func visible_floor(id: int) -> void:
 		mob.node.visible = mob.floor == id and mob.health > 0
 		if visual:
 			var mesh: MeshInstance3D = mob.node.get_child(0)
-			mesh.material_override.albedo_color = Color("#ffffff") if mob.hurt > 0 else (Color("#e5a64e") if mob.phase == 1 else Color("#a64e48"))
+			mesh.material_override.albedo_color = Color("#ffffff") if mob.hurt > 0 else (Color("#e5a64e") if mob.phase == 1 else (Color("#8aa7e0") if mob.stun > 0 else Bestiary.stats(mob.kind)[9]))
 
 func transfer(actor, peer_id: int) -> bool:
 	if actor.health <= 0 or actor.attack_phase != 0:
@@ -129,7 +139,7 @@ func transfer(actor, peer_id: int) -> bool:
 		mob.phase = 0
 		mob.timer = 0.0
 		mob.floor = destination
-		mob.node.position = arrival + Vector3(1.0 + float(i % 3) * 0.6, 0.7, float(i / 3) * 0.6)
+		mob.node.position = arrival + Vector3(1.0 + float(i % 3) * 0.6, float(Bestiary.stats(mob.kind)[11]) * 0.5, float(i / 3) * 0.6)
 	return true
 
 func simulate(actors: Dictionary, delta: float) -> void:
@@ -137,6 +147,17 @@ func simulate(actors: Dictionary, delta: float) -> void:
 		if mob.health <= 0:
 			continue
 		mob.hurt = maxf(0.0, mob.hurt - delta)
+		var stats := Bestiary.stats(mob.kind)
+		if mob.bleed > 0:
+			var elapsed := minf(delta, mob.bleed)
+			mob.bleed -= elapsed
+			mob.health = maxf(0.0, mob.health - mob.bleed_damage * elapsed)
+			if mob.health <= 0:
+				reward_kill(mob, actors.get(mob.bleed_owner), actors)
+				continue
+		if mob.stun > 0:
+			mob.stun = maxf(0.0, mob.stun - delta)
+			continue
 		var node: Node3D = mob.node
 		var closest := 12.0
 		var target := 0
@@ -154,21 +175,22 @@ func simulate(actors: Dictionary, delta: float) -> void:
 			if mob.timer <= 0:
 				if mob.phase == 1:
 					var victim = actors.get(mob.attack_target)
-					if victim != null and victim.health > 0 and victim.floor_id == mob.floor and horizontal_distance(victim.position, node.position) <= Combat.MONSTER_REACH and Combat.clear_path(node, victim.position):
-						victim.take_damage(Combat.MONSTER_DAMAGE, node.position)
+					if victim != null and victim.health > 0 and victim.floor_id == mob.floor and horizontal_distance(victim.position, node.position) <= float(stats[3]) and Combat.clear_path(node, victim.position) and (mob.kind != "archer" or horizontal_distance(victim.position, mob.aim) <= 1.2):
+						victim.take_damage(float(stats[2]), node.position)
 					elif victim != null and victim.health > 0 and victim.floor_id == mob.floor and horizontal_distance(victim.position, node.position) <= 4.0:
 						victim.skills.credit(5, 4)
 					mob.phase = 2
-					mob.timer = Combat.MONSTER_RECOVERY
+					mob.timer = float(stats[6])
 				else:
 					mob.phase = 0
 			continue
 		if target == 0:
 			continue
-		if closest <= Combat.MONSTER_REACH and Combat.clear_path(node, actors[target].position):
+		if closest <= float(stats[3]) and Combat.clear_path(node, actors[target].position):
 			mob.phase = 1
-			mob.timer = Combat.MONSTER_WINDUP
+			mob.timer = float(stats[5])
 			mob.attack_target = target
+			mob.aim = actors[target].position
 			continue
 		var level = floors[mob.floor]
 		var start := Vector2i(roundi(node.position.x / Dungeon.CELL), roundi(node.position.z / Dungeon.CELL))
@@ -185,7 +207,7 @@ func simulate(actors: Dictionary, delta: float) -> void:
 				destination = Vector3(node.position.x, node.position.y, center.z)
 			elif absf(offset.z) > 0.1 and absf(node.position.x - center.x) > 0.08:
 				destination = Vector3(center.x, node.position.y, node.position.z)
-		node.position = node.position.move_toward(destination, delta * 2.8)
+		node.position = node.position.move_toward(destination, delta * float(stats[4]))
 
 func next_cell(tiles: Dictionary, start: Vector2i, goal: Vector2i) -> Vector2i:
 	if start == goal or not tiles.has(start) or not tiles.has(goal):
@@ -211,7 +233,7 @@ func monster_snapshot() -> Dictionary:
 	var states := {}
 	for id in monsters:
 		var mob = monsters[id]
-		states[id] = [mob.floor, mob.node.position, mob.health, mob.phase, mob.hurt]
+		states[id] = [mob.floor, mob.node.position, mob.health, mob.phase, mob.hurt, mob.stun, mob.bleed]
 	return states
 
 func apply_monsters(states: Dictionary) -> void:
@@ -222,43 +244,79 @@ func apply_monsters(states: Dictionary) -> void:
 			monsters[id].health = states[id][2]
 			monsters[id].phase = states[id][3]
 			monsters[id].hurt = states[id][4]
+			monsters[id].stun = states[id][5]
+			monsters[id].bleed = states[id][6]
 
 func strike(actor, party: Dictionary = {}) -> bool:
 	if actor.health <= 0:
 		return false
+	var hits: Array = []
 	var nearest = null
-	var weapon = Catalog.get_item(actor.inventory.weapon)
 	var best: float = actor.attack_reach() + 1.0
 	for mob in monsters.values():
 		if mob.health <= 0 or mob.floor != actor.floor_id:
 			continue
+		if not Combat.can_hit(actor.position, mob.node.position, actor.heading, actor.attack_reach()) or not Combat.clear_path(actor, mob.node.position):
+			continue
+		hits.append(mob)
 		var distance := horizontal_distance(actor.position, mob.node.position)
-		if distance < best and Combat.can_hit(actor.position, mob.node.position, actor.heading, actor.attack_reach()) and Combat.clear_path(actor, mob.node.position):
+		if distance < best:
 			nearest = mob
 			best = distance
 	if nearest == null:
 		actor.empowered = ""
 		return false
-	nearest.health = maxf(0.0, nearest.health - actor.attack_damage())
-	nearest.hurt = 0.18
+	if actor.empowered != "cleave":
+		hits = [nearest]
+	for mob in hits:
+		hit_monster(actor, mob, party)
 	actor.empowered = ""
-	actor.skills.credit(actor.skills.weapon_domain(actor.inventory.weapon), 8)
-	if nearest.health <= 0:
-		nearest.phase = 0
-		nearest.target = 0
-		var reward: int = 100 + nearest.floor * 25
-		for teammate in party.values():
-			if teammate == actor or teammate.health <= 0 or teammate.floor_id != actor.floor_id:
-				continue
-			if horizontal_distance(teammate.position, nearest.node.position) <= 15.0:
-				teammate.gain_xp(reward)
-		actor.gain_xp(reward)
-		actor.skills.credit(0, 10)
-		var choices := ["potion", "potion", "axe", "spear", "iron_shield"]
-		var at: Vector3 = nearest.node.position
-		at.y = floors[nearest.floor].position.y + 0.3
-		loot.spawn(choices[loot_rng.randi_range(0, choices.size() - 1)], nearest.floor, at)
 	return true
+
+func hit_monster(actor, mob: Dictionary, party: Dictionary) -> void:
+	var stats := Bestiary.stats(mob.kind)
+	var domain: int = actor.skills.weapon_domain(actor.inventory.weapon)
+	var damage: float = actor.attack_damage()
+	if mob.health <= float(stats[1]) * 0.3:
+		damage *= 1.0 + actor.skills.bonus("execute")
+	if mob.phase == 2:
+		damage *= 1.0 + actor.skills.bonus("precision", domain)
+	damage *= 1.0 - float(stats[7]) * (1.0 - actor.skills.bonus("pierce", domain))
+	mob.health = maxf(0.0, mob.health - damage)
+	mob.hurt = 0.18
+	actor.skills.credit(domain, 8)
+	if mob.health <= 0:
+		reward_kill(mob, actor, party)
+		return
+	var bleed: float = actor.skills.bonus("bleed", domain)
+	if bleed > 0:
+		mob.bleed = 4.0
+		mob.bleed_damage = bleed
+		var owner = party.find_key(actor)
+		mob.bleed_owner = 0 if owner == null else owner
+	mob.stun = maxf(mob.stun, actor.skills.bonus("stagger", domain))
+	if actor.empowered in ["impale", "bash"]:
+		mob.stun = maxf(mob.stun, 2.0)
+		mob.phase = 0
+
+func reward_kill(mob: Dictionary, killer, party: Dictionary) -> void:
+	mob.phase = 0
+	mob.target = 0
+	mob.bleed = 0.0
+	var reward: int = int(Bestiary.stats(mob.kind)[8]) + mob.floor * 25
+	for teammate in party.values():
+		if teammate == killer or teammate.health <= 0 or teammate.floor_id != mob.floor:
+			continue
+		if horizontal_distance(teammate.position, mob.node.position) <= 15.0:
+			teammate.gain_xp(reward)
+	if killer != null and killer.health > 0:
+		killer.gain_xp(reward)
+		killer.skills.credit(0, 10)
+		killer.health = minf(killer.max_health(), killer.health + killer.skills.bonus("heal_kill"))
+	var choices := ["potion", "potion", "axe", "spear", "iron_shield"]
+	var at: Vector3 = mob.node.position
+	at.y = floors[mob.floor].position.y + 0.3
+	loot.spawn(choices[loot_rng.randi_range(0, choices.size() - 1)], mob.floor, at)
 
 func safe(actor) -> bool:
 	if actor.health <= 0 or actor.attack_phase != 0 or actor.combat_timer > 0:

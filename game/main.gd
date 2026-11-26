@@ -83,7 +83,7 @@ func _ready() -> void:
 		inventory_ui.action.connect(_inventory_action)
 		skills_ui = SkillsUI.new()
 		layer.add_child(skills_ui)
-		skills_ui.position = Vector2(180, 80)
+		skills_ui.position = Vector2(160, 24)
 		skills_ui.priority_changed.connect(_skill_action)
 		skills_ui.talent_action.connect(_talent_action)
 		xp_label = Label.new()
