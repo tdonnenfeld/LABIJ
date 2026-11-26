@@ -2,6 +2,10 @@ extends Node3D
 
 const Dungeon = preload("res://game/dungeon.gd")
 const Combat = preload("res://game/combat.gd")
+const Catalog = preload("res://game/items/catalog.gd")
+const Loot = preload("res://game/items/loot.gd")
+var loot := Loot.new()
+var loot_rng := RandomNumberGenerator.new()
 const COUNT := 4
 const SPACING := 30.0
 const USE_RADIUS := 2.5
@@ -12,6 +16,9 @@ var visual := false
 
 func build(seed_value: int, render_geometry: bool) -> void:
 	visual = render_geometry
+	loot.visual = visual
+	add_child(loot)
+	loot_rng.seed = seed_value + 53
 	for i in range(COUNT):
 		var level := Dungeon.new()
 		add_child(level)
@@ -78,6 +85,7 @@ func stair_at(id: int, at: Vector3) -> int:
 	return 0
 
 func visible_floor(id: int) -> void:
+	loot.visible_floor(id)
 	for key in floors:
 		floors[key].visible = key == id
 	for mob in monsters.values():
@@ -204,19 +212,24 @@ func strike(actor) -> bool:
 	if actor.health <= 0:
 		return false
 	var nearest = null
-	var best := Combat.REACH + 1.0
+	var weapon = Catalog.get_item(actor.inventory.weapon)
+	var best: float = weapon.reach + 1.0
 	for mob in monsters.values():
 		if mob.health <= 0 or mob.floor != actor.floor_id:
 			continue
 		var distance := horizontal_distance(actor.position, mob.node.position)
-		if distance < best and Combat.can_hit(actor.position, mob.node.position, actor.heading, Combat.REACH) and Combat.clear_path(actor, mob.node.position):
+		if distance < best and Combat.can_hit(actor.position, mob.node.position, actor.heading, weapon.reach) and Combat.clear_path(actor, mob.node.position):
 			nearest = mob
 			best = distance
 	if nearest == null:
 		return false
-	nearest.health = maxf(0.0, nearest.health - Combat.DAMAGE)
+	nearest.health = maxf(0.0, nearest.health - weapon.damage)
 	nearest.hurt = 0.18
 	if nearest.health <= 0:
 		nearest.phase = 0
 		nearest.target = 0
+		var choices := ["potion", "potion", "axe", "spear", "iron_shield"]
+		var at: Vector3 = nearest.node.position
+		at.y = floors[nearest.floor].position.y + 0.3
+		loot.spawn(choices[loot_rng.randi_range(0, choices.size() - 1)], nearest.floor, at)
 	return true

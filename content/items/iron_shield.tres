@@ -1,0 +1,14 @@
+[gd_resource type="Resource" load_steps=2 format=3]
+[ext_resource type="Script" path="res://game/items/item_definition.gd" id="1"]
+[resource]
+script = ExtResource("1")
+title = "Iron shield"
+kind = "shield"
+damage = 0.0
+reach = 0
+stamina_cost = 0.0
+windup = 0
+recovery = 0
+reduction = 0.9
+heal = 0.0
+tint = Color(0.62, 0.67, 0.72, 1)

@@ -1,0 +1,14 @@
+[gd_resource type="Resource" load_steps=2 format=3]
+[ext_resource type="Script" path="res://game/items/item_definition.gd" id="1"]
+[resource]
+script = ExtResource("1")
+title = "Iron sword"
+kind = "weapon"
+damage = 25.0
+reach = 2.4
+stamina_cost = 20.0
+windup = 0.35
+recovery = 0.65
+reduction = 0
+heal = 0.0
+tint = Color(0.74, 0.72, 0.65, 1)

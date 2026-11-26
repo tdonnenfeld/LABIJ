@@ -6,4 +6,6 @@ World graph -> logical floor -> geometry. Prototype generates four independent f
 
 Combat uses authoritative player and monster timers, stamina, frontal block checks and wall occlusion rays. Clients receive health, stamina and attack phases in snapshots. Dead actors cannot move, attack or use stairs. Placeholder monsters have no physical body and do not attack one another. Spectating follows the first living teammate. No audio assets yet.
 
-Next milestones: branch graph; loot and skills; Jewel retrieval and escape; saves, resurrection and eight-player tests.
+Items are immutable Godot Resources in content/items; inventory stores item IDs and equipped weapon/shield IDs. Server validates item actions and owns floor-specific drops. Snapshots replicate inventory and ground loot. Equipped items cannot be dropped until another item is equipped. Loot generation uses a seeded server RNG.
+
+Next milestones: branch graph; XP and skills; Jewel retrieval and escape; saves, resurrection and eight-player tests.

@@ -1,0 +1,14 @@
+[gd_resource type="Resource" load_steps=2 format=3]
+[ext_resource type="Script" path="res://game/items/item_definition.gd" id="1"]
+[resource]
+script = ExtResource("1")
+title = "Ash spear"
+kind = "weapon"
+damage = 19.0
+reach = 3.4
+stamina_cost = 15.0
+windup = 0.25
+recovery = 0.55
+reduction = 0
+heal = 0.0
+tint = Color(0.65, 0.70, 0.78, 1)
