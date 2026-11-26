@@ -40,3 +40,5 @@ jobs:
         run: ./Godot_v4.7.2-stable_linux.x86_64 --headless --path . --script res://tests/branches.gd
       - name: Complete expedition tests
         run: ./Godot_v4.7.2-stable_linux.x86_64 --headless --path . --script res://tests/objective.gd
+      - name: Party HUD and permadeath tests
+        run: ./Godot_v4.7.2-stable_linux.x86_64 --headless --path . --script res://tests/feedback.gd

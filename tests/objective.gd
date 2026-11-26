@@ -52,9 +52,9 @@ func run() -> void:
 	world.reward_kill(hunter, actor, party)
 	partner.floor_id = actor.floor_id
 	partner.position = actor.position
-	actor.health = 0
+	world.release_jewel(actor, 1)
 	world.update_objective(party, 90)
-	ok = check(world.objective.carrier == 0 and world.objective.pressure() == 3, "Death drops Jewel and pressure rises") and ok
+	ok = check(world.objective.carrier == 0 and world.objective.pressure() == 3, "Handoff and pressure rises") and ok
 	ok = check(world.interact_objective(partner, 2) and world.objective.carrier == 2 and hunter.health == 0, "Recovery never respawns hunters") and ok
 	ok = check(world.release_jewel(partner, 2) and world.interact_objective(partner, 2), "Voluntary handoff") and ok
 	partner.position = world.stair_position(6, false) + Vector3.UP
@@ -71,5 +71,5 @@ func run() -> void:
 	world.objective = defeat
 	partner.health = 0
 	world.update_objective(party, 0.1)
-	ok = check(defeat.result == "defeat", "Party wipe ends run") and ok
+	ok = check(defeat.result == "defeat", "One death ends run even with a living teammate") and ok
 	quit(0 if ok else 1)

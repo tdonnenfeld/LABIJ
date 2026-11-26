@@ -12,6 +12,15 @@ var objective_label: Label
 var result_screen: CenterContainer
 var result_label: Label
 var result_shown := false
+const LogPanel = preload("res://game/ui/log_panel.gd")
+const PartyPanel = preload("res://game/ui/party_panel.gd")
+const Feedback = preload("res://game/ui/combat_feedback.gd")
+var log_panel: PanelContainer
+var party_panel: PanelContainer
+var feedback: Node3D
+var party_names: Dictionary = {}
+var next_party_number := 1
+var action_bar: Label
 const Catalog = preload("res://game/items/catalog.gd")
 var inventory_ui: PanelContainer
 var item_requests: Dictionary = {}
@@ -28,7 +37,6 @@ var stamina_bar: ProgressBar
 var crosshair: Label
 var damage_flash: ColorRect
 var attack_requests: Dictionary = {}
-var spectating := false
 var stair_requests: Dictionary = {}
 var stair_cooldowns: Dictionary = {}
 var yaw := 0.0
@@ -106,6 +114,37 @@ func _ready() -> void:
 		objective_label.offset_right = -16
 		objective_label.offset_top = 16
 		objective_label.hide()
+		log_panel = LogPanel.new()
+		layer.add_child(log_panel)
+		log_panel.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
+		log_panel.offset_left = 16
+		log_panel.offset_top = -180
+		log_panel.offset_bottom = -16
+		log_panel.offset_right = 396
+		log_panel.hide()
+		party_panel = PartyPanel.new()
+		layer.add_child(party_panel)
+		party_panel.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
+		party_panel.offset_left = -360
+		party_panel.offset_right = -16
+		party_panel.offset_top = 92
+		party_panel.hide()
+		action_bar = Label.new()
+		action_bar.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		layer.add_child(action_bar)
+		action_bar.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
+		action_bar.offset_left = -240
+		action_bar.offset_right = 240
+		action_bar.offset_top = -58
+		action_bar.offset_bottom = -16
+		action_bar.hide()
+		var popup_layer := Control.new()
+		layer.add_child(popup_layer)
+		popup_layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		popup_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		feedback = Feedback.new()
+		add_child(feedback)
+		feedback.local_layer = popup_layer
 		result_screen = CenterContainer.new()
 		layer.add_child(result_screen)
 		result_screen.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -179,6 +218,9 @@ func _start() -> void:
 			crosshair.show()
 			xp_label.show()
 			objective_label.show()
+			log_panel.show()
+			party_panel.show()
+			action_bar.show()
 
 func _solo() -> void:
 	party_size = 1
@@ -235,9 +277,13 @@ func _failed() -> void:
 		skills_ui.hide()
 		xp_label.hide()
 		objective_label.hide()
+		log_panel.hide()
+		log_panel.reset()
+		party_panel.hide()
+		action_bar.hide()
+		feedback.reset()
 		result_screen.hide()
 		damage_flash.color.a = 0.0
-	spectating = false
 	for id in actors.keys():
 		_remove(id)
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
@@ -254,11 +300,18 @@ func _spawn(id: int) -> void:
 	actor.position = Vector3(float(actors.size() % 4) * 0.85, 1.0, float(actors.size() / 4) * 0.85)
 	actor.setup(not dedicated and id == multiplayer.get_unique_id(), not dedicated and DisplayServer.get_name() != "headless")
 	actors[id] = actor
+	if multiplayer.is_server():
+		party_names[id] = "Player %d" % next_party_number
+		next_party_number += 1
+		actor.display_name = party_names[id]
+		world.watch_player(actor, id)
+		world.journal.add("Party", "%s enters the dungeon" % actor.display_name)
 
 func _remove(id: int) -> void:
 	if actors.has(id):
 		actors[id].queue_free()
 		actors.erase(id)
+	party_names.erase(id)
 	item_requests.erase(id)
 	talent_requests.erase(id)
 	attack_requests.erase(id)
@@ -273,24 +326,27 @@ func _peer_joined(id: int) -> void:
 		return
 	initialize_expedition.rpc_id(id, expedition_seed, party_size)
 	for existing in actors.keys():
-		spawn_remote.rpc_id(id, existing, actors[existing].floor_id, actors[existing].position)
+		spawn_remote.rpc_id(id, existing, actors[existing].floor_id, actors[existing].position, actors[existing].display_name)
 	_spawn(id)
-	spawn_remote.rpc(id, 0, actors[id].position)
+	spawn_remote.rpc(id, 0, actors[id].position, actors[id].display_name)
+	log_history.rpc_id(id, world.journal.history)
 
 func _peer_left(id: int) -> void:
 	if multiplayer.is_server():
 		if is_instance_valid(world) and actors.has(id):
 			world.release_jewel(actors[id], id)
+			world.journal.add("Party", "%s disconnects" % actors[id].display_name)
 		_remove(id)
 		if is_instance_valid(world) and actors.is_empty() and world.objective.started and world.objective.result == "":
 			world.objective.result = "defeat"
 		remove_remote.rpc(id)
 
 @rpc("authority", "call_remote", "reliable")
-func spawn_remote(id: int, floor_id: int, at: Vector3) -> void:
+func spawn_remote(id: int, floor_id: int, at: Vector3, player_name: String) -> void:
 	_spawn(id)
 	actors[id].floor_id = floor_id
 	actors[id].position = at
+	actors[id].display_name = player_name
 
 @rpc("authority", "call_remote", "reliable")
 func remove_remote(id: int) -> void:
@@ -298,6 +354,9 @@ func remove_remote(id: int) -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	if not active or dedicated or world.objective.result != "":
+		return
+	if event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_L:
+		log_panel.visible = not log_panel.visible
 		return
 	if event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_I:
 		if inventory_ui:
@@ -395,10 +454,11 @@ func _physics_process(delta: float) -> void:
 			if spell_id != "":
 				world.cast(actors[id], id, spell_id)
 		world.simulate(actors, delta)
-		world.projectiles.step(world, actors, delta)
+		if world.objective.result == "":
+			world.projectiles.step(world, actors, delta)
 		world.update_objective(actors, delta)
 		for id in talent_requests:
-			if actors.has(id):
+			if world.objective.result == "" and actors.has(id):
 				apply_talent(actors[id], talent_requests[id])
 		talent_requests.clear()
 		for id in stair_cooldowns.keys():
@@ -409,6 +469,8 @@ func _physics_process(delta: float) -> void:
 				if multiplayer.has_multiplayer_peer():
 					transition.rpc(tick, id, actors[id].floor_id, actors[id].position, world.monster_snapshot())
 		stair_requests.clear()
+		if tick % 6 == 0 or world.objective.result != "":
+			flush_events()
 		tick += 1
 		if (tick % 3 == 0 or world.objective.result != "") and multiplayer.has_multiplayer_peer():
 			var states := {}
@@ -420,20 +482,9 @@ func _physics_process(delta: float) -> void:
 	if not dedicated and actors.has(local_id):
 		var local = actors[local_id]
 		var viewed_floor: int = local.floor_id
-		if local.health <= 0 and local.camera:
-			var watched = null
-			for id in actors:
-				if actors[id].health > 0:
-					watched = actors[id]
-					break
-			if watched != null:
-				spectating = true
-				viewed_floor = watched.floor_id
-				local.camera.global_position = watched.position + Vector3(0, 0.55, 0)
-				local.camera.global_rotation = Vector3(pitch, yaw, 0)
-			else:
-				spectating = false
+		feedback.viewed_floor = viewed_floor
 		world.visible_floor(viewed_floor)
+		party_panel.refresh(actors, local_id, world)
 		for id in actors:
 			actors[id].visible = id == local_id or (actors[id].floor_id == viewed_floor and actors[id].health > 0)
 		local.update_hands(delta)
@@ -445,10 +496,13 @@ func _physics_process(delta: float) -> void:
 			hp_bar.max_value = local.max_health()
 			hp_bar.value = local.health
 			xp_label.text = "Level %d | %d XP | K: Talents | 1–3: Abilities" % [local.skills.character_level(), local.skills.total_xp]
+			var ability_text: PackedStringArray = []
 			for i in range(3):
 				var ability: String = local.skills.slots[i]
-				if ability != "":
-					xp_label.text += "\n%d: %s %.1fs" % [i + 1, ability, local.skills.cooldowns.get(ability, 0.0)]
+				var node: Array = local.Skills.Talents.find(ability)
+				var cooldown: float = local.skills.cooldowns.get(ability, 0.0)
+				ability_text.append("[%d] %s%s" % [i + 1, "Empty" if node.is_empty() else node[2], " %.1fs" % cooldown if cooldown > 0 else ""])
+			action_bar.text = "    |    ".join(ability_text)
 			if skills_ui and skills_ui.visible:
 				skills_ui.refresh(local.skills.state(), world.safe(local))
 			stamina_bar.value = local.stamina
@@ -466,7 +520,7 @@ func _physics_process(delta: float) -> void:
 				hud.text += "  |  " + hint
 			update_objective_hud(local_id)
 			if local.health <= 0:
-				hud.text += "\n" + ("Dead — spectating" if spectating else "Party defeated — restart to try again")
+				hud.text += "\nParty defeated"
 			else:
 				hud.text += "\nLMB: Attack | RMB: Block | Shift: Sprint | I: Inventory"
 				var aggro := 0
@@ -560,17 +614,29 @@ func apply_item_action(actor, index: int, drop: bool) -> void:
 	if actor.health <= 0 or actor.attack_phase != 0 or actor.cast_id != "":
 		return
 	if index == -1:
-		world.loot.pickup(actor)
+		var drop_id: int = world.loot.nearest(actor)
+		if drop_id != 0:
+			var title: String = Catalog.get_item(world.loot.drops[drop_id].item).title
+			if world.loot.pickup(actor):
+				world.journal.add("Loot", "%s picks up %s" % [actor.display_name, title])
 	elif drop:
 		var item: String = actor.inventory.remove(index)
 		if not item.is_empty():
 			var at: Vector3 = actor.position
 			at.y = world.floors[actor.floor_id].position.y + 0.3
 			world.loot.spawn(item, actor.floor_id, at)
+			world.journal.add("Loot", "%s drops %s" % [actor.display_name, Catalog.get_item(item).title])
 	else:
 		if index >= 0 and index < actor.inventory.items.size() and Catalog.get_item(actor.inventory.items[index]).kind == "scroll" and not world.safe(actor):
 			return
-		actor.use_item(index)
+		if index < 0 or index >= actor.inventory.items.size():
+			return
+		var item = Catalog.get_item(actor.inventory.items[index])
+		var before: float = actor.health
+		if actor.use_item(index):
+			world.journal.add("Loot", "%s %s %s" % [actor.display_name, "reads" if item.kind == "scroll" else ("uses" if item.kind == "consumable" else "equips"), item.title])
+			if actor.health > before:
+				world.journal.add("Combat", "%s restores %g HP" % [actor.display_name, actor.health - before], actor.floor_id, actor.position + Vector3.UP, "+%d" % roundi(actor.health - before), "heal", int(actor.name))
 
 func _skill_action(index: int, value: int) -> void:
 	if multiplayer.is_server():
@@ -626,7 +692,9 @@ func apply_talent(actor, request: Array) -> void:
 	if not world.safe(actor):
 		return
 	match request[0]:
-		"buy": actor.buy_talent(request[1])
+		"buy":
+			if actor.buy_talent(request[1]):
+				world.journal.add("XP", "%s learns %s" % [actor.display_name, actor.Skills.Talents.find(request[1])[2]])
 		"slot": actor.skills.assign_slot(request[2], request[1])
 
 func new_expedition() -> void:
@@ -639,6 +707,11 @@ func build_expedition(seed_value: int, size: int) -> void:
 		world.queue_free()
 	expedition_seed = seed_value
 	party_size = size
+	party_names.clear()
+	next_party_number = 1
+	if log_panel:
+		log_panel.reset()
+		feedback.reset()
 	world = World.new()
 	add_child(world)
 	world.build(seed_value, not dedicated and DisplayServer.get_name() != "headless", size)
@@ -676,5 +749,36 @@ func show_result() -> void:
 	inventory_ui.hide()
 	skills_ui.hide()
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-	result_label.text = "JEWEL RECOVERED\nExpedition victory!" if world.objective.result == "victory" else "EXPEDITION LOST\nThe party has fallen."
+	result_label.text = "JEWEL RECOVERED\nExpedition victory!" if world.objective.result == "victory" else "EXPEDITION LOST\nA party member has fallen."
 	result_screen.show()
+
+func flush_events() -> void:
+	var events: Array = world.journal.drain()
+	if events.is_empty():
+		return
+	if not dedicated:
+		display_events(events)
+	if multiplayer.has_multiplayer_peer():
+		combat_events.rpc(events)
+
+@rpc("authority", "call_remote", "reliable")
+func combat_events(events: Array) -> void:
+	if is_instance_valid(world):
+		display_events(events)
+
+@rpc("authority", "call_remote", "reliable")
+func log_history(events: Array) -> void:
+	if log_panel:
+		log_panel.receive(events)
+
+func display_events(events: Array) -> void:
+	if not log_panel or not feedback:
+		return
+	var last: int = log_panel.last_id
+	log_panel.receive(events)
+	var local_id := multiplayer.get_unique_id()
+	if actors.has(local_id):
+		feedback.viewed_floor = actors[local_id].floor_id
+	for event in events:
+		if event.id > last:
+			feedback.show_event(event, local_id)

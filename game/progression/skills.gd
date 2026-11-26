@@ -5,6 +5,8 @@ const TITLES := ["Fighting", "Long Blades", "Axes", "Polearms", "Shields", "Dodg
 const SLOT_COUNT := 3
 const Spells = preload("res://game/combat/spells.gd")
 const SCROLL_REQUIREMENTS := {"firebolt": 1, "frostbolt": 1, "spark": 1, "stonebolt": 1, "fireball": 2, "freeze": 2, "thunder": 2, "boulder": 2}
+signal usage_xp(domain: int, amount: float)
+var allocating := false
 var total_xp := 0
 var xp: Array[float] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 var wallet: Array[float] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
@@ -27,6 +29,8 @@ func credit(domain: int, amount: float) -> void:
 	if domain >= 0 and domain < TITLES.size() and amount > 0:
 		xp[domain] += amount
 		wallet[domain] += amount
+		if not allocating:
+			usage_xp.emit(domain, amount)
 
 func gain(amount: int) -> void:
 	if amount <= 0:
@@ -36,8 +40,10 @@ func gain(amount: int) -> void:
 	for weight in priorities:
 		weights += weight
 	if weights > 0:
+		allocating = true
 		for i in range(TITLES.size()):
 			credit(i, float(amount) * priorities[i] / weights)
+		allocating = false
 
 func weapon_domain(id: String) -> int:
 	match id.get_slice(":", 0):
