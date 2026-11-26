@@ -720,9 +720,9 @@ func strike(actor, party: Dictionary = {}) -> bool:
 			return false
 		player_noise(actor, radius, "bow")
 		var source_peer = party.find_key(actor)
-		var direction := Vector3(-sin(actor.heading), 0, -cos(actor.heading))
+		var direction := Combat.aim_direction(actor.heading, actor.look_pitch)
 		var effect := "arrow_poison" if actor.skills.learned.has("venom_arrow") else "arrow"
-		projectiles.launch(actor.floor_id, actor.position, direction, weapon.projectile_speed, actor.attack_reach(), actor.attack_damage(), weapon.tint, 0 if source_peer == null else source_peer, false, effect, 10, actor.skills.bonus("pierce", 10))
+		projectiles.launch(actor.floor_id, Combat.shot_origin(actor), direction, weapon.projectile_speed, actor.attack_reach(), actor.attack_damage(), weapon.tint, 0 if source_peer == null else source_peer, false, effect, 10, actor.skills.bonus("pierce", 10))
 		actor.empowered = ""
 		return false
 	var hits: Array = []
@@ -875,14 +875,37 @@ func discover(actor) -> bool:
 func cast(actor, source_peer: int, id: String) -> void:
 	player_noise(actor, Acoustics.MAGIC, "magic")
 	var stats := Spells.get_spell(id)
-	var direction := Vector3(-sin(actor.heading), 0, -cos(actor.heading))
+	var direction := Combat.aim_direction(actor.heading, actor.look_pitch)
 	var damage: float = stats[2] * (1.0 + actor.skills.bonus("spell_damage", stats[0]) + Catalog.get_item(actor.inventory.weapon).spell_power)
 	var bonus: float = actor.skills.bonus("burn_bonus", stats[0]) + actor.skills.bonus("slow_bonus", stats[0])
-	projectiles.launch(actor.floor_id, actor.position, direction, stats[3], stats[4], damage, stats[6], source_peer, false, stats[7], stats[0], bonus)
+	projectiles.launch(actor.floor_id, Combat.shot_origin(actor), direction, stats[3], stats[4], damage, stats[6], source_peer, false, stats[7], stats[0], bonus)
 
 func spell_hit(shot: Dictionary, mob: Dictionary, actors: Dictionary) -> void:
 	if shot.effect == "blast":
 		spell_blast(shot, mob.node.position, actors)
+	elif shot.effect == "chain":
+		apply_spell_damage(shot, mob, actors)
+		var visited: Array = [mob]
+		var source: Node3D = mob.node
+		var damage: float = shot.damage
+		for hop in range(2):
+			var nearest: Dictionary = {}
+			var best := 4.0
+			for candidate in monsters.values():
+				if candidate in visited or candidate.health <= 0 or candidate.floor != shot.floor:
+					continue
+				var distance: float = source.position.distance_to(candidate.node.position)
+				if distance < best and Combat.clear_path(source, candidate.node.position):
+					best = distance
+					nearest = candidate
+			if nearest.is_empty():
+				break
+			damage *= 0.65
+			var jump := shot.duplicate()
+			jump.damage = damage
+			apply_spell_damage(jump, nearest, actors)
+			visited.append(nearest)
+			source = nearest.node
 	else:
 		apply_spell_damage(shot, mob, actors)
 
@@ -942,7 +965,7 @@ func apply_spell_damage(shot: Dictionary, mob: Dictionary, actors: Dictionary) -
 			status_event(mob, "Frozen")
 			mob.stun = maxf(mob.stun, 2.0)
 			mob.phase = 0
-		"shock", "stone":
+		"shock", "chain", "stone":
 			status_event(mob, "Staggered")
 			mob.stun = maxf(mob.stun, 0.5)
 
@@ -1115,7 +1138,7 @@ func throw_distraction(actor, index: int, peer: int) -> bool:
 		return false
 	if actor.inventory.items[index] != "noise_stone" or actor.inventory.remove(index) == "":
 		return false
-	var direction := Vector3(-sin(actor.heading), 0, -cos(actor.heading))
+	var direction := Combat.aim_direction(actor.heading, actor.look_pitch)
 	projectiles.launch(actor.floor_id, actor.position, direction, 12.0, 12.0, 0.0, Color("#b0b9c3"), peer, false, "distraction", 11, actor.skills.bonus("distraction"))
 	journal.add("Loot", "%s throws a Noise Stone" % actor.display_name)
 	return true

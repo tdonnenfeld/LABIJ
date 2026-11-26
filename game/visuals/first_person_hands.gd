@@ -1,5 +1,6 @@
 extends Node3D
 
+const Spells = preload("res://game/combat/spells.gd")
 const Catalog = preload("res://game/items/catalog.gd")
 const Assets = preload("res://game/visuals/asset_registry.gd")
 const Loot = preload("res://game/items/loot_models.gd")
@@ -17,6 +18,12 @@ var clock := 0.0
 var speed := 0.0
 var previous := Vector3.ZERO
 var sampled := false
+var last_phase := 0
+var last_cast := ""
+var release_time := 0.0
+var cast_charge := 0.0
+var cast_color := Color.WHITE
+var spell_material: StandardMaterial3D
 
 func _ready() -> void:
 	right = Node3D.new()
@@ -32,6 +39,11 @@ func _ready() -> void:
 	spell = Node3D.new()
 	add_child(spell)
 	Loot.gem(spell, Vector3.ZERO, 0.13, Color("#c3a1e8"))
+	spell_material = StandardMaterial3D.new()
+	spell_material.emission_enabled = true
+	var orb := spell.get_child(0) as MeshInstance3D
+	if orb:
+		orb.material_override = spell_material
 	spell.position = Vector3(0, -0.15, -0.76)
 	spell.hide()
 
@@ -60,6 +72,18 @@ func animate(actor, delta: float, motion: float) -> void:
 	drink_time = maxf(0.0, drink_time - delta)
 	var weight := minf(1.0, delta * 15.0)
 	var casting: bool = actor.cast_id != ""
+	if (last_phase == 1 and actor.attack_phase == 2) or (last_cast != "" and not casting):
+		release_time = 0.18
+	last_phase = actor.attack_phase
+	last_cast = actor.cast_id
+	release_time = maxf(0.0, release_time - delta)
+	cast_charge = move_toward(cast_charge, 1.0 if casting else 0.0, delta * 4.0)
+	if casting:
+		var stats := Spells.get_spell(actor.cast_id)
+		if not stats.is_empty():
+			cast_color = stats[6]
+	spell_material.albedo_color = cast_color
+	spell_material.emission = cast_color
 	var target := Vector3(0.36 + bob, -0.33 + absf(bob), -0.75)
 	var rot := Vector3(0.10, -0.15, -0.14)
 	if actor.attack_phase == 1:
@@ -83,9 +107,15 @@ func animate(actor, delta: float, motion: float) -> void:
 	if casting:
 		target = Vector3(0.22, -0.16, -0.72)
 		rot.x = -0.4
+	target.z += release_time * 0.45
+	rot.x += release_time * 1.3
 	right.position = right.position.lerp(target, weight)
 	right.rotation = right.rotation.lerp(rot, weight)
 	var left_target := Vector3(-0.40 - bob, -0.38 + absf(bob), -0.76)
+	if casting:
+		left_target = Vector3(-0.22, -0.14, -0.66)
+	elif Catalog.get_item(key[0]).projectile_speed > 0 and actor.attack_phase == 1:
+		left_target = Vector3(-0.12, -0.19, -0.48)
 	if actor.blocking:
 		left_target = Vector3(-0.19, -0.09, -0.64)
 	if drink_time > 0.0:
@@ -95,6 +125,7 @@ func animate(actor, delta: float, motion: float) -> void:
 	drink.visible = drink_time > 0.0
 	if shield:
 		shield.visible = not drink.visible
-	spell.visible = casting
-	spell.scale = Vector3.ONE * (0.85 + sin(clock * 3.0) * 0.18)
+	spell.visible = casting or (release_time > 0.0 and cast_charge > 0.0)
+	spell.scale = Vector3.ONE * maxf(0.05, cast_charge * (0.9 + sin(clock * 8.0) * 0.1))
+	spell.rotation.y += delta * 3.0
 	visible = actor.health > 0.0

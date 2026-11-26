@@ -1,5 +1,6 @@
 extends SceneTree
 
+const Combat = preload("res://game/combat.gd")
 const Player = preload("res://game/player.gd")
 const Projectiles = preload("res://game/combat/projectiles.gd")
 const World = preload("res://game/world.gd")
@@ -28,9 +29,19 @@ func run() -> void:
 	ok = ok and not player.activate(0)
 	ok = ok and Projectiles.segment_hit(Vector3.ZERO, Vector3(10, 0, 0), Vector3(5, 0, 0), 1.0) >= 0
 	ok = ok and Projectiles.segment_hit(Vector3.ZERO, Vector3(10, 0, 0), Vector3(5, 3, 0), 1.0) < 0
+	ok = ok and Combat.aim_direction(0.0, 0.0).is_equal_approx(Vector3.FORWARD)
+	ok = ok and Combat.aim_direction(0.0, PI / 4.0).y > 0.7
+	ok = ok and Combat.aim_direction(PI / 2.0, -PI / 4.0).x < -0.7
 	var world := World.new()
 	root.add_child(world)
 	world.build(42069, false)
+	player.look_pitch = 0.25
+	world.cast(player, 1, "fireball")
+	var shot: Dictionary = world.projectiles.shots[1]
+	ok = ok and shot.velocity.y > 0.0 and shot.effect == "blast"
+	ok = ok and shot.node.position.is_equal_approx(Combat.shot_origin(player))
+	ok = ok and world.projectiles.state()[1][3] == "blast"
+	world.projectiles.remove(1)
 	var mob: Dictionary = world.monsters[2]
 	mob.health = 50.0
 	world.apply_spell_damage({"owner": 1, "damage": 15.0, "effect": "burn", "domain": 6, "bonus": 0.0}, mob, {1: player})

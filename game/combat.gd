@@ -30,3 +30,9 @@ static func clear_path(body: Node3D, target: Vector3) -> bool:
 	if body is CollisionObject3D:
 		query.exclude = [body.get_rid()]
 	return body.get_world_3d().direct_space_state.intersect_ray(query).is_empty()
+
+static func aim_direction(yaw: float, pitch: float) -> Vector3:
+	return Vector3(-sin(yaw) * cos(pitch), sin(pitch), -cos(yaw) * cos(pitch))
+
+static func shot_origin(body: Node3D) -> Vector3:
+	return body.position + Vector3.UP * 0.55
