@@ -552,7 +552,8 @@ func _spawn(id: int, profile: Array = ["", 0, 0]) -> void:
 	var actor := Player.new()
 	actor.name = str(id)
 	add_child(actor)
-	actor.position = Vector3(float(actors.size() % 4) * 0.85, 1.0, float(floori(float(actors.size()) / 4.0)) * 0.85)
+	var landing: Vector3 = world.arrival_position(0, world.stair_position(0, false), actors)
+	actor.position = landing if landing != Vector3.INF else Vector3.UP
 	actor.setup(not dedicated and id == multiplayer.get_unique_id(), not dedicated and DisplayServer.get_name() != "headless")
 	actors[id] = actor
 	var player_name := Profiles.clean_name(str(profile[0]))
@@ -798,7 +799,7 @@ func _physics_process(delta: float) -> void:
 		for id in stair_cooldowns.keys():
 			stair_cooldowns[id] = maxf(0.0, stair_cooldowns[id] - delta)
 		for id in stair_requests.keys():
-			if world.objective.result == "" and actors.has(id) and stair_cooldowns.get(id, 0.0) <= 0.0 and world.transfer(actors[id], id):
+			if world.objective.result == "" and actors.has(id) and stair_cooldowns.get(id, 0.0) <= 0.0 and world.transfer(actors[id], id, actors):
 				stair_cooldowns[id] = 0.75
 				if multiplayer.has_multiplayer_peer():
 					transition.rpc(tick, id, actors[id].floor_id, actors[id].position, world.monster_snapshot())

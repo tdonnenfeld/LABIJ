@@ -11,12 +11,14 @@ var markers: Dictionary = {}
 var party: Array = []
 var heading := 0.0
 var floor_title := ""
+var corridor_widths: Dictionary = {}
 
 func refresh(world, actor, actors: Dictionary, angle: float) -> void:
 	floor_id = actor.floor_id
 	center = Acoustics.cell(actor.position)
 	heading = angle
 	floor_title = world.Routes.NAMES[floor_id]
+	corridor_widths = world.floors[floor_id].corridor_widths
 	memory.reveal(floor_id, world.floors[floor_id].tiles, actor.position)
 	markers.clear()
 	markers[Acoustics.cell(world.stair_position(floor_id, false))] = "S" if floor_id == 0 else "U"
@@ -46,7 +48,12 @@ func _draw() -> void:
 		if absi(offset.x) > 8 or absi(offset.y) > 8:
 			continue
 		var at := middle + Vector2(offset) * step
-		draw_rect(Rect2(at - Vector2.ONE * step * 0.5, Vector2.ONE * (step - 0.7)), Color("#78634a"))
+		var extent := Vector2.ONE * (step - 0.7)
+		if corridor_widths.has(cell):
+			var corridor: Dictionary = corridor_widths[cell]
+			var narrow: float = step * corridor.width / 3.0
+			extent = Vector2(step, narrow) if corridor.axis.x != 0 else Vector2(narrow, step)
+		draw_rect(Rect2(at - extent * 0.5, extent), Color("#78634a"))
 		if markers.has(cell):
 			draw_string(font, at + Vector2(-4, 4), markers[cell], HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color("#ffe3a0"))
 		if party.has(cell):
@@ -59,4 +66,5 @@ func reset() -> void:
 	memory.explored.clear()
 	markers.clear()
 	party.clear()
+	corridor_widths = {}
 	queue_redraw()
