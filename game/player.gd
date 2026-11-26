@@ -8,6 +8,10 @@ const Skills = preload("res://game/progression/skills.gd")
 const Spells = preload("res://game/combat/spells.gd")
 var mana := 100.0
 var wants_sprint := false
+var wants_quiet := false
+var quiet_walking := false
+var noise_level := 0.0
+var step_distance := 0.0
 var sprinting := false
 var sprint_exhausted := false
 var cast_id := ""
@@ -77,10 +81,11 @@ func simulate(delta: float) -> void:
 		velocity = Vector3.ZERO
 		return
 	rotation.y = heading
+	quiet_walking = wants_quiet and not wants_sprint and dash_timer <= 0 and attack_phase == 0 and cast_id == ""
 	update_sprint(delta)
 	var forward := Vector3(sin(heading), 0, cos(heading))
 	var right := Vector3(cos(heading), 0, -sin(heading))
-	var motion := (right * direction.x + forward * direction.y) * (2.5 if blocking or attack_phase == 1 else 4.5) * (1.0 + skills.bonus("move")) * (2.0 if dash_timer > 0 else (1.55 if sprinting else 1.0))
+	var motion := (right * direction.x + forward * direction.y) * (2.5 if blocking or attack_phase == 1 else 4.5) * (1.0 + skills.bonus("move")) * (2.0 if dash_timer > 0 else (1.55 if sprinting else (0.45 if quiet_walking else 1.0)))
 	velocity.x = motion.x
 	velocity.z = motion.z
 	velocity.y = maxf(velocity.y - 18.0 * delta, -20.0)
