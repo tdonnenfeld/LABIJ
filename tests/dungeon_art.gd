@@ -17,8 +17,9 @@ func collision_signature(level: Node3D) -> Array:
 	var result: Array = []
 	for child in level.get_children():
 		if child is StaticBody3D:
-			var shape: BoxShape3D = child.get_child(child.get_child_count() - 1).shape
-			result.append([child.position, shape.size])
+			for part in child.get_children():
+				if part is CollisionShape3D and part.shape is BoxShape3D:
+					result.append([child.position, part.shape.size])
 	return result
 
 func run() -> void:
@@ -49,6 +50,17 @@ func run() -> void:
 	check(ThemeKit.material("wall").albedo_texture.get_width() == 128, "Low resolution texture")
 	builder.update_lighting(builder.torches[0], 0.3)
 	check(builder.lights[0].visible, "Torch lights activate near viewer")
+	check(plain.doors.keys() == decorated.doors.keys(), "Door placement deterministic")
+	var door_test := preload("res://game/dungeon_door.gd").new()
+	root.add_child(door_test)
+	door_test.setup(Vector3.ZERO, Vector2i.RIGHT, 1.2, "wood", false)
+	check(door_test.collision_layer == 1 and not door_test.opened, "Closed door blocks passage")
+	door_test.set_open(true)
+	check(door_test.collision_layer == 0 and door_test.opened, "Open door clears passage")
+	check(door_test.obstructed(Vector3.ZERO) and not door_test.obstructed(Vector3(3, 0, 0)), "Door occupancy bounds")
+	door_test.set_open(false)
+	check(door_test.collision_layer == 1, "Door closes again")
+	door_test.free()
 	var before := collision_signature(decorated)
 	Builder.route_marker(decorated, Vector3.ZERO, Color.GOLD, true)
 	check(collision_signature(decorated) == before, "Route art never adds collision")
