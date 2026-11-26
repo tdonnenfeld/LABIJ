@@ -1,5 +1,6 @@
 extends Node3D
 
+signal noise(floor_id: int, at: Vector3)
 var traps: Dictionary = {}
 var visual := false
 
@@ -33,6 +34,7 @@ func step(actors: Dictionary, delta: float) -> void:
 			if trap.timer > 0:
 				continue
 			trap.phase = 2
+			noise.emit(trap.floor, trap.node.position)
 			for actor in actors.values():
 				if actor.health > 0 and actor.floor_id == trap.floor and distance(actor.position, trap.node.position) <= (1.4 if trap.kind == "spike" else 2.0):
 					actor.take_damage(18.0 if trap.kind == "spike" else 25.0, trap.node.position, trap.kind == "fire", "Spike trap" if trap.kind == "spike" else "Fire trap")

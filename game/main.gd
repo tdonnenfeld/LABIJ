@@ -23,6 +23,8 @@ var feedback: Node3D
 var party_names: Dictionary = {}
 var next_party_number := 1
 var action_bar: Label
+var noise_label: Label
+var target_label: Label
 const Catalog = preload("res://game/items/catalog.gd")
 var inventory_ui: PanelContainer
 var item_requests: Dictionary = {}
@@ -140,6 +142,19 @@ func _ready() -> void:
 		action_bar.offset_top = -58
 		action_bar.offset_bottom = -16
 		action_bar.hide()
+		noise_label = Label.new()
+		noise_label.position = Vector2(16, 184)
+		layer.add_child(noise_label)
+		noise_label.hide()
+		target_label = Label.new()
+		target_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		target_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		layer.add_child(target_label)
+		target_label.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
+		target_label.offset_left = -155
+		target_label.offset_right = 155
+		target_label.offset_top = 12
+		target_label.hide()
 		var popup_layer := Control.new()
 		layer.add_child(popup_layer)
 		popup_layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -223,6 +238,8 @@ func _start() -> void:
 			log_panel.show()
 			party_panel.show()
 			action_bar.show()
+			noise_label.show()
+			target_label.show()
 
 func _solo() -> void:
 	party_size = 1
@@ -283,6 +300,8 @@ func _failed() -> void:
 		log_panel.reset()
 		party_panel.hide()
 		action_bar.hide()
+		noise_label.hide()
+		target_label.hide()
 		feedback.reset()
 		result_screen.hide()
 		damage_flash.color.a = 0.0
@@ -431,13 +450,15 @@ func _physics_process(delta: float) -> void:
 		actor.rotation.y = yaw
 		var block := Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT)
 		var sprint := Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and Input.is_physical_key_pressed(KEY_SHIFT)
+		var quiet := Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and Input.is_physical_key_pressed(KEY_CTRL)
 		if multiplayer.is_server():
 			actor.wants_block = block
 			actor.wants_sprint = sprint
+			actor.wants_quiet = quiet
 			actor.direction = move.limit_length()
 			actor.heading = yaw
 		else:
-			submit_input.rpc_id(1, move, yaw, block, sprint)
+			submit_input.rpc_id(1, move, yaw, block, sprint, quiet)
 	if multiplayer.is_server():
 		for id in attack_requests.keys():
 			if actors.has(id):
@@ -448,7 +469,9 @@ func _physics_process(delta: float) -> void:
 				apply_item_action(actors[id], item_requests[id][0], item_requests[id][1])
 		item_requests.clear()
 		for actor in actors.values():
+			var before: Vector3 = actor.position
 			actor.simulate(delta)
+			world.footsteps(actor, before, delta)
 			if actor.advance_combat(delta):
 				actor.swing_hit = world.strike(actor, actors)
 		for id in actors:
@@ -477,7 +500,7 @@ func _physics_process(delta: float) -> void:
 		if (tick % 3 == 0 or world.objective.result != "") and multiplayer.has_multiplayer_peer():
 			var states := {}
 			for id in actors:
-				states[id] = [actors[id].position, actors[id].heading, actors[id].floor_id, actors[id].health, actors[id].stamina, actors[id].blocking, actors[id].attack_phase, actors[id].hurt_timer, actors[id].swing_hit, actors[id].inventory.state(), actors[id].skills.state(), actors[id].combat_timer, actors[id].mana, actors[id].sprinting, actors[id].cast_id]
+				states[id] = [actors[id].position, actors[id].heading, actors[id].floor_id, actors[id].health, actors[id].stamina, actors[id].blocking, actors[id].attack_phase, actors[id].hurt_timer, actors[id].swing_hit, actors[id].inventory.state(), actors[id].skills.state(), actors[id].combat_timer, actors[id].mana, actors[id].sprinting, actors[id].cast_id, actors[id].noise_level, actors[id].quiet_walking]
 			snapshot.rpc(tick, states, world.monster_snapshot(), world.loot.state(), world.projectiles.state(), world.hazards.state(), world.objective.state())
 			if world.objective.result != "":
 				finish_remote.rpc(world.objective.state())
@@ -487,6 +510,7 @@ func _physics_process(delta: float) -> void:
 		feedback.viewed_floor = viewed_floor
 		world.visible_floor(viewed_floor)
 		party_panel.refresh(actors, local_id, world)
+		update_awareness_hud(local, local_id)
 		for id in actors:
 			actors[id].visible = id == local_id or (actors[id].floor_id == viewed_floor and actors[id].health > 0)
 		local.update_hands(delta)
@@ -524,7 +548,7 @@ func _physics_process(delta: float) -> void:
 			if local.health <= 0:
 				hud.text += "\nParty defeated"
 			else:
-				hud.text += "\nLMB: Attack | RMB: Block | Shift: Sprint | I: Inventory"
+				hud.text += "\nLMB: Attack | RMB: Block | Shift: Sprint | Ctrl: Quiet | I: Inventory"
 				var aggro := 0
 				for mob in world.monsters.values():
 					if mob.health > 0 and mob.floor == local.floor_id and mob.target == local_id:
@@ -536,7 +560,7 @@ func _physics_process(delta: float) -> void:
 					hud.text += "\nF: Pick up " + Catalog.get_item(world.loot.drops[drop_id].item).title
 
 @rpc("any_peer", "call_remote", "unreliable_ordered")
-func submit_input(move: Vector2, angle: float, block: bool, sprint: bool) -> void:
+func submit_input(move: Vector2, angle: float, block: bool, sprint: bool, quiet: bool) -> void:
 	if not multiplayer.is_server() or not move.is_finite() or not is_finite(angle):
 		return
 	var id := multiplayer.get_remote_sender_id()
@@ -545,6 +569,7 @@ func submit_input(move: Vector2, angle: float, block: bool, sprint: bool) -> voi
 		actors[id].heading = angle
 		actors[id].wants_block = block
 		actors[id].wants_sprint = sprint
+		actors[id].wants_quiet = quiet
 
 @rpc("authority", "call_remote", "unreliable_ordered")
 func snapshot(sequence: int, states: Dictionary, mobs: Dictionary, drops: Dictionary, shots: Dictionary, traps: Dictionary, objective_data: Dictionary) -> void:
@@ -572,6 +597,8 @@ func snapshot(sequence: int, states: Dictionary, mobs: Dictionary, drops: Dictio
 			actors[id].mana = states[id][12]
 			actors[id].sprinting = states[id][13]
 			actors[id].cast_id = states[id][14]
+			actors[id].noise_level = states[id][15]
+			actors[id].quiet_walking = states[id][16]
 			if id != multiplayer.get_unique_id():
 				actors[id].rotation.y = states[id][1]
 
@@ -784,3 +811,19 @@ func display_events(events: Array) -> void:
 	for event in events:
 		if event.id > last:
 			feedback.show_event(event, local_id)
+
+func update_awareness_hud(local, local_id: int) -> void:
+	var level: float = local.noise_level
+	var mode := "Quiet walk" if local.quiet_walking else ("Sprint" if local.sprinting else "Walk")
+	noise_label.text = "%s | Noise %s" % [mode, Numbers.number(level)]
+	noise_label.modulate = Color("#9ed6a1") if level < 3 else (Color("#e0bf70") if level < 9 else Color("#ed8c76"))
+	var mob: Dictionary = world.focused_enemy(local, yaw)
+	if mob.is_empty():
+		target_label.text = ""
+		return
+	var target_name := "None"
+	if actors.has(mob.target):
+		target_name = actors[mob.target].display_name
+	var mine: float = mob.threat.get(local_id, 0.0)
+	var current: float = mob.threat.get(mob.target, 0.0)
+	target_label.text = "%s | %s\n%d/%d HP%s\nTarget: %s | Threat %s / %s" % [World.Bestiary.stats(mob.kind)[0], world.awareness_name(mob), ceili(mob.health), ceili(mob.max_health), world.status_summary(mob), target_name, Numbers.number(mine), Numbers.number(current)]
