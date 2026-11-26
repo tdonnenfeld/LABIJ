@@ -11,6 +11,7 @@ var background_id := 0
 var profile_locked := false
 const Spells = preload("res://game/combat/spells.gd")
 var mana := 100.0
+var lantern_lit := true
 var wants_sprint := false
 var wants_quiet := false
 var quiet_walking := false
@@ -82,6 +83,7 @@ func setup(local: bool, visual: bool = true) -> void:
 		camera.current = true
 		add_child(camera)
 		var light := OmniLight3D.new()
+		light.name = "Lantern"
 		light.omni_range = 14
 		light.light_color = Color("#e8dfc5")
 		light.light_energy = 2.5 if "--debug-geometry" in OS.get_cmdline_user_args() else 1.5
@@ -193,7 +195,7 @@ func advance_combat(delta: float) -> bool:
 	blocking = inventory.shield_index >= 0 and not ranged_mode() and wants_block and attack_phase == 0 and cast_id == "" and stamina > 0
 	if blocking:
 		block_age = block_age + delta if was_blocking else 0.0
-	mana = minf(100.0, mana + delta * 5.0 * float(Profiles.SPECIES[species_id][4]) * (1.0 + Catalog.get_item(inventory.weapon).mana_bonus))
+	mana = minf(100.0, mana + delta * 5.0 * float(Profiles.SPECIES[species_id][4]) * (1.0 + Catalog.get_item(inventory.weapon).mana_bonus + oracle_bonus()))
 	if not blocking and not sprinting and not bow_drawing and attack_phase == 0 and cast_id == "":
 		stamina = minf(Combat.MAX_STAMINA, stamina + delta * (18.0 + skills.bonus("regen")))
 	if attack_phase == 0:
@@ -233,6 +235,7 @@ func take_damage(amount: float, source: Vector3, magical: bool = false, source_n
 			if magical:
 				amount *= 1.0 - armor.magic_resistance
 	amount *= (1.0 - skills.bonus("mitigation")) * (0.5 if fortify_timer > 0 else 1.0) * (0.25 if escape_timer > 0 else 1.0)
+	amount *= 1.0 - warden_bonus()
 	health = maxf(0.0, health - amount)
 	damage_event.emit(before - health, blocked, parried, source_name)
 	hurt_timer = 0.25
@@ -248,6 +251,10 @@ func take_damage(amount: float, source: Vector3, magical: bool = false, source_n
 		collision_mask = 0
 
 func update_hands(delta: float, motion: float = 1.0, remote: bool = false) -> void:
+	if camera:
+		var lantern := camera.get_node_or_null("Lantern") as OmniLight3D
+		if lantern:
+			lantern.light_energy = lerpf(lantern.light_energy, 1.5 if lantern_lit else 0.12, minf(1.0, delta * 8.0))
 	if remote:
 		attack_timer = maxf(0.0, attack_timer - delta)
 		cast_timer = maxf(0.0, cast_timer - delta)
@@ -436,3 +443,11 @@ func drink_belt(slot: int) -> bool:
 		return false
 	health = minf(max_health(), health + Catalog.get_item("potion").heal)
 	return true
+
+func warden_bonus() -> float:
+	var pieces := inventory.set_pieces("Warden")
+	return 0.15 if pieces >= 3 else (0.08 if pieces >= 2 else 0.0)
+
+func oracle_bonus() -> float:
+	var pieces := inventory.set_pieces("Oracle")
+	return 0.35 if pieces >= 3 else (0.20 if pieces >= 2 else 0.0)
