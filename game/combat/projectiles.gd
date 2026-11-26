@@ -119,7 +119,10 @@ func step(world, actors: Dictionary, delta: float) -> void:
 			if shot.enemy:
 				target.take_damage(shot.damage, from, shot.effect == "hex", "Enemy spell" if shot.effect == "hex" else "Enemy arrow")
 			else:
-				world.spell_hit(shot, target, actors)
+				if shot.effect == "blast":
+					world.spell_blast(shot, from.lerp(to, limit), actors)
+				else:
+					world.spell_hit(shot, target, actors)
 			remove(id)
 		elif limit <= 1.0:
 			if shot.effect == "blast":
