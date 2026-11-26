@@ -251,7 +251,7 @@ func decorate_wall(at: Vector3, normal: Vector3, angle: float, style: String, ro
 		for y in [0.55, 1.05, 1.55, 2.05]:
 			box("wood", base + Vector3.UP * y, Vector3(1.45, 0.09, 0.18), angle)
 			for i in range(7):
-				var color := ["book", "cloth", "cloth_blue", "paper"][posmod(i + int(y * 10) + roll, 4)]
+				var color: String = ["book", "cloth", "cloth_blue", "paper"][posmod(i + int(y * 10) + roll, 4)]
 				box(color, base + cross * (-0.57 + i * 0.19) + Vector3.UP * (y + 0.19), Vector3(0.13, 0.29 + 0.04 * (i % 2), 0.14), angle)
 		for sign_value in [-1.0, 1.0]:
 			box("wood", base + cross * sign_value * 0.76 + Vector3.UP * 1.3, Vector3(0.10, 1.65, 0.2), angle)
