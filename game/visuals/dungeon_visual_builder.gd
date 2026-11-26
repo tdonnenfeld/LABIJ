@@ -10,7 +10,7 @@ var torches: Array[Vector3] = []
 var lights: Array[OmniLight3D] = []
 var light_timer := 0.0
 var theme_id := 0
-const THEMES := [Color("#ffffff"), Color("#a8b3a2"), Color("#a4a6bc"), Color("#948b80"), Color("#8f9ca6"), Color("#b99580"), Color("#c5b69a")]
+const THEMES := [Color("#ffffff"), Color("#a3a09b"), Color("#7598a4"), Color("#b8a587"), Color("#8f9ca6"), Color("#b99580"), Color("#c5b69a")]
 
 func box(id: String, at: Vector3, size: Vector3, angle: float = 0.0) -> void:
 	var chunk := Vector2i(floori(at.x / (CELL * CHUNK)), floori(at.z / (CELL * CHUNK)))
@@ -48,12 +48,13 @@ func build(tiles: Dictionary, seed_value: int, corridor_blocks: Array = [], floo
 		add_arch(tiles, cell, origin)
 		if not narrowed.has(cell):
 			decorate_cell(tiles, cell, origin, seed_value)
+			decorate_theme(tiles, cell, origin, seed_value)
 	for block in corridor_blocks:
 		box("wall", block[0], block[1])
 	flush_batches()
 	for i in range(LIGHT_LIMIT):
 		var light := OmniLight3D.new()
-		light.light_color = Color("#ff9766") if theme_id == 5 else (Color("#d5bb8c") if theme_id == 4 else Color("#ffb56a"))
+		light.light_color = [Color("#ffb56a"), Color("#d8ae85"), Color("#8bc5cf"), Color("#eac18c"), Color("#c7c9e2"), Color("#ff9766"), Color("#f8d58b")][theme_id]
 		light.omni_range = 8.5
 		light.omni_attenuation = 1.4
 		light.light_energy = 1.7
@@ -178,3 +179,27 @@ func decorate_cell(tiles: Dictionary, cell: Vector2i, origin: Vector3, seed_valu
 	elif variation == 3:
 		for i in range(4):
 			box("iron", at + normal * 0.22 + Vector3.UP * (1.1 + i * 0.15), Vector3(0.09, 0.16, 0.08), i * PI / 2.0)
+
+func decorate_theme(tiles: Dictionary, cell: Vector2i, origin: Vector3, seed_value: int) -> void:
+	if abs(cell.x) + abs(cell.y) <= 2:
+		return
+	var roll := posmod(cell.x * 83 + cell.y * 31 + seed_value, 7)
+	if theme_id == 2 and roll < 3:
+		box("water", origin + Vector3.UP * 0.012, Vector3(2.7, 0.02, 2.7))
+	if roll != 0:
+		return
+	for side in SIDES:
+		if tiles.has(cell + side):
+			continue
+		var normal := Vector3(side.x, 0, side.y)
+		var across := Vector3(-side.y, 0, side.x)
+		var at := origin + normal * 1.35
+		if theme_id == 1:
+			for j in range(-2, 3):
+				box("iron", at + across * j * 0.23 + Vector3.UP * 1.3, Vector3(0.045, 2.6, 0.045))
+		elif theme_id in [0, 4]:
+			box("trim", at + Vector3.UP * 0.24, Vector3(0.48, 0.48, 0.48))
+			box("wall", at + Vector3.UP * 0.65, Vector3(0.36, 0.28, 0.36))
+		elif theme_id in [3, 6]:
+			box("gold", at + Vector3.UP * 1.75, Vector3(0.32, 0.32, 0.32), PI / 4.0)
+		break
