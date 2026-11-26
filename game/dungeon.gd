@@ -33,6 +33,7 @@ var ceiling_heights: Dictionary = {}
 var bridge_cells: Dictionary = {}
 var arena_cells: Dictionary = {}
 var architecture: Array = []
+var gate_cells: Dictionary = {}
 
 func generate(seed_value: int, render_geometry: bool = true, room_count: int = 9, boss_room: bool = false, theme_id: int = 0, defer_visuals: bool = false) -> void:
 	visual_seed = seed_value
@@ -331,7 +332,7 @@ func ensure_visuals() -> void:
 	styles.append_array(side_bounds)
 	if not hidden_tiles.is_empty():
 		styles.append(Rect2i(hidden_room - Vector2i.ONE, Vector2i(3, 3)))
-	visual_builder.build(render_tiles, visual_seed, corridor_blocks, visual_theme, styles, ceiling_heights, bridge_cells, arena_cells, architecture)
+	visual_builder.build(render_tiles, visual_seed, corridor_blocks, visual_theme, styles, ceiling_heights, bridge_cells, arena_cells, architecture, gate_cells)
 
 func plan_architecture(seed_value: int, boss_room: bool) -> void:
 	for i in range(room_bounds.size()):
@@ -350,6 +351,8 @@ func plan_architecture(seed_value: int, boss_room: bool) -> void:
 		var data: Dictionary = corridor_widths[cell]
 		if data.width >= PASSING and posmod(cell.x * 71 + cell.y * 19 + seed_value, 9) == 0:
 			bridge_cells[cell] = data.axis
+		elif posmod(cell.x * 41 + cell.y * 67 + seed_value, 13) == 0:
+			gate_cells[cell] = {"axis": data.axis, "kind": ["door", "gate", "portcullis"][posmod(cell.x + cell.y + seed_value, 3)], "width": data.width}
 	for i in range(1, room_bounds.size()):
 		var bounds: Rect2i = room_bounds[i]
 		var cell := bounds.position
