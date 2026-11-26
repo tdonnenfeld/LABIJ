@@ -8,7 +8,7 @@ A first-person cooperative dungeon roguelike inspired by DCSS, with retro 3D vis
 
 ## Prototype
 
-Godot 4.3 or compatible Godot 4 release. Open project.godot and press F6 on main.tscn or F5. Select Solo, Host or Join. Use physical WASD (ZQSD on AZERTY), mouse and Escape to release the cursor.
+Godot 4.7.2 stable (recommended; also used in CI). Open project.godot and press F6 on main.tscn or F5. Select Solo, Host or Join. Use physical WASD (ZQSD on AZERTY), mouse and Escape to release the cursor.
 
 Host listens on UDP 7777. Join using the host IP. For online play use a VPN or appropriate UDP forwarding.
 
