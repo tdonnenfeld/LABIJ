@@ -48,7 +48,36 @@ func run() -> void:
 		actor.position = level.secret_position() - Vector3(level.secret_direction.x, 0, level.secret_direction.y) + Vector3.UP
 		var count := world.loot.drops.size()
 		check(world.discover_secret(actor) and not world.discover_secret(actor) and world.loot.drops.size() == count + 2, "Secret treasure only once")
-	check(secrets > 0 and world.secret_state().size() == secrets, "Secret state replicated")
+	var state := world.secret_state()
+	var revealed := 0
+	var door_count := 0
+	for entry in state:
+		if entry is int:
+			revealed += 1
+		elif entry is Array and entry.size() == 4 and entry[0] == "door":
+			door_count += 1
+	check(secrets > 0 and revealed == secrets, "Secret state replicated")
+	check(door_count > 0, "Door state included in snapshot")
+	var replica := World.new()
+	root.add_child(replica)
+	replica.build(123, false, 2)
+	var tested := false
+	for floor_id in world.floors:
+		var level = world.floors[floor_id]
+		if level.doors.is_empty():
+			continue
+		var cell: Vector2i = level.doors.keys()[0]
+		var remote_door = replica.floors[floor_id].doors[cell]
+		level.doors[cell].set_open(true)
+		replica.apply_secrets(world.secret_state())
+		check(remote_door.opened and remote_door.collision_layer == 0, "Door opening replicated")
+		level.doors[cell].set_open(false)
+		replica.apply_secrets(world.secret_state())
+		check(not remote_door.opened and remote_door.collision_layer == 1, "Door closing replicated")
+		tested = true
+		break
+	check(tested, "Door replication exercised")
+	replica.free()
 	check(not world.escape_entries.is_empty(), "Escape shaft exists")
 	for floor_id in world.escape_entries:
 		var at: Vector3 = world.escape_entries[floor_id]

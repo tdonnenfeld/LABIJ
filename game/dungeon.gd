@@ -4,6 +4,7 @@ const CELL := 3.0
 const SINGLE_FILE := 1.2
 const PASSING := 1.9
 const SIDES := [Vector2i.UP, Vector2i.DOWN, Vector2i.LEFT, Vector2i.RIGHT]
+const Door = preload("res://game/dungeon_door.gd")
 const VisualBuilder = preload("res://game/visuals/dungeon_visual_builder.gd")
 var visual_builder: Node3D
 var visual_seed := 0
@@ -29,6 +30,7 @@ var secret_anchor := Vector2i.ZERO
 var secret_direction := Vector2i.ZERO
 var secret_door: StaticBody3D
 var secret_open := false
+var doors: Dictionary = {}
 
 func generate(seed_value: int, render_geometry: bool = true, room_count: int = 9, boss_room: bool = false, theme_id: int = 0, defer_visuals: bool = false) -> void:
 	visual_seed = seed_value
@@ -58,6 +60,7 @@ func generate(seed_value: int, render_geometry: bool = true, room_count: int = 9
 	for block in corridor_blocks:
 		add_box(block[0], block[1], wall_material)
 
+	build_doors(seed_value)
 	if visual and not debug_geometry and not defer_visuals:
 		ensure_visuals()
 	if not hidden_tiles.is_empty():
@@ -322,3 +325,41 @@ func ensure_visuals() -> void:
 	if not hidden_tiles.is_empty():
 		styles.append(Rect2i(hidden_room - Vector2i.ONE, Vector2i(3, 3)))
 	visual_builder.build(render_tiles, visual_seed, corridor_blocks, visual_theme, styles)
+
+func build_doors(seed_value: int) -> void:
+	var cells: Array = corridor_widths.keys()
+	cells.sort()
+	var chosen: Array[Vector2i] = []
+	for cell in cells:
+		if hidden_tiles.has(cell) or cell.distance_to(Vector2i.ZERO) < 3.0 or cell.distance_to(end_cell) < 2.0:
+			continue
+		var data: Dictionary = corridor_widths[cell]
+		var axis: Vector2i = data.axis
+		if not room_tiles.has(cell + axis) and not room_tiles.has(cell - axis):
+			continue
+		if posmod(cell.x * 71 + cell.y * 37 + seed_value, 3) == 0:
+			continue
+		var near := false
+		for other in chosen:
+			if cell.distance_to(other) < 3.0:
+				near = true
+				break
+		if near:
+			continue
+		chosen.append(cell)
+		var door := Door.new()
+		door.name = "Door_%d_%d" % [cell.x, cell.y]
+		add_child(door)
+		door.setup(Vector3(cell.x * CELL, 0, cell.y * CELL), axis, data.width, "wood" if posmod(cell.x + cell.y + seed_value, 3) != 0 else "iron", visual)
+		door.set_open(false)
+		doors[cell] = door
+
+func nearby_door(at: Vector3, reach: float = 1.8) -> Node3D:
+	var closest: Node3D
+	var best := reach
+	for door in doors.values():
+		var distance := Vector2(at.x - door.global_position.x, at.z - door.global_position.z).length()
+		if distance < best:
+			best = distance
+			closest = door
+	return closest
