@@ -38,6 +38,7 @@ const ITEMS := {
 
 const AFFIXES := ["keen", "swift", "venom", "cursed", "runic", "warded", "vital"]
 static var variants: Dictionary = {}
+const RELICS := {"sword":"Dawncleaver", "mail":"Warden's Carapace", "iron_helm":"Warden's Crown", "iron_boots":"Warden's March", "staff":"Echo of the Abyss", "ward_amulet":"Oracle's Eye", "ward_ring":"Oracle's Promise"}
 
 static func get_item(id: String) -> Resource:
 	if id == "unarmed":
@@ -48,8 +49,17 @@ static func get_item(id: String) -> Resource:
 		return ITEMS[id]
 	if variants.has(id):
 		return variants[id]
+	if id.ends_with(":unknown"):
+		var revealed := identify(id)
+		var original = get_item(revealed)
+		if original == null:
+			return null
+		var hidden = get_item(id.get_slice(":", 0)).duplicate()
+		hidden.title = "Unidentified " + hidden.title
+		variants[id] = hidden
+		return hidden
 	var parts := id.split(":")
-	if parts.size() != 2 or not ITEMS.has(parts[0]) or not parts[1] in AFFIXES:
+	if parts.size() != 2 or not ITEMS.has(parts[0]) or not (parts[1] in AFFIXES or (parts[1] == "relic" and RELICS.has(parts[0]))):
 		return null
 	var base = ITEMS[parts[0]]
 	if parts[1] in ["keen", "swift", "venom", "cursed", "runic"] and base.kind != "weapon":
@@ -58,6 +68,13 @@ static func get_item(id: String) -> Resource:
 		return null
 	var item = base.duplicate()
 	match parts[1]:
+		"relic":
+			item.title = RELICS[parts[0]]
+			item.damage *= 1.35
+			item.spell_power += 0.18
+			item.armor = minf(0.4, item.armor + 0.07)
+			item.magic_resistance = minf(0.4, item.magic_resistance + 0.08)
+			item.tint = Color("#d6b66a")
 		"keen":
 			item.title += " of Precision"
 			item.damage *= 1.2
@@ -125,3 +142,31 @@ static func stack_limit(id: String) -> int:
 		"noise_stone": return 10
 		"arrows": return 40
 		_: return 1
+
+static func identify(id: String) -> String:
+	return id.trim_suffix(":unknown")
+
+static func rarity(id: String) -> String:
+	var known := identify(id)
+	if known.ends_with(":relic") or known in ["warden_shield", "oracle_staff"]:
+		return "Legendary"
+	if known.ends_with(":runic") or known.ends_with(":cursed"):
+		return "Rare"
+	if known.contains(":"):
+		return "Uncommon"
+	return "Common"
+
+static func rarity_color(id: String) -> Color:
+	match rarity(id):
+		"Legendary": return Color("#e3b65c")
+		"Rare": return Color("#a890df")
+		"Uncommon": return Color("#8cbf8a")
+		_: return Color("#e4dfd3")
+
+static func set_name(id: String) -> String:
+	if not id.ends_with(":relic"):
+		return ""
+	match id.get_slice(":", 0):
+		"mail", "iron_helm", "iron_boots": return "Warden"
+		"staff", "ward_amulet", "ward_ring": return "Oracle"
+		_: return ""
