@@ -166,6 +166,15 @@ func decorate_cell(tiles: Dictionary, cell: Vector2i, origin: Vector3, seed_valu
 	elif variation == 2:
 		box("trim", at + Vector3.UP * 0.18, Vector3(0.45, 0.36, 0.45))
 		box("ember", at + Vector3.UP * 0.43, Vector3(0.055, 0.13, 0.055))
+	elif variation == 4:
+		box("wood", at + Vector3.UP * 0.24, Vector3(0.48, 0.48, 0.48))
+		for y in [0.08, 0.39]:
+			box("iron", at + Vector3.UP * y, Vector3(0.50, 0.045, 0.50))
+		box("wood", at + Vector3.UP * 0.53, Vector3(0.32, 0.10, 0.32), PI / 4.0)
+	elif variation == 5:
+		box("trim", at + Vector3.UP * 0.09, Vector3(0.52, 0.18, 0.52))
+		box("wall", at + Vector3.UP * 0.37, Vector3(0.30, 0.48, 0.30), PI / 4.0)
+		box("trim", at + Vector3.UP * 0.63, Vector3(0.43, 0.10, 0.43))
 	elif variation == 3:
 		for i in range(4):
 			box("iron", at + normal * 0.22 + Vector3.UP * (1.1 + i * 0.15), Vector3(0.09, 0.16, 0.08), i * PI / 2.0)
