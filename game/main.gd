@@ -1014,8 +1014,8 @@ func receive_sounds(events: Array) -> void:
 		dungeon_audio.hear(events, world, actors[id])
 
 func update_voice(actor, delta: float) -> void:
-	var enabled := voice_mode != 0 and not voice_muted and get_window().has_focus() and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and actor.health > 0
-	var speaking := enabled and (voice_mode == 2 or Input.is_physical_key_pressed(KEY_V))
+	var enabled: bool = voice_mode != 0 and not voice_muted and get_window().has_focus() and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and actor.health > 0
+	var speaking: bool = enabled and (voice_mode == 2 or Input.is_physical_key_pressed(KEY_V))
 	for packet in voice_chat.poll(speaking):
 		if multiplayer.is_server():
 			accept_voice(multiplayer.get_unique_id(), packet)
