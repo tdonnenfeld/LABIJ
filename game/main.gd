@@ -993,7 +993,7 @@ func _physics_process(delta: float) -> void:
 			minimap.refresh(world, local, actors, yaw)
 			map_timer = 0.15
 		for id in actors:
-			actors[id].visible = id == local_id or (actors[id].floor_id == viewed_floor and actors[id].health > 0)
+			actors[id].visible = id == local_id or (actors[id].floor_id == viewed_floor)
 		if inventory_ui:
 			inventory_ui.refresh(local.inventory.state())
 		potion_belt.refresh(local.inventory.belt)
@@ -1336,6 +1336,14 @@ func update_objective_hud(local_id: int) -> void:
 		message = "ESCAPE — Pursuit %d/3" % goal.pressure()
 		message += "\n" + ("You carry the Jewel" if goal.carrier == local_id else ("Jewel carried by a teammate" if goal.carrier != 0 else "Jewel dropped: " + World.Routes.NAMES[goal.jewel_floor]))
 		message += "\nReturn to Dungeon 1 exit [%s]" % settings.label("interact")
+	if actors.has(local_id):
+		if actors[local_id].health <= 0:
+			message += "\nDOWNED — wait for a companion"
+		else:
+			for companion in actors.values():
+				if companion.health <= 0 and companion.floor_id == actors[local_id].floor_id:
+					message += "\nRevive nearby companion [%s] when safe" % settings.label("interact")
+					break
 	objective_label.text = message
 
 @rpc("authority", "call_remote", "reliable")
@@ -1359,7 +1367,7 @@ func show_result() -> void:
 	trade_panel.hide()
 	trade_panel.refresh_state({"id": 0, "notice": ""})
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-	result_label.text = "JEWEL RECOVERED\nExpedition victory!" if world.objective.result == "victory" else "EXPEDITION LOST\nA party member has fallen."
+	result_label.text = "JEWEL RECOVERED\nExpedition victory!" if world.objective.result == "victory" else "EXPEDITION LOST\nThe party has fallen."
 	result_screen.show()
 
 func flush_events() -> void:
