@@ -821,6 +821,8 @@ func _physics_process(delta: float) -> void:
 				var drop_id: int = world.loot.nearest(local)
 				if drop_id != 0:
 					hud.text += "\nF: Pick up " + Catalog.get_item(world.loot.drops[drop_id].item).title
+					if world.loot.drops[drop_id].amount > 1:
+						hud.text += " ×%d" % world.loot.drops[drop_id].amount
 
 @rpc("any_peer", "call_remote", "unreliable_ordered")
 func submit_input(move: Vector2, angle: float, block: bool, sprint: bool, quiet: bool) -> void:

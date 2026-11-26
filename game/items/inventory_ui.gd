@@ -148,6 +148,7 @@ func update_details() -> void:
 		item_picture.texture = null
 		item_title.text = "No item selected"
 		item_kind.text = ""
+		drop_button.text = "Drop"
 		details.text = "Select an item to inspect its properties."
 		use_button.text = "Use"
 		return

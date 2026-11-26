@@ -20,7 +20,7 @@ func run() -> void:
 	check(bag.add("potion", 4) and bag.count("potion") == 5 and bag.items.size() == 3, "Stack merges on pickup")
 	check(bag.add("potion") and bag.items.size() == 4 and bag.used_cells() == 2, "Overflow makes new stack")
 	check(bag.move_item(2, Vector2i(4, 0), true) and bag.count("potion") == 6, "Split conserves count")
-	check(bag.move_item(4, bag.positions[3]) and bag.count("potion") == 6, "Merge conserves count")
+	check(bag.move_item(4, bag.positions[3]) and bag.count("potion") == 6 and bag.items.size() == 4, "Merge conserves count")
 	check(bag.add("axe"), "Large item pickup")
 	var axe := bag.items.find("axe")
 	check(not bag.move_item(axe, Vector2i(7, 4)), "Reject out-of-bounds placement")
@@ -34,9 +34,18 @@ func run() -> void:
 	while full.add("scroll_firebolt"):
 		pass
 	check(full.used_cells() == Inventory.CAPACITY, "Grid fills without weight or slot limit")
+	full.quantities[2] = 4
 	var before := full.state()
 	check(not full.add("mail") and full.state() == before, "Full pickup atomic")
 	check(not full.add("potion", 5) and full.state() == before, "Partial stack merge rolls back if no space")
+	var packed := Inventory.new()
+	packed.add("spear")
+	packed.equip(3)
+	packed.add("venom_dagger")
+	while packed.add("scroll_firebolt"):
+		pass
+	var packed_before := packed.state()
+	check(not packed.equip(packed.items.find("venom_dagger")) and packed.state() == packed_before, "Replacement rejected atomically if old weapon cannot fit")
 	var player := Player.new()
 	root.add_child(player)
 	player.setup(false, false)

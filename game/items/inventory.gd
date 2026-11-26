@@ -144,7 +144,7 @@ func move_item(index: int, at: Vector2i, split: bool = false) -> bool:
 	if split:
 		if quantities[index] < 2 or not fits(id, at):
 			return false
-		var amount := quantities[index] / 2
+		var amount := floori(float(quantities[index]) / 2.0)
 		quantities[index] -= amount
 		items.append(id)
 		positions.append(at)

@@ -31,7 +31,7 @@ func run() -> void:
 	inventory.add("mail")
 	inventory.add("sword:keen")
 	satchel.refresh(inventory.state())
-	check(satchel.slots.size() == Inventory.CAPACITY and satchel.selection == 0, "Twelve slots and initial selection")
+	check(satchel.grid.model.used_cells() == inventory.used_cells() and satchel.selection == 0, "Spatial grid and initial selection")
 	check(satchel.use_button.disabled and satchel.drop_button.disabled, "Equipped protected")
 	satchel.send(true)
 	check(actions.is_empty(), "Cannot request dropping equipped gear")
@@ -52,7 +52,7 @@ func run() -> void:
 	inventory.remove(2)
 	satchel.refresh(inventory.state())
 	check(satchel.selection == 5 and satchel.item_title.text == Catalog.get_item("mail").title, "Selection follows shifted item")
-	check(satchel.slots[7].disabled, "Unused slots disabled")
+	check(satchel.grid.model.items.size() == 7 and satchel.grid.model.positions[5] == Inventory.WORN, "No extra entries and worn gear outside grid")
 	satchel.queue_free()
 	await process_frame
 	quit(0 if failures == 0 else 1)
