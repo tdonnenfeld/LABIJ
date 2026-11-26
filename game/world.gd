@@ -194,6 +194,11 @@ func spawn_monster(id: int, floor_id: int, kind: String, at: Vector3, group_size
 	capsule.radius = stats[10]
 	capsule.height = stats[11]
 	collision.shape = capsule
+	if kind == "rat":
+		var shape := BoxShape3D.new()
+		shape.size = Vector3(0.56, 0.55, 1.18)
+		collision.shape = shape
+		collision.position.z = -0.12
 	mob.add_child(collision)
 	monsters[id] = {"node": mob, "kind": kind, "floor": floor_id, "target": 0, "threat": {}, "health": 0.0 if reserve else hp, "boss": boss, "reserve": reserve, "rewarded": false, "max_health": hp, "forced_target": 0, "force_timer": 0.0, "phase": 0, "timer": 0.0, "attack_target": 0, "aim": Vector3.ZERO, "hurt": 0.0, "bleed": 0.0, "bleed_damage": 0.0, "bleed_owner": 0, "stun": 0.0, "burn": 0.0, "burn_damage": 0.0, "burn_owner": 0, "slow": 0.0, "poison": 0.0, "poison_damage": 0.0, "poison_owner": 0, "dot_amount": {}, "dot_time": 0.0, "asleep": not boss and not reserve and awareness_rng.randf() < 0.45, "investigate": 0.0, "heard_at": at, "roam_goal": Acoustics.cell(at), "roam_wait": awareness_rng.randf_range(0.5, 3.0), "stealth_seen": {}, "ambush_used": false, "backstab_seen": {}, "step_distance": 0.0, "move_speed": 0.0, "moved_last": false, "path_key": [], "path_next": Vector2i.ZERO, "home": Acoustics.cell(at), "alerted": false, "rage_phase": false}
 	mob.visible = not reserve
@@ -481,10 +486,10 @@ func simulate(actors: Dictionary, delta: float) -> void:
 					elif mob.kind == "ember_oracle":
 						var direction: Vector3 = mob.aim - node.position
 						for angle in ([-0.48, -0.24, 0.0, 0.24, 0.48] if mob.rage_phase else [-0.24, 0.0, 0.24]):
-							projectiles.launch(mob.floor, node.position, direction.rotated(Vector3.UP, angle), 10.0, float(stats[3]), float(stats[2]), Color("#ef864b"), 0, true, "hex", -1)
+							projectiles.launch(mob.floor, node.position, direction.rotated(Vector3.UP, angle), 10.0, float(stats[3]), float(stats[2]), Color("#ef864b"), 0, true, "hex", -1, 0.0, node)
 					elif mob.kind in ["archer", "mage"]:
 						var direction: Vector3 = mob.aim - node.position
-						projectiles.launch(mob.floor, node.position, direction, 14.0 if mob.kind == "archer" else 9.0, float(stats[3]), float(stats[2]), Color("#d8c7a0") if mob.kind == "archer" else Color("#cf73e8"), 0, true, "hex" if mob.kind == "mage" else "", -1)
+						projectiles.launch(mob.floor, node.position, direction, 14.0 if mob.kind == "archer" else 9.0, float(stats[3]), float(stats[2]), Color("#d8c7a0") if mob.kind == "archer" else Color("#cf73e8"), 0, true, "hex" if mob.kind == "mage" else "enemy_arrow", -1, 0.0, node)
 					elif victim != null and victim.health > 0 and victim.floor_id == mob.floor and horizontal_distance(victim.position, node.position) <= float(stats[3]) and Combat.clear_path(node, victim.position):
 						guarded_hit(victim, float(stats[2]), node.position, stats[0], actors)
 					elif victim != null and victim.health > 0 and victim.floor_id == mob.floor and horizontal_distance(victim.position, node.position) <= 4.0:
@@ -760,7 +765,7 @@ func strike(actor, party: Dictionary = {}) -> bool:
 		var source_peer = party.find_key(actor)
 		var direction := Combat.aim_direction(actor.heading, actor.look_pitch)
 		var effect := "arrow_poison" if actor.skills.learned.has("venom_arrow") else "arrow"
-		projectiles.launch(actor.floor_id, Combat.shot_origin(actor), direction, weapon.projectile_speed * lerpf(0.45, 1.0, actor.shot_power), actor.attack_reach() * lerpf(0.5, 1.0, actor.shot_power), actor.attack_damage() * lerpf(0.4, 1.0, actor.shot_power), weapon.tint, 0 if source_peer == null else source_peer, false, effect, 10, actor.skills.bonus("pierce", 10))
+		projectiles.launch(actor.floor_id, Combat.shot_origin(actor), direction, weapon.projectile_speed * lerpf(0.45, 1.0, actor.shot_power), actor.attack_reach() * lerpf(0.5, 1.0, actor.shot_power), actor.attack_damage() * lerpf(0.4, 1.0, actor.shot_power), weapon.tint, 0 if source_peer == null else source_peer, false, effect, 10, actor.skills.bonus("pierce", 10), actor)
 		actor.empowered = ""
 		return false
 	var hits: Array = []
@@ -925,7 +930,7 @@ func cast(actor, source_peer: int, id: String, party: Dictionary = {}) -> void:
 	if id == "spark" and actor.selected_spell == id:
 		cast_beam(actor, source_peer, direction, damage * 0.25, stats[4], party)
 	else:
-		projectiles.launch(actor.floor_id, Combat.shot_origin(actor), direction, stats[3], stats[4], damage, stats[6], source_peer, false, stats[7], stats[0], bonus)
+		projectiles.launch(actor.floor_id, Combat.shot_origin(actor), direction, stats[3], stats[4], damage, stats[6], source_peer, false, stats[7], stats[0], bonus, actor)
 
 func spell_hit(shot: Dictionary, mob: Dictionary, actors: Dictionary) -> void:
 	if shot.effect == "blast":
@@ -966,7 +971,7 @@ func spell_blast(shot: Dictionary, at: Vector3, actors: Dictionary) -> void:
 	emit_noise(shot.floor, at, Acoustics.EXPLOSION)
 	sound(shot.floor, at, Acoustics.EXPLOSION, "explosion")
 	for mob in monsters.values():
-		if mob.health > 0 and mob.floor == shot.floor and horizontal_distance(mob.node.position, at) <= 2.5:
+		if mob.health > 0 and mob.floor == shot.floor and mob.node.position.distance_to(at) <= 2.5:
 			var query := PhysicsRayQueryParameters3D.create(at + Vector3.UP * 0.05, mob.node.position, 1)
 			if get_world_3d().direct_space_state.intersect_ray(query).is_empty():
 				apply_spell_damage(shot, mob, actors)
@@ -1204,7 +1209,7 @@ func throw_distraction(actor, index: int, peer: int) -> bool:
 	if actor.inventory.items[index] != "noise_stone" or actor.inventory.remove(index) == "":
 		return false
 	var direction := Combat.aim_direction(actor.heading, actor.look_pitch)
-	projectiles.launch(actor.floor_id, actor.position, direction, 12.0, 12.0, 0.0, Color("#b0b9c3"), peer, false, "distraction", 11, actor.skills.bonus("distraction"))
+	projectiles.launch(actor.floor_id, actor.position, direction, 12.0, 12.0, 0.0, Color("#b0b9c3"), peer, false, "distraction", 11, actor.skills.bonus("distraction"), actor)
 	journal.add("Loot", "%s throws a Noise Stone" % actor.display_name)
 	return true
 
@@ -1501,24 +1506,21 @@ func projectile_fixture_hit(floor_id: int, from: Vector3, to: Vector3, limit: fl
 
 func cast_beam(actor, peer: int, direction: Vector3, damage: float, reach: float, party: Dictionary) -> void:
 	var from := Combat.shot_origin(actor)
-	var to := from + direction * reach
-	var query := PhysicsRayQueryParameters3D.create(from, to, 1)
-	var wall := get_world_3d().direct_space_state.intersect_ray(query)
-	var limit := 1.0 if wall.is_empty() else from.distance_to(wall.position) / reach
-	var target: Dictionary = {}
-	for mob in monsters.values():
-		if mob.health <= 0 or mob.floor != actor.floor_id:
-			continue
-		var radius := maxf(0.45, float(Bestiary.stats(mob.kind)[11]) * 0.5)
-		var t := Projectiles.segment_hit(from, to, mob.node.position, radius)
-		if t >= 0.0 and t < limit:
-			limit = t
-			target = mob
+	var to := from + direction.normalized() * reach
+	var excluded: Array[RID] = [actor.get_rid()]
+	var hit := Projectiles.sweep(get_world_3d().direct_space_state, from, to, Projectiles.radius_for("shock"), 5, excluded)
+	var limit: float = hit.get("fraction", 1.0)
+	var fixture_hit := projectile_fixture_hit(actor.floor_id, from, to, limit)
+	if fixture_hit >= 0.0:
+		limit = fixture_hit
 	journal.add("Combat", "Lightning beam", actor.floor_id, from.lerp(to, limit), "", "lightning", 0, from)
-	if projectile_fixture_hit(actor.floor_id, from, to, limit) >= 0.0:
+	if fixture_hit >= 0.0 or hit.is_empty():
 		return
-	if not target.is_empty():
-		apply_spell_damage({"owner": peer, "damage": damage, "effect": "shock", "domain": 8, "bonus": 0.0}, target, party if not party.is_empty() else {peer: actor})
+	var collider_id := int(hit.get("collider_id", 0))
+	for mob in monsters.values():
+		if mob.health > 0 and mob.floor == actor.floor_id and mob.node.get_instance_id() == collider_id:
+			apply_spell_damage({"owner": peer, "damage": damage, "effect": "shock", "domain": 8, "bonus": 0.0}, mob, party if not party.is_empty() else {peer: actor})
+			break
 
 func interact_door(actor, actors: Dictionary) -> bool:
 	var door = floors[actor.floor_id].nearby_door(actor.global_position)
@@ -1566,6 +1568,11 @@ func break_door(actor) -> bool:
 		return false
 	var door = floors[actor.floor_id].nearby_door(actor.global_position, actor.attack_reach() + 0.3)
 	if not door or not Combat.can_hit(actor.position, door.global_position + Vector3.UP, actor.heading, actor.attack_reach()):
+		return false
+	var ray := PhysicsRayQueryParameters3D.create(actor.global_position, door.global_position + Vector3.UP * 1.0, 1)
+	ray.exclude = [actor.get_rid()]
+	var hit := get_world_3d().direct_space_state.intersect_ray(ray)
+	if not hit.is_empty() and hit.collider != door:
 		return false
 	if not door.damage(actor.attack_damage()):
 		return false

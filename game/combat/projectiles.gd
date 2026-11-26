@@ -6,13 +6,13 @@ var shots: Dictionary = {}
 var next_id := 1
 var visual := false
 
-func launch(floor_id: int, at: Vector3, direction: Vector3, speed: float, reach: float, damage: float, color: Color, source_peer: int, enemy: bool, effect: String, domain: int, bonus: float = 0.0) -> void:
+func launch(floor_id: int, at: Vector3, direction: Vector3, speed: float, reach: float, damage: float, color: Color, source_peer: int, enemy: bool, effect: String, domain: int, bonus: float = 0.0, shooter: CollisionObject3D = null) -> void:
 	if direction.length_squared() < 0.001:
 		return
 	var id := next_id
 	next_id += 1
 	var node := make_node(at, color, effect)
-	shots[id] = {"node": node, "floor": floor_id, "velocity": direction.normalized() * speed, "remaining": reach, "damage": damage, "color": color, "owner": source_peer, "enemy": enemy, "effect": effect, "domain": domain, "bonus": bonus, "fuse": 1.8, "bounces": 0}
+	shots[id] = {"node": node, "floor": floor_id, "velocity": direction.normalized() * speed, "remaining": reach, "damage": damage, "color": color, "owner": source_peer, "enemy": enemy, "effect": effect, "domain": domain, "bonus": bonus, "fuse": 1.8, "bounces": 0, "shooter": shooter}
 
 func make_node(at: Vector3, color: Color, effect: String = "") -> Node3D:
 	var node := Node3D.new()
@@ -21,7 +21,7 @@ func make_node(at: Vector3, color: Color, effect: String = "") -> Node3D:
 	if visual:
 		var mesh := MeshInstance3D.new()
 		var shape := SphereMesh.new()
-		shape.radius = 0.20 if effect == "blast" else (0.15 if effect == "stone" else 0.095)
+		shape.radius = radius_for(effect)
 		shape.height = shape.radius * 2.0
 		shape.radial_segments = 6
 		shape.rings = 3
@@ -43,7 +43,7 @@ func make_node(at: Vector3, color: Color, effect: String = "") -> Node3D:
 		node.add_child(tail)
 		tail.rotation.x = PI / 2.0
 		tail.position.z = trail.height * 0.5
-		if effect.begins_with("arrow"):
+		if effect.begins_with("arrow") or effect == "enemy_arrow":
 			shape.radius = 0.035
 			shape.height = 0.07
 			trail.top_radius = 0.018
@@ -71,6 +71,45 @@ static func segment_hit(from: Vector3, to: Vector3, center: Vector3, radius: flo
 	var time := (-bb - sqrt(disc)) / aa
 	return time if time >= 0 and time <= 1 else -1.0
 
+static func radius_for(effect: String) -> float:
+	if effect.begins_with("arrow") or effect == "enemy_arrow":
+		return 0.035
+	if effect == "blast":
+		return 0.20
+	if effect in ["stone", "distraction"]:
+		return 0.15
+	return 0.095
+
+static func sweep(space: PhysicsDirectSpaceState3D, from: Vector3, to: Vector3, radius: float, mask: int, excluded: Array[RID] = []) -> Dictionary:
+	var sphere := SphereShape3D.new()
+	sphere.radius = radius
+	var query := PhysicsShapeQueryParameters3D.new()
+	query.shape = sphere
+	query.transform = Transform3D(Basis.IDENTITY, from)
+	query.collision_mask = mask
+	query.exclude = excluded
+	query.motion = Vector3.ZERO
+	var overlap := space.get_rest_info(query)
+	if not overlap.is_empty():
+		overlap["fraction"] = 0.0
+		return overlap
+	query.motion = to - from
+	var fractions := space.cast_motion(query)
+	if fractions.size() < 2 or fractions[0] >= 1.0:
+		return {}
+	var fraction := fractions[0]
+	query.motion = Vector3.ZERO
+	query.transform.origin = from.lerp(to, minf(1.0, fractions[1] + 0.001))
+	var contact := space.get_rest_info(query)
+	if contact.is_empty():
+		query.transform.origin = from.lerp(to, minf(1.0, fractions[1] + 0.01))
+		contact = space.get_rest_info(query)
+	if contact.is_empty():
+		# A sweep still found an obstacle. Never let a projectile tunnel through it.
+		contact = {"normal": (from - to).normalized(), "collider_id": 0}
+	contact["fraction"] = fraction
+	return contact
+
 func step(world, actors: Dictionary, delta: float) -> void:
 	for id in shots.keys():
 		if world.objective.result != "":
@@ -84,44 +123,31 @@ func step(world, actors: Dictionary, delta: float) -> void:
 				remove(id)
 				continue
 			shot.velocity.y -= 9.8 * delta
-		elif shot.effect.begins_with("arrow") or shot.effect == "stone":
+		elif shot.effect.begins_with("arrow") or shot.effect in ["stone", "enemy_arrow"]:
 			shot.velocity.y -= 2.0 * delta
 		var travel: float = shot.velocity.length() * delta if shot.effect == "blast" else minf(shot.remaining, shot.velocity.length() * delta)
 		if travel < 0.00001:
+			if shot.effect != "blast":
+				remove(id)
 			continue
 		var to: Vector3 = from + shot.velocity.normalized() * travel
-		var query := PhysicsRayQueryParameters3D.create(from, to, 1)
-		var wall := get_world_3d().direct_space_state.intersect_ray(query)
-		var limit := 1.1
-		if not wall.is_empty():
-			limit = from.distance_to(wall.position) / maxf(travel, 0.0001)
+		var excluded: Array[RID] = []
+		var shooter = shot.get("shooter")
+		if is_instance_valid(shooter):
+			excluded.append(shooter.get_rid())
+		# Player shots do not hit allies. Enemy shots stop on both players and enemies.
+		var mask := 1 if shot.effect == "distraction" else (7 if shot.enemy else 5)
+		var hit := sweep(get_world_3d().direct_space_state, from, to, radius_for(shot.effect), mask, excluded)
+		var limit: float = hit.get("fraction", 1.1)
+		var impact := from.lerp(to, minf(1.0, limit))
 		if shot.effect == "distraction":
 			if limit <= 1.0 or shot.remaining <= travel:
-				var landing := from.lerp(to, maxf(0.0, limit - 0.02)) if limit <= 1.0 else to
-				world.distraction_lands(shot, landing)
+				world.distraction_lands(shot, impact)
 				remove(id)
 			else:
 				shot.node.position = to
 				shot.remaining -= travel
 			continue
-		var target = null
-		if shot.enemy:
-			for actor in actors.values():
-				if actor.health <= 0 or actor.floor_id != shot.floor:
-					continue
-				var time := segment_hit(from, to, actor.position, 0.65)
-				if time >= 0 and time < limit:
-					limit = time
-					target = actor
-		else:
-			for mob in world.monsters.values():
-				if mob.health <= 0 or mob.floor != shot.floor:
-					continue
-				var radius: float = maxf(0.45, float(world.Bestiary.stats(mob.kind)[11]) * 0.5)
-				var time := segment_hit(from, to, mob.node.position, radius)
-				if time >= 0 and time < limit:
-					limit = time
-					target = mob
 		if not shot.enemy and shot.effect != "blast":
 			var fixture_hit: float = world.projectile_fixture_hit(shot.floor, from, to, limit)
 			if fixture_hit >= 0.0:
@@ -129,25 +155,36 @@ func step(world, actors: Dictionary, delta: float) -> void:
 					world.recover_arrow(shot.floor, from.lerp(to, fixture_hit))
 				remove(id)
 				continue
-		if target != null:
+		if not hit.is_empty():
+			var collider = instance_from_id(int(hit.get("collider_id", 0))) if int(hit.get("collider_id", 0)) != 0 else null
+			var target: Dictionary = {}
+			for mob in world.monsters.values():
+				if mob.health > 0 and mob.floor == shot.floor and mob.node == collider:
+					target = mob
+					break
 			if shot.enemy:
-				target.take_damage(shot.damage, from, shot.effect == "hex", "Enemy spell" if shot.effect == "hex" else "Enemy arrow")
-			else:
+				for actor in actors.values():
+					if actor.health > 0 and actor.floor_id == shot.floor and actor == collider:
+						actor.take_damage(shot.damage, from, shot.effect == "hex", "Enemy spell" if shot.effect == "hex" else "Enemy arrow")
+						break
+				# Friendly monsters absorb the projectile without taking damage.
+				world.sound(shot.floor, impact, 3.0, "impact")
+				remove(id)
+				continue
+			if not target.is_empty():
 				if shot.effect == "blast":
-					world.spell_blast(shot, from.lerp(to, limit), actors)
+					world.spell_blast(shot, impact, actors)
 				else:
 					world.spell_hit(shot, target, actors)
-				if shot.effect.begins_with("arrow"):
-					world.recover_arrow(shot.floor, from.lerp(to, limit))
-			remove(id)
-		elif limit <= 1.0:
-			if shot.effect == "blast":
-				shot.node.position = wall.position + wall.normal * 0.06
-				shot.velocity = shot.velocity.bounce(wall.normal) * 0.58
+			elif shot.effect == "blast":
+				var normal: Vector3 = hit.get("normal", (from - to).normalized())
+				shot.node.position = impact + normal * 0.015
+				shot.velocity = shot.velocity.bounce(normal) * 0.58
 				shot.bounces += 1
 				continue
-			if not shot.enemy and shot.effect.begins_with("arrow"):
-				world.recover_arrow(shot.floor, from.lerp(to, maxf(0.0, limit - 0.02)))
+			if shot.effect.begins_with("arrow"):
+				world.recover_arrow(shot.floor, impact)
+			world.sound(shot.floor, impact, 3.0, "impact")
 			remove(id)
 		else:
 			shot.node.position = to
