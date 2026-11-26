@@ -30,6 +30,8 @@ func run() -> void:
 		parent.add_child(rig)
 		rig.setup(kind, 1.7)
 		check(Assets.scenes.has(kind) and rig.body != null and rig.arm_r != null and rig.leg_l != null, "Imported articulated model: " + kind)
+		check(rig.skeleton != null and rig.skeleton.get_bone_count() >= 9, "Skeletal joints: " + kind)
+		check(rig.skeleton.clip_player.has_animation("walk") and rig.skeleton.clip_player.has_animation("run"), "Locomotion clips: " + kind)
 		if kind != "rat":
 			check(rig.grip_r != null and rig.grip_l != null, "Equipment sockets: " + kind)
 		rig.animate(0.1, true, 0, false, false)
