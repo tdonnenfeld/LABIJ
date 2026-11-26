@@ -7,8 +7,10 @@ const Inventory = preload("res://game/items/inventory.gd")
 const Icons = preload("res://game/items/item_icons.gd")
 const Equipment = preload("res://game/items/equipment_panel.gd")
 const Parchment = preload("res://game/ui/parchment.gd")
+const Backpack = preload("res://game/items/backpack_grid.gd")
 signal action(index: int, drop: bool)
-var slots: Array[Button] = []
+signal moved(index: int, at: Vector2i, split: bool, revision: int)
+var grid: Control
 var selection := -1
 var equipment: HBoxContainer
 var details: Label
@@ -48,26 +50,16 @@ func _ready() -> void:
 	left.add_child(equipment)
 	equipment.selected.connect(select_item)
 	capacity_label = Label.new()
-	capacity_label.text = "Carried items · 0 / %d" % Inventory.CAPACITY
+	capacity_label.text = "Backpack · 0 / %d cells" % Inventory.CAPACITY
 	left.add_child(capacity_label)
-	var grid := GridContainer.new()
-	grid.columns = 4
-	grid.add_theme_constant_override("h_separation", 4)
-	grid.add_theme_constant_override("v_separation", 4)
+	grid = Backpack.new()
 	left.add_child(grid)
-	var group := ButtonGroup.new()
-	for i in range(Inventory.CAPACITY):
-		var slot := Button.new()
-		slot.custom_minimum_size = Vector2(76, 70)
-		slot.toggle_mode = true
-		slot.button_group = group
-		slot.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		slot.vertical_icon_alignment = VERTICAL_ALIGNMENT_TOP
-		slot.add_theme_constant_override("icon_max_width", 42)
-		slot.add_theme_font_size_override("font_size", 12)
-		slot.pressed.connect(func(): select_item(i))
-		grid.add_child(slot)
-		slots.append(slot)
+	grid.selected.connect(select_item)
+	grid.moved.connect(func(index: int, at: Vector2i, split: bool, revision: int): moved.emit(index, at, split, revision))
+	var hint := Label.new()
+	hint.text = "Drag to arrange / merge · Shift-drag to split"
+	hint.add_theme_font_size_override("font_size", 12)
+	left.add_child(hint)
 	var right := VBoxContainer.new()
 	right.custom_minimum_size.x = 328
 	right.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -116,10 +108,10 @@ func _ready() -> void:
 	hide()
 
 func equipped(index: int) -> bool:
-	return state_data.size() == 4 and index >= 0 and index in state_data.slice(1, 4)
+	return state_data.size() == 7 and index >= 0 and index in state_data.slice(1, 4)
 
 func item_count() -> int:
-	return state_data[0].size() if state_data.size() == 4 else 0
+	return state_data[0].size() if state_data.size() == 7 else 0
 
 func refresh(data: Array) -> void:
 	if data == state_data:
@@ -144,18 +136,8 @@ func select_item(index: int) -> void:
 	update_details()
 
 func update_slots() -> void:
-	capacity_label.text = "Carried items · %d / %d" % [item_count(), Inventory.CAPACITY]
-	for i in range(slots.size()):
-		var slot := slots[i]
-		var occupied := i < item_count()
-		slot.disabled = not occupied
-		slot.set_pressed_no_signal(occupied and i == selection)
-		slot.icon = Icons.texture(state_data[0][i]) if occupied else null
-		var mark := ""
-		if occupied and equipped(i):
-			mark = " · W" if i == state_data[1] else (" · S" if i == state_data[2] else " · A")
-		slot.text = "%02d%s" % [i + 1, mark] if occupied else "—"
-		slot.tooltip_text = Catalog.get_item(state_data[0][i]).title + (" · Equipped" if equipped(i) else "") if occupied else "Empty slot"
+	grid.refresh(state_data, selection)
+	capacity_label.text = "Backpack · %d / %d cells" % [grid.model.used_cells() if state_data.size() == 7 else 0, Inventory.CAPACITY]
 	equipment.refresh(state_data, selection)
 
 func update_details() -> void:
@@ -173,13 +155,14 @@ func update_details() -> void:
 	var item = Catalog.get_item(id)
 	item_picture.texture = Icons.texture(id)
 	item_title.text = item.title
-	var category: String = {"weapon": "WEAPON", "shield": "SHIELD", "armor": "ARMOUR", "scroll": "SPELL SCROLL", "consumable": "CONSUMABLE", "distraction": "UTILITY"}.get(item.kind, "ITEM")
+	var category: String = {"weapon": "WEAPON", "shield": "SHIELD", "armor": "ARMOUR", "scroll": "SPELL SCROLL", "consumable": "CONSUMABLE", "distraction": "UTILITY", "ammo": "AMMUNITION"}.get(item.kind, "ITEM")
 	item_kind.text = category + (" · EQUIPPED" if equipped(selection) else "")
 	if id.contains(":"):
 		item_kind.text += " · ENCHANTED"
 	elif id in ["warden_shield", "oracle_staff"]:
 		item_kind.text += " · UNIQUE"
 	var lines: PackedStringArray = []
+	drop_button.text = "Drop stack" if state_data[5][selection] > 1 else "Drop"
 	use_button.text = "Equipped" if equipped(selection) else "Equip"
 	use_button.disabled = equipped(selection)
 	match item.kind:
@@ -214,14 +197,22 @@ func update_details() -> void:
 		"consumable":
 			lines.append("Restores %s HP, up to maximum health." % Numbers.number(item.heal))
 			use_button.text = "Drink potion"
+		"ammo":
+			lines.append("One arrow consumed per bow shot.")
+			use_button.text = "Ammunition"
+			use_button.disabled = true
 		_:
 			lines.append("An expedition item.")
+	var extent := Catalog.dimensions(id)
+	lines.append("Size: %d × %d cells" % [extent.x, extent.y])
+	if Catalog.stack_limit(id) > 1:
+		lines.append("Stack: %d / %d" % [state_data[5][selection], Catalog.stack_limit(id)])
 	lines.append("Noise multiplier   x%s" % Numbers.number(Catalog.noise_multiplier(id)))
 	if equipped(selection):
 		lines.append("Equip a replacement before dropping.")
 	details.text = "\n".join(lines)
 
 func send(drop: bool) -> void:
-	if selection < 0 or selection >= item_count() or equipped(selection):
+	if selection < 0 or selection >= item_count() or equipped(selection) or (not drop and use_button.disabled):
 		return
 	action.emit(selection, drop)

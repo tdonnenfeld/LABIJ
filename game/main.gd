@@ -145,6 +145,7 @@ func _ready() -> void:
 		inventory_ui.offset_top = -222
 		inventory_ui.offset_bottom = 222
 		inventory_ui.action.connect(_inventory_action)
+		inventory_ui.moved.connect(_inventory_move)
 		skills_ui = SkillsUI.new()
 		layer.add_child(skills_ui)
 		skills_ui.position = Vector2(160, 24)
@@ -712,7 +713,9 @@ func _physics_process(delta: float) -> void:
 		attack_requests.clear()
 		for id in item_requests:
 			if actors.has(id):
-				apply_item_action(actors[id], item_requests[id][0], item_requests[id][1])
+				var request: Array = item_requests[id]
+				if request[0] == -1 or (request.size() == 3 and request[2] == actors[id].inventory.revision):
+					apply_item_action(actors[id], request[0], request[1])
 		item_requests.clear()
 		for actor in actors.values():
 			var before: Vector3 = actor.position
@@ -807,6 +810,8 @@ func _physics_process(delta: float) -> void:
 				hud.text += "\nParty defeated"
 			else:
 				hud.text += "\nI: Inventory  ·  K: Talents"
+				if Catalog.get_item(local.inventory.weapon).projectile_speed > 0:
+					hud.text += "  ·  Arrows: %d" % local.inventory.count("arrows")
 				var aggro := 0
 				for mob in world.monsters.values():
 					if mob.health > 0 and mob.floor == local.floor_id and mob.target == local_id:
@@ -886,17 +891,36 @@ func request_attack() -> void:
 			attack_requests[id] = true
 
 func _inventory_action(index: int, drop: bool) -> void:
+	var revision: int = inventory_ui.state_data[6]
 	if multiplayer.is_server():
-		item_requests[multiplayer.get_unique_id()] = [index, drop]
+		item_requests[multiplayer.get_unique_id()] = [index, drop, revision]
 	else:
-		request_item.rpc_id(1, index, drop)
+		request_item.rpc_id(1, index, drop, revision)
+
+func _inventory_move(index: int, at: Vector2i, split: bool, revision: int) -> void:
+	if multiplayer.is_server():
+		apply_inventory_move(multiplayer.get_unique_id(), index, at, split, revision)
+	else:
+		request_inventory_move.rpc_id(1, index, at, split, revision)
 
 @rpc("any_peer", "call_remote", "reliable")
-func request_item(index: int, drop: bool) -> void:
+func request_inventory_move(index: int, at: Vector2i, split: bool, revision: int) -> void:
+	if multiplayer.is_server():
+		apply_inventory_move(multiplayer.get_remote_sender_id(), index, at, split, revision)
+
+func apply_inventory_move(id: int, index: int, at: Vector2i, split: bool, revision: int) -> void:
+	if not active or world.objective.result != "" or not actors.has(id):
+		return
+	var actor = actors[id]
+	if actor.health > 0 and actor.attack_phase == 0 and actor.cast_id == "" and actor.inventory.revision == revision:
+		actor.inventory.move_item(index, at, split)
+
+@rpc("any_peer", "call_remote", "reliable")
+func request_item(index: int, drop: bool, revision: int = -1) -> void:
 	if multiplayer.is_server():
 		var id := multiplayer.get_remote_sender_id()
-		if actors.has(id) and index >= -1 and index < 12:
-			item_requests[id] = [index, drop]
+		if actors.has(id) and index >= -1 and index < actors[id].inventory.items.size():
+			item_requests[id] = [index, drop, revision]
 
 func apply_item_action(actor, index: int, drop: bool) -> void:
 	if actor.health <= 0 or actor.attack_phase != 0 or actor.cast_id != "":
@@ -905,14 +929,18 @@ func apply_item_action(actor, index: int, drop: bool) -> void:
 		var drop_id: int = world.loot.nearest(actor)
 		if drop_id != 0:
 			var title: String = Catalog.get_item(world.loot.drops[drop_id].item).title
+			var amount: int = world.loot.drops[drop_id].amount
+			if amount > 1:
+				title += " ×%d" % amount
 			if world.loot.pickup(actor):
 				world.journal.add("Loot", "%s picks up %s" % [actor.display_name, title])
 	elif drop:
-		var item: String = actor.inventory.remove(index)
+		var amount: int = actor.inventory.quantity(index)
+		var item: String = actor.inventory.remove_stack(index)
 		if not item.is_empty():
 			var at: Vector3 = actor.position
 			at.y = world.floors[actor.floor_id].position.y + 0.3
-			world.loot.spawn(item, actor.floor_id, at)
+			world.loot.spawn(item, actor.floor_id, at, amount)
 			world.journal.add("Loot", "%s drops %s" % [actor.display_name, Catalog.get_item(item).title])
 	else:
 		if index >= 0 and index < actor.inventory.items.size() and Catalog.get_item(actor.inventory.items[index]).kind == "scroll" and not world.safe(actor):
