@@ -6,6 +6,9 @@ const Catalog = preload("res://game/items/catalog.gd")
 const Loot = preload("res://game/items/loot.gd")
 var loot := Loot.new()
 var loot_rng := RandomNumberGenerator.new()
+var shrine_position := Vector3.ZERO
+var tablet_position := Vector3.ZERO
+var secret_id := ""
 const COUNT := 4
 const SPACING := 30.0
 const USE_RADIUS := 2.5
@@ -19,12 +22,22 @@ func build(seed_value: int, render_geometry: bool) -> void:
 	loot.visual = visual
 	add_child(loot)
 	loot_rng.seed = seed_value + 53
+	var secrets := ["forgotten", "stone", "ancient"]
+	secret_id = secrets[randi_range(0, 2)]
 	for i in range(COUNT):
 		var level := Dungeon.new()
 		add_child(level)
 		level.position.y = -i * SPACING
 		level.generate(seed_value + i * 7919, visual)
 		floors[i] = level
+		if i == 2:
+			shrine_position = level.position + Vector3(6, 0, 0)
+			if visual:
+				marker(level, Vector3(6, 0, 0), "RESPEC SHRINE [K]", Color("#ae8ed8"))
+		if i == 1:
+			tablet_position = level.position + Vector3(6, 0, 0)
+			if visual:
+				marker(level, Vector3(6, 0, 0), "ANCIENT TABLET [T]", Color("#8ab8a0"))
 		if visual:
 			if i > 0:
 				marker(level, Vector3.ZERO, "UP [E]", Color("#67a8de"))
@@ -143,6 +156,8 @@ func simulate(actors: Dictionary, delta: float) -> void:
 					var victim = actors.get(mob.attack_target)
 					if victim != null and victim.health > 0 and victim.floor_id == mob.floor and horizontal_distance(victim.position, node.position) <= Combat.MONSTER_REACH and Combat.clear_path(node, victim.position):
 						victim.take_damage(Combat.MONSTER_DAMAGE, node.position)
+					elif victim != null and victim.health > 0 and victim.floor_id == mob.floor and horizontal_distance(victim.position, node.position) <= 4.0:
+						victim.skills.credit(5, 4)
 					mob.phase = 2
 					mob.timer = Combat.MONSTER_RECOVERY
 				else:
@@ -213,18 +228,21 @@ func strike(actor, party: Dictionary = {}) -> bool:
 		return false
 	var nearest = null
 	var weapon = Catalog.get_item(actor.inventory.weapon)
-	var best: float = weapon.reach + 1.0
+	var best: float = actor.attack_reach() + 1.0
 	for mob in monsters.values():
 		if mob.health <= 0 or mob.floor != actor.floor_id:
 			continue
 		var distance := horizontal_distance(actor.position, mob.node.position)
-		if distance < best and Combat.can_hit(actor.position, mob.node.position, actor.heading, weapon.reach) and Combat.clear_path(actor, mob.node.position):
+		if distance < best and Combat.can_hit(actor.position, mob.node.position, actor.heading, actor.attack_reach()) and Combat.clear_path(actor, mob.node.position):
 			nearest = mob
 			best = distance
 	if nearest == null:
+		actor.empowered = ""
 		return false
 	nearest.health = maxf(0.0, nearest.health - actor.attack_damage())
 	nearest.hurt = 0.18
+	actor.empowered = ""
+	actor.skills.credit(actor.skills.weapon_domain(actor.inventory.weapon), 8)
 	if nearest.health <= 0:
 		nearest.phase = 0
 		nearest.target = 0
@@ -235,8 +253,26 @@ func strike(actor, party: Dictionary = {}) -> bool:
 			if horizontal_distance(teammate.position, nearest.node.position) <= 15.0:
 				teammate.gain_xp(reward)
 		actor.gain_xp(reward)
+		actor.skills.credit(0, 10)
 		var choices := ["potion", "potion", "axe", "spear", "iron_shield"]
 		var at: Vector3 = nearest.node.position
 		at.y = floors[nearest.floor].position.y + 0.3
 		loot.spawn(choices[loot_rng.randi_range(0, choices.size() - 1)], nearest.floor, at)
+	return true
+
+func safe(actor) -> bool:
+	if actor.health <= 0 or actor.attack_phase != 0 or actor.combat_timer > 0:
+		return false
+	for mob in monsters.values():
+		if mob.health > 0 and mob.floor == actor.floor_id and horizontal_distance(mob.node.position, actor.position) <= 12.0:
+			return false
+	return true
+
+func near_shrine(actor) -> bool:
+	return actor.floor_id == 2 and horizontal_distance(actor.position, shrine_position) <= 2.5
+
+func discover(actor) -> bool:
+	if actor.health <= 0 or actor.floor_id != 1 or horizontal_distance(actor.position, tablet_position) > 2.5 or actor.skills.discovered.has(secret_id):
+		return false
+	actor.skills.discovered.append(secret_id)
 	return true

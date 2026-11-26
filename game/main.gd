@@ -5,6 +5,7 @@ const Player = preload("res://game/player.gd")
 const InventoryUI = preload("res://game/items/inventory_ui.gd")
 const SkillsUI = preload("res://game/progression/skills_ui.gd")
 var skills_ui: PanelContainer
+var talent_requests: Dictionary = {}
 var xp_label: Label
 const Catalog = preload("res://game/items/catalog.gd")
 var inventory_ui: PanelContainer
@@ -82,8 +83,9 @@ func _ready() -> void:
 		inventory_ui.action.connect(_inventory_action)
 		skills_ui = SkillsUI.new()
 		layer.add_child(skills_ui)
-		skills_ui.position = Vector2(250, 120)
+		skills_ui.position = Vector2(180, 80)
 		skills_ui.priority_changed.connect(_skill_action)
+		skills_ui.talent_action.connect(_talent_action)
 		xp_label = Label.new()
 		xp_label.position = Vector2(16, 132)
 		layer.add_child(xp_label)
@@ -203,6 +205,7 @@ func _remove(id: int) -> void:
 		actors[id].queue_free()
 		actors.erase(id)
 	item_requests.erase(id)
+	talent_requests.erase(id)
 	attack_requests.erase(id)
 	stair_requests.erase(id)
 	stair_cooldowns.erase(id)
@@ -267,6 +270,11 @@ func _unhandled_input(event: InputEvent) -> void:
 			item_requests[multiplayer.get_unique_id()] = [-1, false]
 		else:
 			request_item.rpc_id(1, -1, false)
+	elif event is InputEventKey and event.pressed and not event.echo and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and event.physical_keycode in [KEY_1, KEY_2, KEY_3, KEY_T]:
+		if event.physical_keycode == KEY_T:
+			_talent_action("discover", "", 0)
+		else:
+			_talent_action("activate", "", event.physical_keycode - KEY_1)
 	elif event is InputEventMouseButton and event.pressed:
 		if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
 			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
@@ -313,6 +321,10 @@ func _physics_process(delta: float) -> void:
 			if actor.advance_combat(delta):
 				actor.swing_hit = world.strike(actor, actors)
 		world.simulate(actors, delta)
+		for id in talent_requests:
+			if actors.has(id):
+				apply_talent(actors[id], talent_requests[id])
+		talent_requests.clear()
 		for id in stair_cooldowns.keys():
 			stair_cooldowns[id] = maxf(0.0, stair_cooldowns[id] - delta)
 		for id in stair_requests.keys():
@@ -325,7 +337,7 @@ func _physics_process(delta: float) -> void:
 		if tick % 3 == 0 and multiplayer.has_multiplayer_peer():
 			var states := {}
 			for id in actors:
-				states[id] = [actors[id].position, actors[id].heading, actors[id].floor_id, actors[id].health, actors[id].stamina, actors[id].blocking, actors[id].attack_phase, actors[id].hurt_timer, actors[id].swing_hit, actors[id].inventory.state(), actors[id].skills.state()]
+				states[id] = [actors[id].position, actors[id].heading, actors[id].floor_id, actors[id].health, actors[id].stamina, actors[id].blocking, actors[id].attack_phase, actors[id].hurt_timer, actors[id].swing_hit, actors[id].inventory.state(), actors[id].skills.state(), actors[id].combat_timer]
 			snapshot.rpc(tick, states, world.monster_snapshot(), world.loot.state())
 	if not dedicated and actors.has(local_id):
 		var local = actors[local_id]
@@ -354,9 +366,13 @@ func _physics_process(delta: float) -> void:
 		if hp_bar:
 			hp_bar.max_value = local.max_health()
 			hp_bar.value = local.health
-			xp_label.text = "Level %d | %d XP | K: Skills" % [local.skills.character_level(), local.skills.total_xp]
+			xp_label.text = "Level %d | %d XP | K: Talents | 1–3: Abilities" % [local.skills.character_level(), local.skills.total_xp]
+			for i in range(3):
+				var ability: String = local.skills.slots[i]
+				if ability != "":
+					xp_label.text += "\n%d: %s %.1fs" % [i + 1, ability, local.skills.cooldowns.get(ability, 0.0)]
 			if skills_ui and skills_ui.visible:
-				skills_ui.refresh(local.skills.state())
+				skills_ui.refresh(local.skills.state(), world.safe(local), world.near_shrine(local))
 			stamina_bar.value = local.stamina
 			crosshair.modulate = Color("#90df87") if local.swing_hit and local.attack_phase == 2 else Color.WHITE
 		if hud:
@@ -401,6 +417,7 @@ func snapshot(sequence: int, states: Dictionary, mobs: Dictionary, drops: Dictio
 			actors[id].swing_hit = states[id][8]
 			actors[id].inventory.apply(states[id][9])
 			actors[id].skills.apply(states[id][10])
+			actors[id].combat_timer = states[id][11]
 			if id != multiplayer.get_unique_id():
 				actors[id].rotation.y = states[id][1]
 
@@ -469,3 +486,34 @@ func request_skill(index: int, value: int) -> void:
 		var id := multiplayer.get_remote_sender_id()
 		if actors.has(id) and actors[id].health > 0:
 			actors[id].skills.set_priority(index, value)
+
+func _talent_action(action: String, id: String, index: int) -> void:
+	if multiplayer.is_server():
+		talent_requests[multiplayer.get_unique_id()] = [action, id, index]
+	else:
+		request_talent.rpc_id(1, action, id, index)
+
+@rpc("any_peer", "call_remote", "reliable")
+func request_talent(action: String, id: String, index: int) -> void:
+	if multiplayer.is_server():
+		var peer := multiplayer.get_remote_sender_id()
+		if actors.has(peer) and id.length() <= 64 and action in ["buy", "slot", "refund", "activate", "discover"]:
+			talent_requests[peer] = [action, id, index]
+
+func apply_talent(actor, request: Array) -> void:
+	if actor.health <= 0:
+		return
+	if request[0] == "activate":
+		actor.activate(request[2])
+		return
+	if request[0] == "discover":
+		world.discover(actor)
+		return
+	if not world.safe(actor):
+		return
+	match request[0]:
+		"buy": actor.buy_talent(request[1])
+		"slot": actor.skills.assign_slot(request[2], request[1])
+		"refund":
+			if world.near_shrine(actor):
+				actor.refund_talents(request[2])
