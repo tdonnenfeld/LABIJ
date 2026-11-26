@@ -1,5 +1,6 @@
 extends CharacterBody3D
 
+var floor_id := 0
 var direction := Vector2.ZERO
 var heading := 0.0
 var look_pitch := 0.0

@@ -5,6 +5,7 @@ var tiles: Dictionary = {}
 var floor_material: StandardMaterial3D
 var wall_material: StandardMaterial3D
 var visual := true
+var end_cell := Vector2i.ZERO
 
 func generate(seed_value: int, render_geometry: bool = true) -> void:
 	visual = render_geometry
@@ -32,6 +33,7 @@ func generate(seed_value: int, render_geometry: bool = true) -> void:
 			p.y += signi(center.y - p.y)
 			tiles[p] = true
 		previous = center
+	end_cell = previous
 	for key in tiles:
 		var p: Vector2i = key
 		var origin := Vector3(p.x * CELL, 0, p.y * CELL)

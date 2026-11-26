@@ -17,6 +17,6 @@ Dedicated server:
 godot --headless --path . -- --server
 ```
 
-This first prototype has a fixed-seed procedural floor, collision, first-person movement and basic authoritative network snapshots. No combat, loot, stairs, PS1 shader or save system yet. Remote movement is not predicted/interpolated. Multiplayer and visual testing are still required.
+Four independent fixed-seed floors are connected by explicit stair interactions. Approach a gold DOWN or blue UP marker and press E. Players travel independently; pursuing monsters within 3 m of both the player and stairs follow. Floors and monster positions persist for the session. Red capsules are prototype pursuers (no attacks or damage yet). No combat, loot, branches, PS1 shader or disk saves yet. Remote movement is not predicted/interpolated. Multiplayer and visual testing are still required.
 
 See docs/GAME_DESIGN.md and docs/ARCHITECTURE.md.
