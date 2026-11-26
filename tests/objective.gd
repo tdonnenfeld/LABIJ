@@ -71,5 +71,17 @@ func run() -> void:
 	world.objective = defeat
 	partner.health = 0
 	world.update_objective(party, 0.1)
-	ok = check(defeat.result == "defeat", "One death ends run even with a living teammate") and ok
+	ok = check(defeat.result == "", "One downed companion does not end run") and ok
+	for enemy in world.monsters.values():
+		enemy.health = 0.0
+	actor.floor_id = 0
+	actor.position = Vector3(0, 1, 0)
+	actor.combat_timer = 0.0
+	partner.floor_id = 0
+	partner.position = Vector3(1, 1, 0)
+	ok = check(world.revive_companion(actor, party) and partner.health > 0, "Safe nearby revive") and ok
+	actor.health = 0
+	partner.health = 0
+	world.update_objective(party, 0.1)
+	ok = check(defeat.result == "defeat", "All downed ends expedition") and ok
 	quit(0 if ok else 1)
