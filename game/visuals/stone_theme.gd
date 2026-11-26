@@ -10,15 +10,15 @@ static func stone_texture(bricks: bool, pattern: int = 0) -> ImageTexture:
 	var image := Image.create(RESOLUTION, RESOLUTION, false, Image.FORMAT_RGB8)
 	var base := Color("#77776b") if bricks else Color("#65665b")
 	var mortar := Color("#393c36") if bricks else Color("#34372f")
-	var width := [64, 32, 128, 32][pattern] if bricks else [32, 64, 32, 128][pattern]
-	var height := [32, 16, 64, 32][pattern] if bricks else [64, 64, 32, 32][pattern]
+	var width: int = [64, 32, 128, 32][pattern] if bricks else [32, 64, 32, 128][pattern]
+	var height: int = [32, 16, 64, 32][pattern] if bricks else [64, 64, 32, 32][pattern]
 	for y in range(RESOLUTION):
 		var row := floori(float(y) / height)
 		for x in range(RESOLUTION):
 			var shifted := int(x + ((width / 2) * (row % 2) if bricks else 0))
 			var col := floori(float(shifted) / width)
 			var u := posmod(shifted, width)
-			var v := y % height
+			var v: int = y % height
 			var edge := mini(mini(u, width - 1 - u), mini(v, height - 1 - v))
 			var stone := base * (0.84 + 0.26 * grain(posmod(col, floori(float(RESOLUTION) / width)), row, 3))
 			var noise := (grain(x, y, 7) - 0.5) * 0.16 + (grain(floori(x / 4.0), floori(y / 4.0), 19) - 0.5) * 0.13
