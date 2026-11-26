@@ -189,7 +189,7 @@ func spawn_monster(id: int, floor_id: int, kind: String, at: Vector3, group_size
 	capsule.height = stats[11]
 	collision.shape = capsule
 	mob.add_child(collision)
-	monsters[id] = {"node": mob, "kind": kind, "floor": floor_id, "target": 0, "threat": {}, "health": 0.0 if reserve else hp, "boss": boss, "reserve": reserve, "rewarded": false, "max_health": hp, "forced_target": 0, "force_timer": 0.0, "phase": 0, "timer": 0.0, "attack_target": 0, "aim": Vector3.ZERO, "hurt": 0.0, "bleed": 0.0, "bleed_damage": 0.0, "bleed_owner": 0, "stun": 0.0, "burn": 0.0, "burn_damage": 0.0, "burn_owner": 0, "slow": 0.0, "poison": 0.0, "poison_damage": 0.0, "poison_owner": 0, "dot_amount": {}, "dot_time": 0.0, "asleep": not boss and not reserve and awareness_rng.randf() < 0.45, "investigate": 0.0, "heard_at": at, "roam_goal": Acoustics.cell(at), "roam_wait": awareness_rng.randf_range(0.5, 3.0), "stealth_seen": {}, "ambush_used": false, "backstab_seen": {}, "step_distance": 0.0, "move_speed": 0.0, "moved_last": false, "path_key": [], "path_next": Vector2i.ZERO}
+	monsters[id] = {"node": mob, "kind": kind, "floor": floor_id, "target": 0, "threat": {}, "health": 0.0 if reserve else hp, "boss": boss, "reserve": reserve, "rewarded": false, "max_health": hp, "forced_target": 0, "force_timer": 0.0, "phase": 0, "timer": 0.0, "attack_target": 0, "aim": Vector3.ZERO, "hurt": 0.0, "bleed": 0.0, "bleed_damage": 0.0, "bleed_owner": 0, "stun": 0.0, "burn": 0.0, "burn_damage": 0.0, "burn_owner": 0, "slow": 0.0, "poison": 0.0, "poison_damage": 0.0, "poison_owner": 0, "dot_amount": {}, "dot_time": 0.0, "asleep": not boss and not reserve and awareness_rng.randf() < 0.45, "investigate": 0.0, "heard_at": at, "roam_goal": Acoustics.cell(at), "roam_wait": awareness_rng.randf_range(0.5, 3.0), "stealth_seen": {}, "ambush_used": false, "backstab_seen": {}, "step_distance": 0.0, "move_speed": 0.0, "moved_last": false, "path_key": [], "path_next": Vector2i.ZERO, "home": Acoustics.cell(at), "alerted": false, "rage_phase": false}
 	mob.visible = not reserve
 
 func marker(level: Node3D, at: Vector3, caption: String, color: Color) -> Label3D:
@@ -441,6 +441,16 @@ func simulate(actors: Dictionary, delta: float) -> void:
 			mob.roam_goal = Acoustics.cell(node.position)
 		if target != mob.target and target != 0 and actors.has(target):
 			journal.add("Combat", "%s targets %s" % [stats[0], actors[target].display_name])
+		if target != 0 and not mob.alerted and mob.kind in ["goblin", "guardian", "jewel_hunter"]:
+			mob.alerted = true
+			for ally in monsters.values():
+				if ally != mob and ally.floor == mob.floor and ally.health > 0 and horizontal_distance(ally.node.position, node.position) <= 7.0 and Combat.clear_path(node, ally.node.position):
+					wake(ally)
+					Threat.add(ally, target, Threat.PULL * 0.5)
+			journal.add("Combat", "%s calls for help" % stats[0])
+		if mob.boss and not mob.rage_phase and mob.health <= mob.max_health * 0.5:
+			mob.rage_phase = true
+			journal.add("Combat", "%s enters its final phase" % stats[0])
 		mob.target = target
 		if target != 0:
 			closest = distances[target]
@@ -464,18 +474,18 @@ func simulate(actors: Dictionary, delta: float) -> void:
 								actor.take_damage(float(stats[2]), node.position, false, stats[0])
 					elif mob.kind == "ember_oracle":
 						var direction: Vector3 = mob.aim - node.position
-						for angle in [-0.24, 0.0, 0.24]:
+						for angle in ([-0.48, -0.24, 0.0, 0.24, 0.48] if mob.rage_phase else [-0.24, 0.0, 0.24]):
 							projectiles.launch(mob.floor, node.position, direction.rotated(Vector3.UP, angle), 10.0, float(stats[3]), float(stats[2]), Color("#ef864b"), 0, true, "hex", -1)
 					elif mob.kind in ["archer", "mage"]:
 						var direction: Vector3 = mob.aim - node.position
 						projectiles.launch(mob.floor, node.position, direction, 14.0 if mob.kind == "archer" else 9.0, float(stats[3]), float(stats[2]), Color("#d8c7a0") if mob.kind == "archer" else Color("#cf73e8"), 0, true, "hex" if mob.kind == "mage" else "", -1)
 					elif victim != null and victim.health > 0 and victim.floor_id == mob.floor and horizontal_distance(victim.position, node.position) <= float(stats[3]) and Combat.clear_path(node, victim.position):
-						victim.take_damage(float(stats[2]), node.position, false, stats[0])
+						guarded_hit(victim, float(stats[2]), node.position, stats[0], actors)
 					elif victim != null and victim.health > 0 and victim.floor_id == mob.floor and horizontal_distance(victim.position, node.position) <= 4.0:
 						victim.skills.credit(5, 4)
 						journal.add("Combat", "%s dodges %s" % [victim.display_name, stats[0]], victim.floor_id, victim.position + Vector3.UP, "Dodged", "blocked", int(victim.name) if str(victim.name).is_valid_int() else 0)
 					mob.phase = 2
-					mob.timer = float(stats[6])
+					mob.timer = float(stats[6]) * (0.72 if mob.rage_phase else 1.0)
 				else:
 					mob.phase = 0
 			continue
@@ -483,11 +493,14 @@ func simulate(actors: Dictionary, delta: float) -> void:
 			if not mob.asleep and occupied.has(mob.floor):
 				idle_move(mob, delta)
 			continue
+		if mob.kind in ["archer", "mage"] and closest < 3.0 and mob.health < mob.max_health * 0.5:
+			retreat_monster(mob, actors[target].position, delta, float(stats[4]))
+			continue
 		if closest <= float(stats[3]) + float(tactics[0]) and Combat.clear_path(node, actors[target].position):
 			face_toward(mob, actors[target].position)
 			mob.move_speed = 0.0
 			mob.phase = 1
-			mob.timer = float(stats[5])
+			mob.timer = float(stats[5]) * (0.82 if mob.rage_phase else 1.0)
 			mob.attack_target = target
 			mob.aim = actors[target].position
 			if mob.kind in ["goblin", "guardian", "jewel_hunter"]:
@@ -577,7 +590,7 @@ func idle_move(mob: Dictionary, delta: float) -> void:
 	var tiles: Dictionary = floors[mob.floor].tiles
 	for offset in [Vector2i.UP, Vector2i.DOWN, Vector2i.LEFT, Vector2i.RIGHT]:
 		var cell: Vector2i = goal + offset
-		if tiles.has(cell):
+		if tiles.has(cell) and Vector2(cell - Vector2i(mob.home)).length() <= 3.0:
 			candidates.append(cell)
 	if not candidates.is_empty():
 		mob.roam_goal = candidates[awareness_rng.randi_range(0, candidates.size() - 1)]
@@ -1542,3 +1555,21 @@ func disarm_trap(actor) -> bool:
 			journal.add("Exploration", "Pressure plate disarmed")
 			return true
 	return false
+
+func guarded_hit(victim, damage: float, source: Vector3, source_name: String, actors: Dictionary) -> void:
+	var guard = null
+	var reduction := 0.0
+	for ally in actors.values():
+		if ally == victim or ally.health <= 0 or ally.floor_id != victim.floor_id or not ally.blocking:
+			continue
+		if horizontal_distance(ally.position, victim.position) > 2.0 or not Combat.facing(ally.heading, source - ally.position):
+			continue
+		var bonus: float = ally.skills.bonus("bodyguard")
+		if bonus > reduction and ally.stamina >= 5.0:
+			guard = ally
+			reduction = bonus
+	if guard != null:
+		guard.stamina -= 5.0
+		guard.skills.credit(4, 4)
+		journal.add("Party", "%s protects %s" % [guard.display_name, victim.display_name])
+	victim.take_damage(damage * (1.0 - reduction), source, false, source_name)
