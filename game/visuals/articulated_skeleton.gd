@@ -1,5 +1,9 @@
 extends Skeleton3D
 
+const JointSkin = preload("res://game/visuals/joint_skin.gd")
+const Loot = preload("res://game/items/loot_models.gd")
+var weighted_joints: Array[MeshInstance3D] = []
+
 var joints: Dictionary = {}
 var attachments: Dictionary = {}
 var rests: Dictionary = {}
@@ -82,6 +86,12 @@ func build(body: Node3D, head: Node3D, arms: Array, legs: Array, tail: Node3D, r
 	for id in parts:
 		attach_part(id, parts[id])
 	build_clips()
+	for id in ["ElbowR", "ElbowL", "KneeR", "KneeL"]:
+		if not joints.has(id):
+			continue
+		var index: int = joints[id]
+		var radius := 0.045 if rat else (0.055 if id.begins_with("Elbow") else 0.065)
+		weighted_joints.append(JointSkin.sleeve(self, get_bone_parent(index), index, radius, Loot.material(Loot.LEATHER)))
 
 func sync_parts() -> void:
 	for id in attachments:
