@@ -36,7 +36,7 @@ const ITEMS := {
 	"noise_stone": preload("res://content/items/noise_stone.tres")
 }
 
-const AFFIXES := ["keen", "swift", "venom"]
+const AFFIXES := ["keen", "swift", "venom", "cursed", "runic", "warded", "vital"]
 static var variants: Dictionary = {}
 
 static func get_item(id: String) -> Resource:
@@ -52,7 +52,9 @@ static func get_item(id: String) -> Resource:
 	if parts.size() != 2 or not ITEMS.has(parts[0]) or not parts[1] in AFFIXES:
 		return null
 	var base = ITEMS[parts[0]]
-	if base.kind != "weapon":
+	if parts[1] in ["keen", "swift", "venom", "cursed", "runic"] and base.kind != "weapon":
+		return null
+	if parts[1] in ["warded", "vital"] and not base.kind in ["armor", "helmet", "gloves", "boots", "amulet", "ring", "shield"]:
 		return null
 	var item = base.duplicate()
 	match parts[1]:
@@ -66,14 +68,34 @@ static func get_item(id: String) -> Resource:
 		"venom":
 			item.title += " of Venom"
 			item.poison += 2.0
+			"cursed":
+			item.title = "Cursed " + item.title
+			item.damage *= 1.45
+			item.stamina_cost *= 1.35
+		"runic":
+			item.title = "Runebound " + item.title
+			item.damage *= 1.2
+			item.spell_power += 0.15
+		"warded":
+			item.title += " of Warding"
+			item.magic_resistance = minf(0.35, item.magic_resistance + 0.08)
+		"vital":
+			item.title += " of Fortitude"
+			item.armor = minf(0.35, item.armor + 0.05)
 	variants[id] = item
 	return item
 
 static func enchant(id: String, rng: RandomNumberGenerator) -> String:
 	var item = ITEMS.get(id)
-	if item == null or item.kind != "weapon":
+	if item == null:
 		return id
-	var choices := ["keen", "swift"] if item.projectile_speed > 0 else AFFIXES
+	var choices: Array = []
+	if item.kind == "weapon":
+		choices = ["keen", "swift", "runic", "cursed"] if item.projectile_speed > 0 else ["keen", "swift", "venom", "runic", "cursed"]
+	elif item.kind in ["armor", "helmet", "gloves", "boots", "amulet", "ring", "shield"]:
+		choices = ["warded", "vital"]
+	if choices.is_empty():
+		return id
 	return id + ":" + choices[rng.randi_range(0, choices.size() - 1)]
 
 static func noise_multiplier(id: String) -> float:
