@@ -74,11 +74,11 @@ func update_environment(level, listener, delta: float) -> void:
 		refresh_torches(nearby)
 	drip_timer -= delta
 	if drip_timer <= 0.0:
-		drip_timer = rng.randf_range(9.0, 17.0)
+		drip_timer = rng.randf_range(3.0, 7.0) if floor_id == 2 else rng.randf_range(9.0, 17.0)
 		var sources := drip_sources(level.tiles, listener.position, level.position)
 		if not sources.is_empty():
 			drip.global_position = sources[rng.randi_range(0, sources.size() - 1)]
-			drip.pitch_scale = rng.randf_range(0.92, 1.08)
+			drip.pitch_scale = rng.randf_range(0.80, 0.95) if floor_id == 2 else rng.randf_range(0.92, 1.08)
 			drip.play()
 	if drip.playing:
 		var reachable := Acoustics.reach(level.tiles, listener.position, DRIP_RANGE)
@@ -87,7 +87,7 @@ func update_environment(level, listener, delta: float) -> void:
 	if wind.playing:
 		var progress := wind.get_playback_position()
 		var envelope := clampf(minf(progress, WIND.get_length() - progress) / 0.8, 0.0001, 1.0)
-		wind.volume_db = -32.0 + linear_to_db(envelope)
+		wind.volume_db = (-36.0 if floor_id == 2 else -32.0) + linear_to_db(envelope)
 	else:
 		wind_timer -= delta
 		if wind_timer <= 0.0:
