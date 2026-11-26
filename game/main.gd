@@ -372,7 +372,7 @@ func _physics_process(delta: float) -> void:
 			var states := {}
 			for id in actors:
 				states[id] = [actors[id].position, actors[id].heading, actors[id].floor_id, actors[id].health, actors[id].stamina, actors[id].blocking, actors[id].attack_phase, actors[id].hurt_timer, actors[id].swing_hit, actors[id].inventory.state(), actors[id].skills.state(), actors[id].combat_timer, actors[id].mana, actors[id].sprinting, actors[id].cast_id]
-			snapshot.rpc(tick, states, world.monster_snapshot(), world.loot.state(), world.projectiles.state())
+			snapshot.rpc(tick, states, world.monster_snapshot(), world.loot.state(), world.projectiles.state(), world.hazards.state())
 	if not dedicated and actors.has(local_id):
 		var local = actors[local_id]
 		var viewed_floor: int = local.floor_id
@@ -413,14 +413,20 @@ func _physics_process(delta: float) -> void:
 				local.camera.fov = lerpf(local.camera.fov, 85.0 if local.sprinting else 75.0, minf(1.0, delta * 8.0))
 			crosshair.modulate = Color("#90df87") if local.swing_hit and local.attack_phase == 2 else Color.WHITE
 		if hud:
-			var step: int = world.stair_at(local.floor_id, local.position)
-			hud.text = "Dungeon %d / %d" % [local.floor_id + 1, World.COUNT]
-			if step != 0 and local.health > 0:
-				hud.text += "  |  E: " + ("Descend" if step > 0 else "Ascend")
+			var route: Dictionary = world.route_at(local.floor_id, local.position)
+			hud.text = World.Routes.NAMES[local.floor_id]
+			if not route.is_empty() and local.health > 0:
+				hud.text += "  |  E: " + route.label
 			if local.health <= 0:
 				hud.text += "\n" + ("Dead — spectating" if spectating else "Party defeated — restart to try again")
 			else:
 				hud.text += "\nLMB: Attack | RMB: Block | Shift: Sprint | I: Inventory"
+				var aggro := 0
+				for mob in world.monsters.values():
+					if mob.health > 0 and mob.floor == local.floor_id and mob.target == local_id:
+						aggro += 1
+				if aggro > 0:
+					hud.text += " | Aggro: %d" % aggro
 				var drop_id: int = world.loot.nearest(local)
 				if drop_id != 0:
 					hud.text += "\nF: Pick up " + Catalog.get_item(world.loot.drops[drop_id].item).title
@@ -437,13 +443,14 @@ func submit_input(move: Vector2, angle: float, block: bool, sprint: bool) -> voi
 		actors[id].wants_sprint = sprint
 
 @rpc("authority", "call_remote", "unreliable_ordered")
-func snapshot(sequence: int, states: Dictionary, mobs: Dictionary, drops: Dictionary, shots: Dictionary) -> void:
+func snapshot(sequence: int, states: Dictionary, mobs: Dictionary, drops: Dictionary, shots: Dictionary, traps: Dictionary) -> void:
 	if not is_instance_valid(world) or sequence < received_tick:
 		return
 	received_tick = sequence
 	world.apply_monsters(mobs)
 	world.loot.apply(drops)
 	world.projectiles.apply(shots)
+	world.hazards.apply(traps)
 	for id in states:
 		if actors.has(id):
 			actors[id].position = states[id][0]
@@ -548,7 +555,16 @@ func apply_talent(actor, request: Array) -> void:
 	if actor.health <= 0:
 		return
 	if request[0] == "activate":
-		actor.activate(request[2])
+		var slot: int = request[2]
+		if slot < 0 or slot >= actor.skills.SLOT_COUNT:
+			return
+		var ability: String = actor.skills.slots[slot]
+		if ability in ["taunt", "fade"]:
+			var peer = actors.find_key(actor)
+			if peer != null:
+				world.threat_ability(actor, peer, ability)
+		else:
+			actor.activate(slot)
 		return
 	if request[0] == "discover":
 		world.discover(actor)

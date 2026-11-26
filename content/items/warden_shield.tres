@@ -1,0 +1,8 @@
+[gd_resource type="Resource" load_steps=2 format=3]
+[ext_resource type="Script" path="res://game/items/item_definition.gd" id="1"]
+[resource]
+script = ExtResource("1")
+title = "Aegis of the Crypt"
+kind = "shield"
+reduction = 0.94
+tint = Color(0.8, 0.65, 0.3, 1)
