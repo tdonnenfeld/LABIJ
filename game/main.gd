@@ -29,6 +29,8 @@ var map_timer := 0.0
 const Profiles = preload("res://game/progression/profiles.gd")
 const NoiseMeter = preload("res://game/ui/noise_meter.gd")
 var noise_meter: Control
+const DungeonAudio = preload("res://game/audio/dungeon_audio.gd")
+var dungeon_audio: Node3D
 var character_name: LineEdit
 var species_selector: OptionButton
 var background_selector: OptionButton
@@ -186,6 +188,8 @@ func _ready() -> void:
 		layer.add_child(popup_layer)
 		popup_layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 		popup_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		dungeon_audio = DungeonAudio.new()
+		add_child(dungeon_audio)
 		feedback = Feedback.new()
 		add_child(feedback)
 		feedback.local_layer = popup_layer
@@ -359,6 +363,7 @@ func _failed() -> void:
 		minimap.hide()
 		minimap.reset()
 		feedback.reset()
+		dungeon_audio.reset()
 		result_screen.hide()
 		damage_flash.color.a = 0.0
 	for id in actors.keys():
@@ -586,6 +591,7 @@ func _physics_process(delta: float) -> void:
 		stair_requests.clear()
 		if tick % 6 == 0 or world.objective.result != "":
 			flush_events()
+			flush_sounds()
 		tick += 1
 		if (tick % 3 == 0 or world.objective.result != "") and multiplayer.has_multiplayer_peer():
 			var states := {}
@@ -939,3 +945,28 @@ func menu_profile() -> Array:
 
 func refresh_profile_details() -> void:
 	profile_details.text = "%s\n%s" % [Profiles.SPECIES[species_selector.selected][1], Profiles.BACKGROUNDS[background_selector.selected][1]]
+
+func flush_sounds() -> void:
+	var events: Array = world.drain_sounds()
+	if events.is_empty():
+		return
+	for id in actors:
+		var actor = actors[id]
+		var nearby: Array = []
+		for event in events:
+			if event[0] == actor.floor_id and world.horizontal_distance(event[1], actor.position) <= float(event[2]):
+				nearby.append(event)
+		if nearby.is_empty():
+			continue
+		if not dedicated and id == multiplayer.get_unique_id():
+			receive_sounds(nearby)
+		elif multiplayer.has_multiplayer_peer():
+			receive_sounds.rpc_id(id, nearby)
+
+@rpc("authority", "call_remote", "unreliable_ordered", 2)
+func receive_sounds(events: Array) -> void:
+	if not dungeon_audio or not is_instance_valid(world):
+		return
+	var id := multiplayer.get_unique_id()
+	if actors.has(id):
+		dungeon_audio.hear(events, world, actors[id])
