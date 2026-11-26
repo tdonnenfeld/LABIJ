@@ -5,6 +5,13 @@ const Inventory = preload("res://game/items/inventory.gd")
 const Catalog = preload("res://game/items/catalog.gd")
 var inventory := Inventory.new()
 const Skills = preload("res://game/progression/skills.gd")
+const Spells = preload("res://game/combat/spells.gd")
+var mana := 100.0
+var wants_sprint := false
+var sprinting := false
+var sprint_exhausted := false
+var cast_id := ""
+var cast_timer := 0.0
 var skills := Skills.new()
 var combat_timer := 0.0
 var fortify_timer := 0.0
@@ -63,12 +70,14 @@ func setup(local: bool, visual: bool = true) -> void:
 
 func simulate(delta: float) -> void:
 	if health <= 0.0:
+		sprinting = false
 		velocity = Vector3.ZERO
 		return
 	rotation.y = heading
+	update_sprint(delta)
 	var forward := Vector3(sin(heading), 0, cos(heading))
 	var right := Vector3(cos(heading), 0, -sin(heading))
-	var motion := (right * direction.x + forward * direction.y) * (2.5 if blocking or attack_phase == 1 else 4.5) * (1.0 + skills.bonus("move")) * (2.0 if dash_timer > 0 else 1.0)
+	var motion := (right * direction.x + forward * direction.y) * (2.5 if blocking or attack_phase == 1 else 4.5) * (1.0 + skills.bonus("move")) * (2.0 if dash_timer > 0 else (1.55 if sprinting else 1.0))
 	velocity.x = motion.x
 	velocity.z = motion.z
 	velocity.y = maxf(velocity.y - 18.0 * delta, -20.0)
@@ -88,8 +97,9 @@ func hand_item(at: Vector3, size: Vector3, color: Color) -> MeshInstance3D:
 
 func begin_attack() -> bool:
 	var weapon = Catalog.get_item(inventory.weapon)
-	if health <= 0 or attack_phase != 0 or blocking or stamina < attack_cost():
+	if health <= 0 or attack_phase != 0 or cast_id != "" or blocking or stamina < attack_cost():
 		return false
+	sprinting = false
 	stamina -= attack_cost()
 	attack_phase = 1
 	attack_timer = weapon.windup * attack_speed_factor()
@@ -112,10 +122,11 @@ func advance_combat(delta: float) -> bool:
 	if health <= 0:
 		return false
 	var was_blocking := blocking
-	blocking = wants_block and attack_phase == 0 and stamina > 0
+	blocking = wants_block and attack_phase == 0 and cast_id == "" and stamina > 0
 	if blocking:
 		block_age = block_age + delta if was_blocking else 0.0
-	if not blocking and attack_phase == 0:
+	mana = minf(100.0, mana + delta * 5.0)
+	if not blocking and not sprinting and attack_phase == 0 and cast_id == "":
 		stamina = minf(Combat.MAX_STAMINA, stamina + delta * (18.0 + skills.bonus("regen")))
 	if attack_phase == 0:
 		return false
@@ -149,6 +160,8 @@ func take_damage(amount: float, source: Vector3) -> void:
 		attack_phase = 0
 		direction = Vector2.ZERO
 		wants_block = false
+		cast_id = ""
+		sprinting = false
 		collision_layer = 0
 		collision_mask = 0
 
@@ -165,7 +178,7 @@ func update_hands(delta: float) -> void:
 	shield.visible = health > 0
 
 func use_item(index: int) -> bool:
-	if health <= 0 or attack_phase != 0 or index < 0 or index >= inventory.items.size():
+	if health <= 0 or attack_phase != 0 or cast_id != "" or index < 0 or index >= inventory.items.size():
 		return false
 	var item = Catalog.get_item(inventory.items[index])
 	if item.kind == "consumable":
@@ -208,7 +221,7 @@ func block_cost() -> float:
 	return Combat.BLOCK_COST * (1.0 - skills.bonus("block"))
 
 func activate(slot: int) -> bool:
-	if health <= 0 or attack_phase != 0 or slot < 0 or slot >= Skills.SLOT_COUNT:
+	if health <= 0 or attack_phase != 0 or cast_id != "" or slot < 0 or slot >= Skills.SLOT_COUNT:
 		return false
 	var id: String = skills.slots[slot]
 	if id == "" or not skills.learned.has(id) or skills.cooldowns.get(id, 0.0) > 0:
@@ -216,6 +229,8 @@ func activate(slot: int) -> bool:
 	var node := Skills.Talents.find(id)
 	if node[1] in [1, 2, 3] and node[1] != skills.weapon_domain(inventory.weapon):
 		return false
+	if not Spells.get_spell(id).is_empty():
+		return start_spell(id)
 	var cooldown := 8.0
 	match id:
 		"wind":
@@ -262,3 +277,37 @@ func refund_talents(domain: int) -> bool:
 	dash_timer = 0.0
 	escape_timer = 0.0
 	return true
+
+func update_sprint(delta: float) -> void:
+	if not wants_sprint:
+		sprint_exhausted = false
+	sprinting = wants_sprint and not sprint_exhausted and direction.length_squared() > 0.01 and health > 0 and attack_phase == 0 and cast_id == "" and not wants_block and not blocking and stamina > 0
+	if sprinting:
+		stamina = maxf(0.0, stamina - 22.0 * delta * (1.0 - skills.bonus("sprint_cost")))
+		if stamina <= 0:
+			sprint_exhausted = true
+
+func start_spell(id: String) -> bool:
+	var stats := Spells.get_spell(id)
+	if stats.is_empty() or not skills.learned.has(id) or cast_id != "" or attack_phase != 0 or health <= 0 or blocking or wants_block or skills.cooldowns.get(id, 0.0) > 0:
+		return false
+	var cost: float = float(stats[1]) * (1.0 - skills.bonus("mana_cost", stats[0]))
+	if mana < cost:
+		return false
+	mana -= cost
+	cast_id = id
+	cast_timer = 0.4
+	sprinting = false
+	combat_timer = 5.0
+	skills.cooldowns[id] = stats[5]
+	return true
+
+func advance_cast(delta: float) -> String:
+	if cast_id == "" or health <= 0:
+		return ""
+	cast_timer -= delta
+	if cast_timer > 0:
+		return ""
+	var id := cast_id
+	cast_id = ""
+	return id

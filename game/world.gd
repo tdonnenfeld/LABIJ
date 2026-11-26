@@ -3,6 +3,9 @@ extends Node3D
 const Dungeon = preload("res://game/dungeon.gd")
 const Combat = preload("res://game/combat.gd")
 const Bestiary = preload("res://game/monsters/bestiary.gd")
+const Spells = preload("res://game/combat/spells.gd")
+const Projectiles = preload("res://game/combat/projectiles.gd")
+var projectiles := Projectiles.new()
 const Catalog = preload("res://game/items/catalog.gd")
 const Loot = preload("res://game/items/loot.gd")
 var loot := Loot.new()
@@ -20,6 +23,8 @@ var visual := false
 
 func build(seed_value: int, render_geometry: bool) -> void:
 	visual = render_geometry
+	projectiles.visual = visual
+	add_child(projectiles)
 	loot.visual = visual
 	add_child(loot)
 	loot_rng.seed = seed_value + 53
@@ -69,7 +74,7 @@ func build(seed_value: int, render_geometry: bool) -> void:
 				label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 				label.position.y = float(stats[11]) * 0.5 + 0.3
 				mob.add_child(label)
-			monsters[i * 10 + j] = {"node": mob, "kind": kind, "floor": i, "target": 0, "health": float(stats[1]), "phase": 0, "timer": 0.0, "attack_target": 0, "aim": Vector3.ZERO, "hurt": 0.0, "bleed": 0.0, "bleed_damage": 0.0, "bleed_owner": 0, "stun": 0.0}
+			monsters[i * 10 + j] = {"node": mob, "kind": kind, "floor": i, "target": 0, "health": float(stats[1]), "phase": 0, "timer": 0.0, "attack_target": 0, "aim": Vector3.ZERO, "hurt": 0.0, "bleed": 0.0, "bleed_damage": 0.0, "bleed_owner": 0, "stun": 0.0, "burn": 0.0, "burn_damage": 0.0, "burn_owner": 0, "slow": 0.0}
 
 func marker(level: Node3D, at: Vector3, caption: String, color: Color) -> void:
 	var mesh := MeshInstance3D.new()
@@ -109,16 +114,17 @@ func stair_at(id: int, at: Vector3) -> int:
 
 func visible_floor(id: int) -> void:
 	loot.visible_floor(id)
+	projectiles.visible_floor(id)
 	for key in floors:
 		floors[key].visible = key == id
 	for mob in monsters.values():
 		mob.node.visible = mob.floor == id and mob.health > 0
 		if visual:
 			var mesh: MeshInstance3D = mob.node.get_child(0)
-			mesh.material_override.albedo_color = Color("#ffffff") if mob.hurt > 0 else (Color("#e5a64e") if mob.phase == 1 else (Color("#8aa7e0") if mob.stun > 0 else Bestiary.stats(mob.kind)[9]))
+			mesh.material_override.albedo_color = Color("#ffffff") if mob.hurt > 0 else (Color("#e5a64e") if mob.phase == 1 else (Color("#8aa7e0") if mob.stun > 0 or mob.slow > 0 else (Color("#e96c38") if mob.burn > 0 else Bestiary.stats(mob.kind)[9])))
 
 func transfer(actor, peer_id: int) -> bool:
-	if actor.health <= 0 or actor.attack_phase != 0:
+	if actor.health <= 0 or actor.attack_phase != 0 or actor.cast_id != "":
 		return false
 	var old: int = actor.floor_id
 	var step := stair_at(old, actor.position)
@@ -148,6 +154,14 @@ func simulate(actors: Dictionary, delta: float) -> void:
 			continue
 		mob.hurt = maxf(0.0, mob.hurt - delta)
 		var stats := Bestiary.stats(mob.kind)
+		mob.slow = maxf(0.0, mob.slow - delta)
+		if mob.burn > 0:
+			var burn_elapsed := minf(delta, mob.burn)
+			mob.burn -= burn_elapsed
+			mob.health = maxf(0.0, mob.health - mob.burn_damage * burn_elapsed)
+			if mob.health <= 0:
+				reward_kill(mob, actors.get(mob.burn_owner), actors)
+				continue
 		if mob.bleed > 0:
 			var elapsed := minf(delta, mob.bleed)
 			mob.bleed -= elapsed
@@ -175,7 +189,10 @@ func simulate(actors: Dictionary, delta: float) -> void:
 			if mob.timer <= 0:
 				if mob.phase == 1:
 					var victim = actors.get(mob.attack_target)
-					if victim != null and victim.health > 0 and victim.floor_id == mob.floor and horizontal_distance(victim.position, node.position) <= float(stats[3]) and Combat.clear_path(node, victim.position) and (mob.kind != "archer" or horizontal_distance(victim.position, mob.aim) <= 1.2):
+					if mob.kind in ["archer", "mage"]:
+						var direction: Vector3 = mob.aim - node.position
+						projectiles.launch(mob.floor, node.position, direction, 14.0 if mob.kind == "archer" else 9.0, float(stats[3]), float(stats[2]), Color("#d8c7a0") if mob.kind == "archer" else Color("#cf73e8"), 0, true, "", -1)
+					elif victim != null and victim.health > 0 and victim.floor_id == mob.floor and horizontal_distance(victim.position, node.position) <= float(stats[3]) and Combat.clear_path(node, victim.position):
 						victim.take_damage(float(stats[2]), node.position)
 					elif victim != null and victim.health > 0 and victim.floor_id == mob.floor and horizontal_distance(victim.position, node.position) <= 4.0:
 						victim.skills.credit(5, 4)
@@ -207,7 +224,7 @@ func simulate(actors: Dictionary, delta: float) -> void:
 				destination = Vector3(node.position.x, node.position.y, center.z)
 			elif absf(offset.z) > 0.1 and absf(node.position.x - center.x) > 0.08:
 				destination = Vector3(center.x, node.position.y, node.position.z)
-		node.position = node.position.move_toward(destination, delta * float(stats[4]))
+		node.position = node.position.move_toward(destination, delta * float(stats[4]) * (0.5 if mob.slow > 0 else 1.0))
 
 func next_cell(tiles: Dictionary, start: Vector2i, goal: Vector2i) -> Vector2i:
 	if start == goal or not tiles.has(start) or not tiles.has(goal):
@@ -233,7 +250,7 @@ func monster_snapshot() -> Dictionary:
 	var states := {}
 	for id in monsters:
 		var mob = monsters[id]
-		states[id] = [mob.floor, mob.node.position, mob.health, mob.phase, mob.hurt, mob.stun, mob.bleed]
+		states[id] = [mob.floor, mob.node.position, mob.health, mob.phase, mob.hurt, mob.stun, mob.bleed, mob.burn, mob.slow]
 	return states
 
 func apply_monsters(states: Dictionary) -> void:
@@ -246,6 +263,8 @@ func apply_monsters(states: Dictionary) -> void:
 			monsters[id].hurt = states[id][4]
 			monsters[id].stun = states[id][5]
 			monsters[id].bleed = states[id][6]
+			monsters[id].burn = states[id][7]
+			monsters[id].slow = states[id][8]
 
 func strike(actor, party: Dictionary = {}) -> bool:
 	if actor.health <= 0:
@@ -319,7 +338,7 @@ func reward_kill(mob: Dictionary, killer, party: Dictionary) -> void:
 	loot.spawn(choices[loot_rng.randi_range(0, choices.size() - 1)], mob.floor, at)
 
 func safe(actor) -> bool:
-	if actor.health <= 0 or actor.attack_phase != 0 or actor.combat_timer > 0:
+	if actor.health <= 0 or actor.attack_phase != 0 or actor.cast_id != "" or actor.combat_timer > 0:
 		return false
 	for mob in monsters.values():
 		if mob.health > 0 and mob.floor == actor.floor_id and horizontal_distance(mob.node.position, actor.position) <= 12.0:
@@ -334,3 +353,52 @@ func discover(actor) -> bool:
 		return false
 	actor.skills.discovered.append(secret_id)
 	return true
+
+func cast(actor, owner: int, id: String) -> void:
+	var stats := Spells.get_spell(id)
+	var direction := Vector3(-sin(actor.heading), 0, -cos(actor.heading))
+	var damage: float = stats[2] * (1.0 + actor.skills.bonus("spell_damage", stats[0]))
+	var bonus: float = actor.skills.bonus("burn_bonus", stats[0]) + actor.skills.bonus("slow_bonus", stats[0])
+	projectiles.launch(actor.floor_id, actor.position, direction, stats[3], stats[4], damage, stats[6], owner, false, stats[7], stats[0], bonus)
+
+func spell_hit(shot: Dictionary, mob: Dictionary, actors: Dictionary) -> void:
+	if shot.effect == "blast":
+		spell_blast(shot, mob.node.position, actors)
+	else:
+		apply_spell_damage(shot, mob, actors)
+
+func spell_blast(shot: Dictionary, at: Vector3, actors: Dictionary) -> void:
+	for mob in monsters.values():
+		if mob.health > 0 and mob.floor == shot.floor and horizontal_distance(mob.node.position, at) <= 2.5:
+			var query := PhysicsRayQueryParameters3D.create(at + Vector3.UP * 0.05, mob.node.position, 1)
+			if get_world_3d().direct_space_state.intersect_ray(query).is_empty():
+				apply_spell_damage(shot, mob, actors)
+
+func apply_spell_damage(shot: Dictionary, mob: Dictionary, actors: Dictionary) -> void:
+	var owner = actors.get(shot.owner)
+	var damage: float = shot.damage
+	if shot.effect in ["burn", "blast"] and mob.slow > 0:
+		damage *= 1.25
+		mob.slow = 0.0
+	if shot.effect in ["slow", "freeze"] and mob.burn > 0:
+		damage *= 1.25
+		mob.burn = 0.0
+	mob.health = maxf(0.0, mob.health - damage)
+	mob.hurt = 0.18
+	if owner != null and owner.health > 0:
+		owner.skills.credit(shot.domain, 8)
+	if mob.health <= 0:
+		reward_kill(mob, owner, actors)
+		return
+	match shot.effect:
+		"burn", "blast":
+			mob.burn = 4.0
+			mob.burn_damage = 3.0 + shot.bonus
+			mob.burn_owner = shot.owner
+		"slow":
+			mob.slow = 4.0 + shot.bonus
+		"freeze":
+			mob.stun = maxf(mob.stun, 2.0)
+			mob.phase = 0
+		"shock", "stone":
+			mob.stun = maxf(mob.stun, 0.5)

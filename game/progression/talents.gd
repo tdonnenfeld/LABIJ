@@ -39,7 +39,24 @@ const NODES := [["vitality",0,"Vitality",25,"","hp",15,"+15 max HP",false],
 	["counter",4,"Counterguard",50,"fortify","block_restore",5,"Restore 5 stamina on blocks",false],
 	["lightfoot",5,"Lightfoot",50,"evasion","mitigation",0.1,"10% additional damage reduction",false],
 	["escape",5,"Escape Step",65,"dash","active",0,"75% damage reduction for 2s (15s)",false],
-	["momentum",5,"Momentum",50,"dash","regen",4,"+4 stamina regenerated per second",false]]
+	["momentum",5,"Momentum",50,"dash","regen",4,"+4 stamina regenerated per second",false],
+	["firebolt",6,"Fire Bolt",25,"","active",0,"Launch a burning projectile",false],
+	["fire_power",6,"Combustion",40,"firebolt","spell_damage",0.25,"+25% fire damage",false],
+	["fireball",6,"Fireball",65,"fire_power","active",0,"Explodes in a 2.5m radius on impact",false],
+	["fire_burn",6,"Wildfire",40,"firebolt","burn_bonus",2,"+2 burn damage per second",false],
+	["frostbolt",7,"Frost Bolt",25,"","active",0,"Slow enemies by 50% for 4 seconds",false],
+	["ice_power",7,"Deep Chill",40,"frostbolt","spell_damage",0.25,"+25% ice damage",false],
+	["freeze",7,"Flash Freeze",65,"ice_power","active",0,"Freeze a target for 2 seconds",false],
+	["ice_slow",7,"Permafrost",40,"frostbolt","slow_bonus",2,"+2 seconds of slowing",false],
+	["spark",8,"Spark",25,"","active",0,"Fast lightning projectile, briefly interrupts",false],
+	["air_power",8,"Static Charge",40,"spark","spell_damage",0.25,"+25% air damage",false],
+	["thunder",8,"Thunderbolt",65,"air_power","active",0,"Powerful lightning strike",false],
+	["air_efficiency",8,"Conductivity",40,"spark","mana_cost",0.2,"20% cheaper air spells",false],
+	["stonebolt",9,"Stone Bolt",25,"","active",0,"Heavy projectile, ignores armour",false],
+	["earth_power",9,"Density",40,"stonebolt","spell_damage",0.25,"+25% earth damage",false],
+	["boulder",9,"Boulder",65,"earth_power","active",0,"Heavy impact and stagger",false],
+	["earth_skin",9,"Stone Skin",40,"stonebolt","mitigation",0.1,"10% additional damage mitigation",false],
+	["runner",5,"Runner",40,"footwork","sprint_cost",0.25,"25% less sprint stamina consumption",false]]
 
 static func find(id: String) -> Array:
 	for node in NODES:
