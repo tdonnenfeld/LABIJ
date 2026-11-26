@@ -278,7 +278,6 @@ func build_secret_door() -> void:
 	var shape := BoxShape3D.new()
 	shape.size = extent
 	collision.shape = shape
-	secret_door.add_child(collision)
 	if visual:
 		var mesh := MeshInstance3D.new()
 		var box := BoxMesh.new()
@@ -293,6 +292,7 @@ func build_secret_door() -> void:
 		seam.material_override = VisualBuilder.StoneKit.solid(Color("#493d30"))
 		secret_door.add_child(seam)
 		seam.position = -normal * 0.115
+	secret_door.add_child(collision)
 
 func reveal_secret() -> bool:
 	if secret_open or hidden_tiles.is_empty():

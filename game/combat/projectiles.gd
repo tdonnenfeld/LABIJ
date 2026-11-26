@@ -1,5 +1,7 @@
 extends Node3D
 
+const NetMotion = preload("res://game/network/net_motion.gd")
+
 var shots: Dictionary = {}
 var next_id := 1
 var visual := false
@@ -113,15 +115,23 @@ func state() -> Dictionary:
 		result[id] = [shot.floor, shot.node.position, shot.color]
 	return result
 
-func apply(data: Dictionary) -> void:
+func apply(data: Dictionary, smooth: bool = false) -> void:
 	for id in shots.keys():
 		if not data.has(id):
 			remove(id)
 	for id in data:
 		if not shots.has(id):
 			shots[id] = {"node": make_node(data[id][1], data[id][2]), "floor": data[id][0], "color": data[id][2]}
-		shots[id].node.position = data[id][1]
+		if smooth:
+			NetMotion.receive(shots[id].node, data[id][1], 0.0, false, false)
+		else:
+			NetMotion.reset(shots[id].node)
+			shots[id].node.position = data[id][1]
 
 func visible_floor(floor_id: int) -> void:
 	for shot in shots.values():
 		shot.node.visible = shot.floor == floor_id
+
+func advance_network_motion(delta: float) -> void:
+	for shot in shots.values():
+		NetMotion.advance(shot.node, delta)

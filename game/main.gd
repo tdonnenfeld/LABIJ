@@ -1,5 +1,6 @@
 extends Node3D
 
+const NetMotion = preload("res://game/network/net_motion.gd")
 const Numbers = preload("res://game/ui/numbers.gd")
 const Parchment = preload("res://game/ui/parchment.gd")
 
@@ -477,6 +478,7 @@ func _host() -> void:
 			push_error("Cannot bind server")
 			get_tree().quit(1)
 		return
+	peer.host.compress(ENetConnection.COMPRESS_RANGE_CODER)
 	multiplayer.multiplayer_peer = peer
 	new_expedition()
 	if not dedicated:
@@ -490,6 +492,7 @@ func _join() -> void:
 	if err != OK:
 		status.text = "Cannot connect: " + str(err)
 		return
+	peer.host.compress(ENetConnection.COMPRESS_RANGE_CODER)
 	multiplayer.multiplayer_peer = peer
 	status.text = "Connecting..."
 
@@ -630,6 +633,7 @@ func spawn_remote(id: int, floor_id: int, at: Vector3, player_name: String, spec
 	_spawn(id, [player_name, species, background])
 	actors[id].floor_id = floor_id
 	actors[id].position = at
+	NetMotion.reset(actors[id])
 	actors[id].display_name = player_name
 
 @rpc("authority", "call_remote", "reliable")
@@ -914,15 +918,17 @@ func snapshot(sequence: int, states: Dictionary, mobs: Dictionary, drops: Dictio
 	if not is_instance_valid(world) or sequence < received_tick:
 		return
 	received_tick = sequence
-	world.apply_monsters(mobs)
+	world.apply_monsters(mobs, true)
 	world.loot.apply(drops)
-	world.projectiles.apply(shots)
+	world.projectiles.apply(shots, true)
 	world.hazards.apply(traps)
 	world.objective.apply(objective_data)
 	world.apply_secrets(secrets)
 	for id in states:
 		if actors.has(id):
-			actors[id].position = states[id][0]
+			var actor = actors[id]
+			var snap: bool = actor.floor_id != states[id][2] or actor.health <= 0 or states[id][3] <= 0
+			NetMotion.receive(actor, states[id][0], states[id][1], snap, id != multiplayer.get_unique_id())
 			actors[id].floor_id = states[id][2]
 			actors[id].health = states[id][3]
 			actors[id].stamina = states[id][4]
@@ -939,8 +945,8 @@ func snapshot(sequence: int, states: Dictionary, mobs: Dictionary, drops: Dictio
 			actors[id].noise_level = states[id][15]
 			actors[id].quiet_walking = states[id][16]
 			actors[id].noise_peak = states[id][17]
-			if id != multiplayer.get_unique_id():
-				actors[id].rotation.y = states[id][1]
+			actors[id].collision_layer = 2 if actors[id].health > 0 else 0
+			actors[id].collision_mask = 7 if actors[id].health > 0 else 0
 
 @rpc("any_peer", "call_remote", "reliable")
 func request_stairs() -> void:
@@ -957,6 +963,7 @@ func transition(sequence: int, id: int, floor_id: int, at: Vector3, mobs: Dictio
 	if actors.has(id):
 		actors[id].floor_id = floor_id
 		actors[id].position = at
+		NetMotion.reset(actors[id])
 	world.apply_monsters(mobs)
 	world.apply_secrets(secrets)
 
@@ -1418,3 +1425,17 @@ func apply_inventory_equip_slot(id: int, index: int, slot: int, revision: int) -
 	if actor.health > 0 and actor.attack_phase == 0 and actor.cast_id == "" and actor.inventory.revision == revision and slot >= 0:
 		if actor.inventory.equip(index, slot):
 			actor.empowered = ""
+
+func _process(delta: float) -> void:
+	if not active or dedicated or not is_instance_valid(world) or world.objective.result != "":
+		return
+	var local_id := multiplayer.get_unique_id()
+	if not multiplayer.is_server():
+		for actor in actors.values():
+			NetMotion.advance(actor, delta)
+		world.advance_network_motion(delta)
+	if actors.has(local_id):
+		var local = actors[local_id]
+		if local.camera:
+			local.rotation.y = yaw
+			local.camera.rotation.x = pitch

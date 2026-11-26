@@ -1,5 +1,6 @@
 extends Node3D
 
+const NetMotion = preload("res://game/network/net_motion.gd")
 const Numbers = preload("res://game/ui/numbers.gd")
 const Acoustics = preload("res://game/world/noise.gd")
 const Vision = preload("res://game/monsters/vision.gd")
@@ -628,11 +629,17 @@ func monster_snapshot() -> Dictionary:
 		states[id] = [mob.floor, mob.node.position, mob.health, mob.phase, mob.hurt, mob.stun, mob.bleed, mob.burn, mob.slow, mob.target, mob.poison, mob.asleep, mob.investigate, mob.threat.duplicate(), mob.node.rotation.y]
 	return states
 
-func apply_monsters(states: Dictionary) -> void:
+func apply_monsters(states: Dictionary, smooth: bool = false) -> void:
 	for id in states:
 		if monsters.has(id):
+			var mob: Dictionary = monsters[id]
+			if smooth:
+				NetMotion.receive(mob.node, states[id][1], states[id][14], mob.floor != states[id][0] or mob.health <= 0 or states[id][2] <= 0)
+			else:
+				NetMotion.reset(mob.node)
+				mob.node.position = states[id][1]
+				mob.node.rotation.y = states[id][14]
 			monsters[id].floor = states[id][0]
-			monsters[id].node.position = states[id][1]
 			monsters[id].health = states[id][2]
 			monsters[id].phase = states[id][3]
 			monsters[id].hurt = states[id][4]
@@ -645,7 +652,6 @@ func apply_monsters(states: Dictionary) -> void:
 			monsters[id].asleep = states[id][11]
 			monsters[id].investigate = states[id][12]
 			monsters[id].threat = states[id][13]
-			monsters[id].node.rotation.y = states[id][14]
 			set_monster_collision(monsters[id])
 
 func strike(actor, party: Dictionary = {}) -> bool:
@@ -1160,3 +1166,9 @@ func apply_secrets(data: Array) -> void:
 	for id in data:
 		if floors.has(id):
 			floors[id].reveal_secret()
+
+func advance_network_motion(delta: float) -> void:
+	for mob in monsters.values():
+		if mob.health > 0:
+			NetMotion.advance(mob.node, delta)
+	projectiles.advance_network_motion(delta)
