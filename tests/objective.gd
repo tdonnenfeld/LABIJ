@@ -67,6 +67,9 @@ func run() -> void:
 	var copy := World.Objective.new()
 	copy.apply(world.objective.state())
 	ok = check(copy.state() == world.objective.state(), "Objective replication") and ok
+	var fixture_id: int = world.fixtures.keys()[0]
+	world.mark_fixture_used(world.fixtures[fixture_id])
+	ok = check(world.secret_state().has(["fixture", fixture_id]), "Fixture consumption replicated") and ok
 	var defeat := World.Objective.new()
 	world.objective = defeat
 	partner.health = 0
@@ -77,6 +80,8 @@ func run() -> void:
 	actor.floor_id = 0
 	actor.position = Vector3(0, 1, 0)
 	actor.combat_timer = 0.0
+	actor.attack_phase = 0
+	actor.cast_id = ""
 	partner.floor_id = 0
 	partner.position = Vector3(1, 1, 0)
 	ok = check(world.revive_companion(actor, party) and partner.health > 0, "Safe nearby revive") and ok
