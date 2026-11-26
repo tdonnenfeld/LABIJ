@@ -22,6 +22,9 @@ var block_age := 1.0
 var empowered := ""
 var empower_timer := 0.0
 
+signal damage_event(amount: float, blocked: bool, parried: bool, source_name: String)
+signal xp_event(amount: int)
+var display_name := "Player"
 var health := Combat.MAX_HEALTH
 var stamina := Combat.MAX_STAMINA
 var blocking := false
@@ -140,10 +143,14 @@ func advance_combat(delta: float) -> bool:
 	attack_phase = 0
 	return false
 
-func take_damage(amount: float, source: Vector3, magical: bool = false) -> void:
+func take_damage(amount: float, source: Vector3, magical: bool = false, source_name: String = "Enemy") -> void:
 	if health <= 0:
 		return
+	var before := health
+	var blocked := false
+	var parried := false
 	if blocking and stamina >= block_cost() and Combat.facing(heading, source - position):
+		blocked = true
 		stamina -= block_cost()
 		amount *= 1.0 - minf(0.95, Catalog.get_item(inventory.shield).reduction + skills.bonus("reduction"))
 		skills.credit(4, 5)
@@ -151,6 +158,7 @@ func take_damage(amount: float, source: Vector3, magical: bool = false) -> void:
 		stamina = minf(Combat.MAX_STAMINA, stamina + skills.bonus("block_restore"))
 		if skills.bonus("parry") > 0 and block_age <= 0.25:
 			amount = 0.0
+			parried = true
 	combat_timer = 5.0
 	if inventory.armor_index >= 0:
 		var armor = Catalog.get_item(inventory.items[inventory.armor_index])
@@ -159,6 +167,7 @@ func take_damage(amount: float, source: Vector3, magical: bool = false) -> void:
 			amount *= 1.0 - armor.magic_resistance
 	amount *= (1.0 - skills.bonus("mitigation")) * (0.5 if fortify_timer > 0 else 1.0) * (0.25 if escape_timer > 0 else 1.0)
 	health = maxf(0.0, health - amount)
+	damage_event.emit(before - health, blocked, parried, source_name)
 	hurt_timer = 0.25
 	if health == 0:
 		blocking = false
@@ -207,6 +216,8 @@ func max_health() -> float:
 
 func gain_xp(amount: int) -> void:
 	skills.gain(amount)
+	if amount > 0:
+		xp_event.emit(amount)
 
 func attack_cost() -> float:
 	return Catalog.get_item(inventory.weapon).stamina_cost * (1.0 - skills.bonus("cost", skills.weapon_domain(inventory.weapon)))

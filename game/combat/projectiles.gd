@@ -52,6 +52,8 @@ static func segment_hit(from: Vector3, to: Vector3, center: Vector3, radius: flo
 
 func step(world, actors: Dictionary, delta: float) -> void:
 	for id in shots.keys():
+		if world.objective.result != "":
+			break
 		var shot: Dictionary = shots[id]
 		var from: Vector3 = shot.node.position
 		var travel: float = minf(shot.remaining, shot.velocity.length() * delta)
@@ -81,7 +83,7 @@ func step(world, actors: Dictionary, delta: float) -> void:
 					target = mob
 		if target != null:
 			if shot.enemy:
-				target.take_damage(shot.damage, from, shot.effect == "hex")
+				target.take_damage(shot.damage, from, shot.effect == "hex", "Enemy spell" if shot.effect == "hex" else "Enemy arrow")
 			else:
 				world.spell_hit(shot, target, actors)
 			remove(id)

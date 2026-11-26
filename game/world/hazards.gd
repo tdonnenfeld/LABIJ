@@ -35,7 +35,7 @@ func step(actors: Dictionary, delta: float) -> void:
 			trap.phase = 2
 			for actor in actors.values():
 				if actor.health > 0 and actor.floor_id == trap.floor and distance(actor.position, trap.node.position) <= (1.4 if trap.kind == "spike" else 2.0):
-					actor.take_damage(18.0 if trap.kind == "spike" else 25.0, trap.node.position, trap.kind == "fire")
+					actor.take_damage(18.0 if trap.kind == "spike" else 25.0, trap.node.position, trap.kind == "fire", "Spike trap" if trap.kind == "spike" else "Fire trap")
 
 func state() -> Dictionary:
 	var result := {}

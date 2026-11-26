@@ -6,6 +6,9 @@ const Threat = preload("res://game/combat/threat.gd")
 const Routes = preload("res://game/world/routes.gd")
 const Objective = preload("res://game/world/objective.gd")
 var objective := Objective.new()
+const Journal = preload("res://game/world/journal.gd")
+var journal := Journal.new()
+var party_size := 1
 var jewel_marker: Node3D
 var gate_label: Label3D
 const Hazards = preload("res://game/world/hazards.gd")
@@ -29,7 +32,8 @@ var floors: Dictionary = {}
 var monsters: Dictionary = {}
 var visual := false
 
-func build(seed_value: int, render_geometry: bool, party_size: int = 1) -> void:
+func build(seed_value: int, render_geometry: bool, size: int = 1) -> void:
+	party_size = size
 	visual = render_geometry
 	hazards.visual = visual
 	add_child(hazards)
@@ -143,7 +147,7 @@ func spawn_monster(id: int, floor_id: int, kind: String, at: Vector3, party_size
 			ring.position.y = 0.04 - float(stats[11]) * 0.5
 			ring.hide()
 
-	monsters[id] = {"node": mob, "kind": kind, "floor": floor_id, "target": 0, "threat": {}, "health": 0.0 if reserve else hp, "boss": boss, "reserve": reserve, "rewarded": false, "max_health": hp, "forced_target": 0, "force_timer": 0.0, "phase": 0, "timer": 0.0, "attack_target": 0, "aim": Vector3.ZERO, "hurt": 0.0, "bleed": 0.0, "bleed_damage": 0.0, "bleed_owner": 0, "stun": 0.0, "burn": 0.0, "burn_damage": 0.0, "burn_owner": 0, "slow": 0.0, "poison": 0.0, "poison_damage": 0.0, "poison_owner": 0}
+	monsters[id] = {"node": mob, "kind": kind, "floor": floor_id, "target": 0, "threat": {}, "health": 0.0 if reserve else hp, "boss": boss, "reserve": reserve, "rewarded": false, "max_health": hp, "forced_target": 0, "force_timer": 0.0, "phase": 0, "timer": 0.0, "attack_target": 0, "aim": Vector3.ZERO, "hurt": 0.0, "bleed": 0.0, "bleed_damage": 0.0, "bleed_owner": 0, "stun": 0.0, "burn": 0.0, "burn_damage": 0.0, "burn_owner": 0, "slow": 0.0, "poison": 0.0, "poison_damage": 0.0, "poison_owner": 0, "dot_amount": {}, "dot_time": 0.0}
 	mob.visible = not reserve
 
 func marker(level: Node3D, at: Vector3, caption: String, color: Color) -> Label3D:
@@ -251,10 +255,15 @@ func transfer(actor, peer_id: int) -> bool:
 	return true
 
 func simulate(actors: Dictionary, delta: float) -> void:
+	if objective.result != "":
+		return
 	hazards.step(actors, delta)
 	for mob in monsters.values():
+		if objective.result != "":
+			break
 		if mob.health <= 0:
 			continue
+		mob.dot_time += delta
 		mob.hurt = maxf(0.0, mob.hurt - delta)
 		mob.force_timer = maxf(0.0, mob.force_timer - delta)
 		var stats := Bestiary.stats(mob.kind)
@@ -263,6 +272,7 @@ func simulate(actors: Dictionary, delta: float) -> void:
 			var burn_elapsed := minf(delta, mob.burn)
 			mob.burn -= burn_elapsed
 			Threat.add(mob, mob.burn_owner, minf(mob.health, mob.burn_damage * burn_elapsed))
+			record_dot(mob, actors.get(mob.burn_owner), "Burning", minf(mob.health, mob.burn_damage * burn_elapsed))
 			mob.health = maxf(0.0, mob.health - mob.burn_damage * burn_elapsed)
 			if mob.health <= 0:
 				reward_kill(mob, actors.get(mob.burn_owner), actors)
@@ -271,6 +281,7 @@ func simulate(actors: Dictionary, delta: float) -> void:
 			var elapsed := minf(delta, mob.bleed)
 			mob.bleed -= elapsed
 			Threat.add(mob, mob.bleed_owner, minf(mob.health, mob.bleed_damage * elapsed))
+			record_dot(mob, actors.get(mob.bleed_owner), "Bleeding", minf(mob.health, mob.bleed_damage * elapsed))
 			mob.health = maxf(0.0, mob.health - mob.bleed_damage * elapsed)
 			if mob.health <= 0:
 				reward_kill(mob, actors.get(mob.bleed_owner), actors)
@@ -280,10 +291,13 @@ func simulate(actors: Dictionary, delta: float) -> void:
 			mob.poison -= elapsed
 			var damage := minf(mob.health, mob.poison_damage * elapsed)
 			Threat.add(mob, mob.poison_owner, damage)
+			record_dot(mob, actors.get(mob.poison_owner), "Poison", damage)
 			mob.health -= damage
 			if mob.health <= 0:
 				reward_kill(mob, actors.get(mob.poison_owner), actors)
 				continue
+		if mob.dot_time >= 1.0:
+			flush_dots(mob)
 		if mob.stun > 0:
 			mob.stun = maxf(0.0, mob.stun - delta)
 			continue
@@ -309,6 +323,8 @@ func simulate(actors: Dictionary, delta: float) -> void:
 		if target == 0 and seen != 0:
 			Threat.add(mob, seen, Threat.PULL)
 			target = seen
+		if target != mob.target and target != 0 and actors.has(target):
+			journal.add("Combat", "%s targets %s" % [stats[0], actors[target].display_name])
 		mob.target = target
 		if target != 0:
 			closest = distances[target]
@@ -320,7 +336,7 @@ func simulate(actors: Dictionary, delta: float) -> void:
 					if mob.kind in ["crypt_warden", "jewel_sentinel"]:
 						for actor in actors.values():
 							if actor.health > 0 and actor.floor_id == mob.floor and horizontal_distance(actor.position, node.position) <= float(stats[3]) and Combat.clear_path(node, actor.position):
-								actor.take_damage(float(stats[2]), node.position)
+								actor.take_damage(float(stats[2]), node.position, false, stats[0])
 					elif mob.kind == "ember_oracle":
 						var direction: Vector3 = mob.aim - node.position
 						for angle in [-0.24, 0.0, 0.24]:
@@ -329,9 +345,10 @@ func simulate(actors: Dictionary, delta: float) -> void:
 						var direction: Vector3 = mob.aim - node.position
 						projectiles.launch(mob.floor, node.position, direction, 14.0 if mob.kind == "archer" else 9.0, float(stats[3]), float(stats[2]), Color("#d8c7a0") if mob.kind == "archer" else Color("#cf73e8"), 0, true, "hex" if mob.kind == "mage" else "", -1)
 					elif victim != null and victim.health > 0 and victim.floor_id == mob.floor and horizontal_distance(victim.position, node.position) <= float(stats[3]) and Combat.clear_path(node, victim.position):
-						victim.take_damage(float(stats[2]), node.position)
+						victim.take_damage(float(stats[2]), node.position, false, stats[0])
 					elif victim != null and victim.health > 0 and victim.floor_id == mob.floor and horizontal_distance(victim.position, node.position) <= 4.0:
 						victim.skills.credit(5, 4)
+						journal.add("Combat", "%s dodges %s" % [victim.display_name, stats[0]], victim.floor_id, victim.position + Vector3.UP, "Dodged", "blocked", int(victim.name) if str(victim.name).is_valid_int() else 0)
 					mob.phase = 2
 					mob.timer = float(stats[6])
 				else:
@@ -429,6 +446,7 @@ func strike(actor, party: Dictionary = {}) -> bool:
 			nearest = mob
 			best = distance
 	if nearest == null:
+		journal.add("Combat", "%s misses" % actor.display_name, actor.floor_id, actor.position + Vector3.UP, "Miss", "status", int(actor.name) if str(actor.name).is_valid_int() else 0)
 		actor.empowered = ""
 		return false
 	if actor.empowered != "cleave":
@@ -452,6 +470,7 @@ func hit_monster(actor, mob: Dictionary, party: Dictionary) -> void:
 	var peer = party.find_key(actor)
 	if peer != null:
 		Threat.add(mob, peer, minf(mob.health, damage) * (1.0 + actor.skills.bonus("threat")))
+	log_monster_hit(mob, actor.display_name, minf(mob.health, damage), "damage")
 	mob.health = maxf(0.0, mob.health - damage)
 	mob.hurt = 0.18
 	actor.skills.credit(domain, 8)
@@ -460,16 +479,21 @@ func hit_monster(actor, mob: Dictionary, party: Dictionary) -> void:
 		return
 	var bleed: float = actor.skills.bonus("bleed", domain)
 	if bleed > 0:
+		if mob.bleed <= 0:
+			status_event(mob, "Bleeding")
 		mob.bleed = 4.0
 		mob.bleed_damage = bleed
 		var owner = party.find_key(actor)
 		mob.bleed_owner = 0 if owner == null else owner
 	mob.stun = maxf(mob.stun, actor.skills.bonus("stagger", domain))
 	if Catalog.get_item(actor.inventory.weapon).poison > 0:
+		if mob.poison <= 0:
+			status_event(mob, "Poisoned")
 		mob.poison = 5.0
 		mob.poison_damage = Catalog.get_item(actor.inventory.weapon).poison
 		mob.poison_owner = 0 if peer == null else peer
 	if actor.empowered in ["impale", "bash"]:
+		status_event(mob, "Stunned")
 		mob.stun = maxf(mob.stun, 2.0)
 		mob.phase = 0
 
@@ -477,6 +501,8 @@ func reward_kill(mob: Dictionary, killer, party: Dictionary) -> void:
 	if mob.get("rewarded", false):
 		return
 	mob.rewarded = true
+	flush_dots(mob)
+	journal.add("Combat", "%s defeated%s" % [Bestiary.stats(mob.kind)[0], " by " + killer.display_name if killer != null else ""])
 	mob.phase = 0
 	mob.target = 0
 	mob.threat.clear()
@@ -485,6 +511,7 @@ func reward_kill(mob: Dictionary, killer, party: Dictionary) -> void:
 		return
 	if mob.boss:
 		objective.boss_defeated(mob.kind)
+		journal.add("Party", "Boss defeated: %s | Runes %d/2" % [Bestiary.stats(mob.kind)[0], objective.runes.size()])
 	var reward: int = int(Bestiary.stats(mob.kind)[8]) + Routes.depth(mob.floor) * 25
 	for teammate in party.values():
 		if teammate == killer or teammate.health <= 0 or teammate.floor_id != mob.floor:
@@ -506,6 +533,7 @@ func reward_kill(mob: Dictionary, killer, party: Dictionary) -> void:
 	elif loot_rng.randf() < 0.12:
 		item_id = Catalog.enchant(item_id, loot_rng)
 	loot.spawn(item_id, mob.floor, at)
+	journal.add("Loot", "%s drops %s" % [Bestiary.stats(mob.kind)[0], Catalog.get_item(item_id).title])
 
 func safe(actor) -> bool:
 	if actor.health <= 0 or actor.attack_phase != 0 or actor.cast_id != "" or actor.combat_timer > 0:
@@ -557,6 +585,7 @@ func apply_spell_damage(shot: Dictionary, mob: Dictionary, actors: Dictionary) -
 	else:
 		damage *= 1.0 - Bestiary.resistance(mob.kind, shot.domain)
 	Threat.add(mob, shot.owner, minf(mob.health, damage) * (1.0 + (owner.skills.bonus("threat") if owner != null else 0.0)))
+	log_monster_hit(mob, owner.display_name if owner != null else "Projectile", minf(mob.health, damage), "damage" if shot.effect.begins_with("arrow") else "magic")
 	mob.health = maxf(0.0, mob.health - damage)
 	mob.hurt = 0.18
 	if owner != null and owner.health > 0:
@@ -566,19 +595,27 @@ func apply_spell_damage(shot: Dictionary, mob: Dictionary, actors: Dictionary) -
 		return
 	match shot.effect:
 		"arrow_poison":
+			if mob.poison <= 0:
+				status_event(mob, "Poisoned")
 			mob.poison = 5.0
 			mob.poison_damage = 2.0
 			mob.poison_owner = shot.owner
 		"burn", "blast":
+			if mob.burn <= 0:
+				status_event(mob, "Burning")
 			mob.burn = 4.0
 			mob.burn_damage = 3.0 + shot.bonus
 			mob.burn_owner = shot.owner
 		"slow":
+			if mob.slow <= 0:
+				status_event(mob, "Slowed")
 			mob.slow = 4.0 + shot.bonus
 		"freeze":
+			status_event(mob, "Frozen")
 			mob.stun = maxf(mob.stun, 2.0)
 			mob.phase = 0
 		"shock", "stone":
+			status_event(mob, "Staggered")
 			mob.stun = maxf(mob.stun, 0.5)
 
 static func encounter_count(floor_id: int, party_size: int) -> int:
@@ -607,6 +644,7 @@ func threat_ability(actor, peer: int, ability: String) -> bool:
 				if Threat.reduce(mob, peer):
 					changed = true
 	if changed:
+		journal.add("Combat", "%s uses %s" % [actor.display_name, "Challenge" if ability == "taunt" else "Fade"])
 		actor.combat_timer = 5.0
 		actor.skills.cooldowns[ability] = 12.0 if ability == "taunt" else 20.0
 	return changed
@@ -627,12 +665,16 @@ func interact_objective(actor, peer: int) -> bool:
 	if objective.result != "" or actor.health <= 0 or actor.attack_phase != 0 or actor.cast_id != "":
 		return false
 	if actor.floor_id == 0 and horizontal_distance(actor.position, stair_position(0, false)) <= USE_RADIUS and objective.carrier == peer:
-		return objective.escape(peer)
+		if objective.escape(peer):
+			journal.add("Party", "%s extracts the Jewel. Victory!" % actor.display_name)
+			return true
+		return false
 	if objective.carrier != 0 or not objective.guardian_defeated or actor.floor_id != objective.jewel_floor or horizontal_distance(actor.position, objective.jewel_position) > USE_RADIUS:
 		return false
 	var first := not objective.started
 	if not objective.claim(peer):
 		return false
+	journal.add("Party", "%s claims the Jewel" % actor.display_name)
 	if first:
 		for mob in monsters.values():
 			if mob.reserve and not mob.rewarded:
@@ -642,21 +684,20 @@ func interact_objective(actor, peer: int) -> bool:
 func release_jewel(actor, peer: int) -> bool:
 	var at: Vector3 = actor.position
 	at.y = floors[actor.floor_id].position.y
-	return objective.drop(peer, actor.floor_id, at)
+	if not objective.drop(peer, actor.floor_id, at):
+		return false
+	journal.add("Party", "%s drops the Jewel" % actor.display_name)
+	return true
 
 func update_objective(actors: Dictionary, delta: float) -> void:
 	if objective.result != "":
 		return
+	for actor in actors.values():
+		if actor.health <= 0:
+			fail_party(actor.display_name)
+			return
 	if objective.started:
 		objective.elapsed += delta
-		var owner = actors.get(objective.carrier)
-		if owner != null and owner.health <= 0:
-			release_jewel(owner, objective.carrier)
-	if not actors.is_empty():
-		for actor in actors.values():
-			if actor.health > 0:
-				return
-		objective.result = "defeat"
 
 func objective_hint(actor, peer: int) -> String:
 	if objective.carrier == peer and actor.floor_id == 0 and horizontal_distance(actor.position, stair_position(0, false)) <= USE_RADIUS:
@@ -666,3 +707,41 @@ func objective_hint(actor, peer: int) -> String:
 	if objective.carrier == peer:
 		return "G: Drop Jewel for teammate"
 	return ""
+
+func watch_player(actor, peer: int) -> void:
+	actor.damage_event.connect(func(amount, blocked, parried, source_name): player_hit(actor, peer, amount, blocked, parried, source_name))
+	actor.xp_event.connect(func(amount): journal.add("XP", "%s gains %d XP" % [actor.display_name, amount], actor.floor_id, actor.position + Vector3.UP, "+%d XP" % amount, "xp", peer))
+	actor.skills.usage_xp.connect(func(domain, amount): journal.add("XP", "%s gains %g %s XP" % [actor.display_name, amount, actor.Skills.TITLES[domain]]))
+
+func player_hit(actor, peer: int, amount: float, blocked: bool, parried: bool, source_name: String) -> void:
+	var effect := "Parried" if parried else ("Blocked" if blocked else "")
+	var number := "%0.1f" % amount if amount < 1.0 and amount > 0.0 else str(roundi(amount))
+	var popup := effect if amount == 0 and effect != "" else ("-" + number + (" (" + effect + ")" if effect != "" else ""))
+	journal.add("Combat", "%s hits %s for %s%s" % [source_name, actor.display_name, number, " (" + effect + ")" if effect != "" else ""], actor.floor_id, actor.position + Vector3.UP, popup, "blocked" if blocked else "incoming", peer)
+	if actor.health <= 0:
+		fail_party(actor.display_name)
+
+func fail_party(player_name: String) -> void:
+	if objective.result != "":
+		return
+	objective.result = "defeat"
+	journal.add("Party", "%s has fallen. Expedition lost." % player_name)
+
+func log_monster_hit(mob: Dictionary, source: String, amount: float, style: String) -> void:
+	var number := str(roundi(amount)) if amount >= 1.0 else "%.1f" % amount
+	var at: Vector3 = mob.node.position + Vector3.UP * (float(Bestiary.stats(mob.kind)[11]) * 0.5)
+	journal.add("Combat", "%s hits %s for %s" % [source, Bestiary.stats(mob.kind)[0], number], mob.floor, at, number, style)
+
+func status_event(mob: Dictionary, text: String) -> void:
+	var at: Vector3 = mob.node.position + Vector3.UP * (float(Bestiary.stats(mob.kind)[11]) * 0.5)
+	journal.add("Combat", "%s: %s" % [Bestiary.stats(mob.kind)[0], text], mob.floor, at, text, "status")
+
+func record_dot(mob: Dictionary, source, effect: String, amount: float) -> void:
+	var key := ("%s — %s" % [source.display_name if source != null else "Effect", effect])
+	mob.dot_amount[key] = float(mob.dot_amount.get(key, 0.0)) + amount
+
+func flush_dots(mob: Dictionary) -> void:
+	for key in mob.dot_amount:
+		log_monster_hit(mob, key, mob.dot_amount[key], "magic")
+	mob.dot_amount.clear()
+	mob.dot_time = 0.0
