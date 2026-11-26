@@ -20,7 +20,7 @@ func run() -> void:
 	var mob: Dictionary = world.monsters[0]
 	mob.health = 22.0
 	world.hit_monster(actor, mob, {1: actor})
-	ok = ok and mob.health == 0 and world.loot.drops.size() == 1
+	ok = ok and mob.health == 0 and world.loot.drops.size() >= 1 and world.loot.drops.size() <= 2
 	var guardian: Dictionary = world.monsters[2000 + 3]
 	guardian.kind = "guardian"
 	guardian.health = 85.0

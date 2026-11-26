@@ -74,3 +74,7 @@ Original 64×64 transparent SVG artwork lives in `art/ui/icons/items/`. `item_ic
 | Enchanted variants | Same base icon; explicit ENCHANTED label and catalog item title/stat changes |
 
 Next: grimoire talent layout and actual 3D item/world pickup models. No external source licenses are required for these original SVGs. Art is provisional pending in-game readability review.
+
+## Spatial satchel revision
+
+Replace the 12 equal slots with 8×5 leather cells. Equipment cards remain outside the grid. Use fixed footprints, quantity counters and drag/drop, Shift-drag to split stacks. Potions/stone/scrolls occupy 1×1; dagger/arrows 1×2; swords/staves 1×3; spears 1×4; shields 2×2; axes/bows/armour 2×3. Stack counts are legible over icons, and selected details show size and quantity. No item weight. The backpack uses server-provided placement and quantity state. Rotation and auto-sort are deferred.

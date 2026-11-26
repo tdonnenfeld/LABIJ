@@ -3,6 +3,7 @@ extends SceneTree
 const World = preload("res://game/world.gd")
 const Player = preload("res://game/player.gd")
 const Journal = preload("res://game/world/journal.gd")
+const Inventory = preload("res://game/items/inventory.gd")
 const InventoryUI = preload("res://game/items/inventory_ui.gd")
 const Catalog = preload("res://game/items/catalog.gd")
 const Numbers = preload("res://game/ui/numbers.gd")
@@ -58,9 +59,12 @@ func run() -> void:
 	root.add_child(ui)
 	ui.show()
 	for id in Catalog.ITEMS:
-		ui.refresh([["sword", "shield", id], 0, 1, -1])
+		var bag := Inventory.new()
+		bag.reset_items(["sword", "shield"])
+		bag.add(id)
+		ui.refresh(bag.state())
 		ui.select_item(2)
-		check(ui.selection == 2 and ui.slots[2].button_pressed, "Selection failed for %s" % id)
+		check(ui.selection == 2 and ui.grid.chosen == 2, "Selection failed for %s" % id)
 		var item = Catalog.get_item(id)
 		var expected := ""
 		match item.kind:
@@ -74,6 +78,8 @@ func run() -> void:
 				expected = "Learn a spell permanently."
 			"distraction":
 				expected = "Throw to draw enemies"
+			"ammo":
+				expected = "One arrow consumed"
 			_:
 				expected = "Restores "
 		check(ui.details.text.begins_with(expected), "Inventory %s: %s" % [id, ui.details.text])

@@ -1,6 +1,7 @@
 extends RefCounted
 
 const ICONS := {
+	"arrows": preload("res://art/ui/icons/items/arrows.svg"),
 	"sword": preload("res://art/ui/icons/items/sword.svg"),
 	"axe": preload("res://art/ui/icons/items/axe.svg"),
 	"spear": preload("res://art/ui/icons/items/spear.svg"),

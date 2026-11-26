@@ -23,6 +23,7 @@ func run() -> void:
 	root.add_child(actor)
 	actor.setup(false, false)
 	actor.inventory.add("bow")
+	actor.inventory.add("arrows", 2)
 	ok = ok and actor.use_item(3) and actor.skills.weapon_domain("bow") == 10
 	actor.skills.credit(10, 100)
 	ok = ok and actor.buy_talent("archery") and actor.attack_damage() > 18.0
@@ -30,7 +31,7 @@ func run() -> void:
 	root.add_child(world)
 	world.build(123, false)
 	world.strike(actor, {1: actor})
-	ok = ok and world.projectiles.shots.size() == 1
+	ok = ok and world.projectiles.shots.size() == 1 and actor.inventory.count("arrows") == 1
 	if not ok:
 		push_error("Threat and ranged tests failed")
 	quit(0 if ok else 1)

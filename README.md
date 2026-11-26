@@ -35,7 +35,7 @@ Solo uses a random seed and party size one. Host selects expected party size bef
 
 ## Threat and ranged combat
 
-Monsters acquire the first visible player (nearest if several become visible in the same tick). Initial threat is 20. Actual damage and damage-over-time generate threat; a challenger must exceed current threat by 10% within 3m or 30% farther away. Dead/disconnected/off-floor players are removed from threat tables; nearby followers retain their target across stairs. Protector (Shields) increases generated direct damage threat by 50%. Bows use stamina and unlimited prototype arrows; Archery has its own XP tree. Poison blades, enchanted staves, runed mail and monster magic resistances are available. Cross-domain talents remain deferred.
+Monsters acquire the first visible player (nearest if several become visible in the same tick). Initial threat is 20. Actual damage and damage-over-time generate threat; a challenger must exceed current threat by 10% within 3m or 30% farther away. Dead/disconnected/off-floor players are removed from threat tables; nearby followers retain their target across stairs. Protector (Shields) increases generated direct damage threat by 50%. Bows use stamina and finite stackable arrows; Archery has its own XP tree. Poison blades, enchanted staves, runed mail and monster magic resistances are available. Cross-domain talents remain deferred.
 
 ## Branches, bosses and hazards
 
@@ -101,4 +101,8 @@ The setup menu and expedition result use parchment pages, and the combat HUD use
 
 ## Illustrated satchel
 
-The inventory [I] now has a parchment equipment spread, 12 carried slots with illustrated icons, clickable weapon/shield/armour cards, and selected-item stats with contextual actions. All 25 catalog IDs have original 64×64 SVG icons; enchanted variants use their base illustration. Jewel and fallback icons are included. Existing inventory capacity, equipment replacement, scroll conditions and server-authoritative item actions are unchanged. See `docs/UI_ART_DIRECTION.md` for icon conventions and the next grimoire milestone.
+The inventory [I] now has a parchment equipment spread, an 8×5 spatial backpack with illustrated items, clickable weapon/shield/armour cards, and selected-item stats with contextual actions. All catalog IDs have original 64×64 SVG icons; enchanted variants use their base illustration. Jewel and fallback icons are included. Equipment replacement, scroll conditions and server-authoritative item actions are unchanged. See `docs/UI_ART_DIRECTION.md` for icon conventions and the next grimoire milestone.
+
+## Spatial backpack
+
+No weight or encumbrance. An 8×5 grid uses item footprints from the catalog; worn weapon/shield/armour are outside the grid. Drag items to rearrange; drag compatible stacks together to merge, Shift-drag a stack to an empty space to split in half. Potions stack to 5, stones 10, arrows 40. Scrolls and equipment are single items. Dropping drops the whole selected stack; using consumes one. Pickup is all-or-nothing, and a gear replacement fails if the old item cannot fit in the freed space or elsewhere. Items have fixed orientation. Scout starts with 24 arrows, archers drop 12, new bows drop 16 alongside; one arrow per bow shot. No ammunition recovery yet. Server validates grid operations and rejects stale item requests using inventory revision. Sizes and ammo supply are provisional balancing values.

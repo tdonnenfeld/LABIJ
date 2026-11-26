@@ -114,6 +114,8 @@ func begin_attack() -> bool:
 	var weapon = Catalog.get_item(inventory.weapon)
 	if health <= 0 or attack_phase != 0 or cast_id != "" or blocking or wants_block or stamina < attack_cost():
 		return false
+	if weapon.projectile_speed > 0 and inventory.count("arrows") == 0:
+		return false
 	sprinting = false
 	stamina -= attack_cost()
 	attack_phase = 1
@@ -345,10 +347,9 @@ func configure_profile(chosen_name: String, species: int, background: int) -> bo
 	background_id = background
 	profile_locked = true
 	var start: Array = Profiles.BACKGROUNDS[background]
-	inventory.items.assign(start[2])
-	inventory.weapon_index = 0
-	inventory.shield_index = 1
-	inventory.armor_index = -1
+	inventory.reset_items(start[2])
+	if Catalog.get_item(inventory.weapon).projectile_speed > 0:
+		inventory.add("arrows", 24)
 	skills.priorities.assign(start[3])
 	skills.aptitudes = Profiles.SPECIES[species][6].duplicate()
 	if start[4] >= 0:

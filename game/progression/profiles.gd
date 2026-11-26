@@ -12,7 +12,7 @@ const SPECIES := [
 const BACKGROUNDS := [
 	["Adventurer", "Sword, shield and potion. Balanced allocation.", ["sword", "shield", "potion"], [1, 2, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0], -1],
 	["Vanguard", "Axe, iron shield and potion. 25 Shields XP.", ["axe", "iron_shield", "potion"], [1, 0, 2, 0, 2, 0, 0, 0, 0, 0, 0, 0], 4],
-	["Scout", "Shortbow, shield, potion and Noise Stone. 25 Stealth XP.", ["bow", "shield", "potion", "noise_stone"], [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 2, 2], 11],
+	["Scout", "Shortbow, 24 arrows, shield, potion and Noise Stone. 25 Stealth XP.", ["bow", "shield", "potion", "noise_stone"], [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 2, 2], 11],
 	["Arcanist", "Staff, shield, potion and Fire Bolt scroll. 25 Fire XP.", ["staff", "shield", "potion", "scroll_firebolt"], [1, 0, 0, 0, 0, 1, 2, 0, 0, 0, 0, 0], 6]
 ]
 

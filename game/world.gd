@@ -607,6 +607,9 @@ func strike(actor, party: Dictionary = {}) -> bool:
 	var weapon = Catalog.get_item(actor.inventory.weapon)
 	var radius: float = (Acoustics.BOW if weapon.projectile_speed > 0 else Acoustics.MELEE) * Catalog.noise_multiplier(actor.inventory.weapon)
 	if weapon.projectile_speed > 0:
+		if not actor.inventory.consume("arrows"):
+			actor.empowered = ""
+			return false
 		player_noise(actor, radius, "bow")
 		var source_peer = party.find_key(actor)
 		var direction := Vector3(-sin(actor.heading), 0, -cos(actor.heading))
@@ -733,8 +736,13 @@ func reward_kill(mob: Dictionary, killer, party: Dictionary) -> void:
 		item_id = Routes.REWARDS[mob.kind]
 	elif loot_rng.randf() < 0.12:
 		item_id = Catalog.enchant(item_id, loot_rng)
-	loot.spawn(item_id, mob.floor, at)
-	journal.add("Loot", "%s drops %s" % [Bestiary.stats(mob.kind)[0], Catalog.get_item(item_id).title])
+	if not mob.boss and mob.kind == "archer":
+		loot.spawn("arrows", mob.floor, at, 12)
+	else:
+		loot.spawn(item_id, mob.floor, at)
+		if not mob.boss and Catalog.get_item(item_id).projectile_speed > 0:
+			loot.spawn("arrows", mob.floor, at + Vector3(0.35, 0, 0), 16)
+	journal.add("Loot", "%s drops %s" % [Bestiary.stats(mob.kind)[0], "12 arrows" if not mob.boss and mob.kind == "archer" else Catalog.get_item(item_id).title])
 
 func safe(actor) -> bool:
 	if actor.health <= 0 or actor.attack_phase != 0 or actor.cast_id != "" or actor.combat_timer > 0:

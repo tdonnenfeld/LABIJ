@@ -1,6 +1,7 @@
 extends RefCounted
 
 const ITEMS := {
+	"arrows": preload("res://content/items/arrows.tres"),
 	"sword": preload("res://content/items/sword.tres"),
 	"axe": preload("res://content/items/axe.tres"),
 	"spear": preload("res://content/items/spear.tres"),
@@ -72,3 +73,20 @@ static func noise_multiplier(id: String) -> float:
 		"axe": return 1.25
 		"venom_dagger": return 0.7
 		_: return 1.0
+
+static func dimensions(id: String) -> Vector2i:
+	match id.get_slice(":", 0):
+		"sword", "staff", "ember_staff", "oracle_staff": return Vector2i(1, 3)
+		"spear": return Vector2i(1, 4)
+		"axe", "bow", "longbow": return Vector2i(2, 3)
+		"leather", "mail", "ward_mail": return Vector2i(2, 3)
+		"shield", "iron_shield", "warden_shield": return Vector2i(2, 2)
+		"venom_dagger", "arrows": return Vector2i(1, 2)
+		_: return Vector2i.ONE
+
+static func stack_limit(id: String) -> int:
+	match id:
+		"potion": return 5
+		"noise_stone": return 10
+		"arrows": return 40
+		_: return 1

@@ -23,7 +23,7 @@ func refresh(data: Array, chosen: int) -> void:
 	for i in range(cards.size()):
 		var button := cards[i]
 		var slot: String = ["Weapon", "Shield", "Armour"][i]
-		var index: int = data[i + 1] if data.size() == 4 else -1
+		var index: int = data[i + 1] if data.size() == 7 else -1
 		var occupied: bool = index >= 0 and index < data[0].size()
 		button.set_meta("item_index", index if occupied else -1)
 		button.disabled = not occupied
