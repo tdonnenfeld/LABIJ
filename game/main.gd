@@ -192,6 +192,7 @@ func _ready() -> void:
 		skills_ui.closed.connect(close_skills)
 		skills_ui.priority_changed.connect(_skill_action)
 		skills_ui.talent_action.connect(_talent_action)
+		skills_ui.equip_item.connect(_grimoire_equip)
 		xp_label = Label.new()
 		xp_label.position = Vector2(16, 160)
 		Parchment.plate(xp_label, 12)
@@ -781,7 +782,16 @@ func _input(event: InputEvent) -> void:
 		return
 	if event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_ESCAPE:
 		if escape_menu.visible:
-			close_escape_menu()
+			if not escape_menu.cancel_confirmation():
+				close_escape_menu()
+		elif skills_ui.visible:
+			close_skills()
+		elif inventory_ui.visible:
+			inventory_ui.hide()
+			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+		elif trade_panel.visible:
+			close_trade()
+			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 		else:
 			open_escape_menu()
 		get_viewport().set_input_as_handled()
@@ -825,7 +835,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			skills_ui.move_to_front()
 			var id := multiplayer.get_unique_id()
 			if actors.has(id):
-				skills_ui.refresh(actors[id].skills.state(), world.safe(actors[id]))
+				skills_ui.refresh(actors[id].skills.state(), world.safe(actors[id]), actors[id].inventory.state())
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if skills_ui.visible else Input.MOUSE_MODE_CAPTURED
 		return
 	if trade_panel.visible or skills_ui.visible:
@@ -1048,7 +1058,7 @@ func _physics_process(delta: float) -> void:
 				slot.text = "%s · %s\n%s" % [settings.label("ability%d" % (i + 1)), "Empty" if node.is_empty() else node[2], "%.1fs" % cooldown if cooldown > 0 else ("—" if node.is_empty() else "Ready")]
 				slot.modulate = Color("#b8a88b") if cooldown > 0 else Color.WHITE
 			if skills_ui and skills_ui.visible:
-				skills_ui.refresh(local.skills.state(), world.safe(local))
+				skills_ui.refresh(local.skills.state(), world.safe(local), local.inventory.state())
 			stamina_bar.value = local.stamina
 			mana_bar.value = local.mana
 			hp_bar.get_child(0).text = "HP  %d / %d" % [ceili(local.health), ceili(local.max_health())]
@@ -1187,6 +1197,12 @@ func request_attack() -> void:
 		var id := multiplayer.get_remote_sender_id()
 		if actors.has(id) and not actors[id].ranged_mode():
 			attack_requests[id] = true
+
+func _grimoire_equip(index: int, revision: int) -> void:
+	if multiplayer.is_server():
+		item_requests[multiplayer.get_unique_id()] = [index, false, revision]
+	else:
+		request_item.rpc_id(1, index, false, revision)
 
 func _inventory_action(index: int, drop: bool) -> void:
 	var revision: int = inventory_ui.state_data[6]

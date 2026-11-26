@@ -61,6 +61,12 @@ func run() -> void:
 	escape.physical_keycode = KEY_ESCAPE
 	escape.pressed = true
 	check(game.escape_menu.capture(escape) and game.escape_menu.waiting.is_empty() and game.escape_menu.visible, "Escape cancels binding only")
+	game.escape_menu.ask_exit(false)
+	check(game.escape_menu.confirmation.visible and not game.escape_menu.menu_panel.visible, "Exit confirmation is modal")
+	check(game.escape_menu.cancel_confirmation() and game.escape_menu.visible and game.escape_menu.menu_panel.visible and game.active, "Cancel keeps expedition and menu")
+	game.escape_menu.ask_exit(true)
+	check(game.escape_menu.confirmation_action.text == "Quit game", "Explicit quit action")
+	game.escape_menu.cancel_confirmation()
 	game.close_escape_menu()
 	check(not game.escape_menu.visible, "Resume")
 	game.leave_expedition(false)
