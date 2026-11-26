@@ -90,3 +90,7 @@ Stone footsteps now use six CC0 Fantozzi recordings, enemy footsteps use four CC
 ## Expanded sound library
 
 24 more CC0 sounds are bundled under `art/audio/`: melee swings, bow, magic, explosions, stone impacts, a second shield block, three creature wake cues, plus future inventory, doors, chainmail, cloth, potion, bite and UI assets. Current combat/wake events select the new samples; future assets are staged but not triggered yet. Variants avoid immediate repetition. Simulation and voice noise rules are unchanged. See `art/audio/CREDITS.md` for source paths and checksums. Dungeon ambience and torch/water loops remain to be acquired; no runtime asset downloads are required.
+
+## Environmental sound
+
+The client plays a quiet wind bed with faded edges, occasional spatial water drips and up to two nearest audible torch loops. Torch/drip selection is limited to the current floor and connected dungeon tiles. Environmental audio is cosmetic only: it does not create noise or alter enemy AI, combat, voice chat, or authoritative simulation. Separate Effects, Ambience and Voice playback sliders in the main menu adjust output only, not microphone sensitivity or AI loudness. Settings last for the current game process. Sources and licenses (including the CC BY 3.0 fire loop) are in `art/audio/CREDITS.md`. No external downloads needed. The short wind/drip excerpts are not a full authored dungeon ambience track; audio balance still needs playtesting.

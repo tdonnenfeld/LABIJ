@@ -31,6 +31,9 @@ const NoiseMeter = preload("res://game/ui/noise_meter.gd")
 var noise_meter: Control
 const DungeonAudio = preload("res://game/audio/dungeon_audio.gd")
 var dungeon_audio: Node3D
+const EnvironmentalAudio = preload("res://game/audio/environmental_audio.gd")
+const AudioMix = preload("res://game/audio/audio_mix.gd")
+var environmental_audio: Node3D
 const ProximityVoice = preload("res://game/audio/proximity_voice.gd")
 const VoiceCodec = preload("res://game/audio/voice_codec.gd")
 var voice_chat: Node3D
@@ -104,6 +107,7 @@ func _ready() -> void:
 				party_size = clampi(int(arg.get_slice("=", 1)), 1, 8)
 		_host()
 	else:
+		AudioMix.ensure()
 		_build_menu()
 		var layer := CanvasLayer.new()
 		add_child(layer)
@@ -209,6 +213,8 @@ func _ready() -> void:
 		popup_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		dungeon_audio = DungeonAudio.new()
 		add_child(dungeon_audio)
+		environmental_audio = EnvironmentalAudio.new()
+		add_child(environmental_audio)
 		voice_chat = ProximityVoice.new()
 		add_child(voice_chat)
 		feedback = Feedback.new()
@@ -298,6 +304,33 @@ func _build_menu() -> void:
 	status = Label.new()
 	status.text = "WASD / ZQSD physical keys • mouse • Esc releases mouse"
 	panel.add_child(status)
+	var audio_panel := VBoxContainer.new()
+	audio_panel.position = Vector2(570, 30)
+	audio_panel.custom_minimum_size.x = 210
+	menu.add_child(audio_panel)
+	var audio_title := Label.new()
+	audio_title.text = "Audio"
+	audio_panel.add_child(audio_title)
+	for entry in [["Effects", AudioMix.EFFECTS, 0.85], ["Ambience", AudioMix.AMBIENCE, 0.65], ["Voice playback", AudioMix.VOICE, 1.0]]:
+		add_audio_slider(audio_panel, entry[0], entry[1], entry[2])
+	var credit := Label.new()
+	credit.text = "Fire Loop — Iwan \"qubodup\" Gabovitch\nCC BY 3.0 · see art/audio/CREDITS.md"
+	credit.add_theme_font_size_override("font_size", 11)
+	audio_panel.add_child(credit)
+
+func add_audio_slider(panel: VBoxContainer, title: String, bus: String, default_value: float) -> void:
+	var label := Label.new()
+	label.text = title
+	panel.add_child(label)
+	var slider := HSlider.new()
+	slider.min_value = 0.0
+	slider.max_value = 1.0
+	slider.step = 0.05
+	slider.custom_minimum_size.x = 210
+	slider.value = default_value
+	panel.add_child(slider)
+	AudioMix.set_volume(bus, default_value)
+	slider.value_changed.connect(func(value: float): AudioMix.set_volume(bus, value))
 
 func _start() -> void:
 	active = true
@@ -397,6 +430,7 @@ func _failed() -> void:
 		minimap.reset()
 		feedback.reset()
 		dungeon_audio.reset()
+		environmental_audio.reset()
 		result_screen.hide()
 		damage_flash.color.a = 0.0
 	for id in actors.keys():
@@ -647,6 +681,7 @@ func _physics_process(delta: float) -> void:
 		var viewed_floor: int = local.floor_id
 		feedback.viewed_floor = viewed_floor
 		world.visible_floor(viewed_floor)
+		environmental_audio.update_environment(world.floors[viewed_floor], local, delta)
 		var builder = world.floors[viewed_floor].visual_builder
 		if builder:
 			builder.update_lighting(local.position - world.floors[viewed_floor].position, delta)
@@ -936,6 +971,7 @@ func show_result() -> void:
 		return
 	result_shown = true
 	voice_chat.reset()
+	environmental_audio.reset()
 	inventory_ui.hide()
 	skills_ui.hide()
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE

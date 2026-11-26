@@ -1,5 +1,6 @@
 extends Node3D
 
+const Mix = preload("res://game/audio/audio_mix.gd")
 const Codec = preload("res://game/audio/voice_codec.gd")
 var capture: AudioEffectCapture
 var microphone: AudioStreamPlayer
@@ -64,6 +65,7 @@ func receive(peer: int, at: Vector3, floor_id: int, radius: float, data: PackedB
 		generator.mix_rate = Codec.RATE
 		generator.buffer_length = 0.16
 		player.stream = generator
+		player.bus = Mix.VOICE
 		player.volume_db = -3.0
 		add_child(player)
 		player.global_position = at
