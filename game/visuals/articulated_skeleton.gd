@@ -91,7 +91,15 @@ func build(body: Node3D, head: Node3D, arms: Array, legs: Array, tail: Node3D, r
 			continue
 		var index: int = joints[id]
 		var radius := 0.045 if rat else (0.055 if id.begins_with("Elbow") else 0.065)
-		weighted_joints.append(JointSkin.sleeve(self, get_bone_parent(index), index, radius, Loot.material(Loot.LEATHER)))
+		var upper := get_bone_parent(index)
+		var upper_id := get_bone_name(upper)
+		for owner_id in [upper_id, id]:
+			for child in attachments[owner_id].get_children():
+				if child is MeshInstance3D:
+					var skinned := JointSkin.convert_limb(self, child, joints[owner_id], upper, index, radius)
+					if skinned:
+						weighted_joints.append(skinned)
+		weighted_joints.append(JointSkin.sleeve(self, upper, index, radius * 0.85, Loot.material(Loot.LEATHER)))
 
 func sync_parts() -> void:
 	for id in attachments:
