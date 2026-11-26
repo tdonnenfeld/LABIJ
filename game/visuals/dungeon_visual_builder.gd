@@ -65,6 +65,7 @@ func build(tiles: Dictionary, seed_value: int, corridor_blocks: Array = [], floo
 		add_arch(tiles, cell, origin)
 		if not narrowed.has(cell):
 			decorate_cell(tiles, cell, origin, seed_value)
+			decorate_corner(tiles, cell, origin, style, seed_value)
 			decorate_theme(tiles, cell, origin, seed_value)
 	for block in corridor_blocks:
 		box("wall", block[0], block[1])
@@ -294,3 +295,44 @@ func decorate_wall(at: Vector3, normal: Vector3, angle: float, style: String, ro
 		box("wood", base + Vector3.UP * 2.35, Vector3(0.85, 0.09, 0.14), angle)
 		box("cloth" if theme_id % 2 == 0 else "cloth_blue", base + Vector3.UP * 1.83, Vector3(0.65, 1.0, 0.08), angle)
 		box("gold", base - normal * 0.05 + Vector3.UP * 1.9, Vector3(0.22, 0.22, 0.04), angle)
+
+func decorate_corner(tiles: Dictionary, cell: Vector2i, origin: Vector3, style: String, seed_value: int) -> void:
+	if abs(cell.x) + abs(cell.y) <= 2:
+		return
+	var walls: Array[Vector2i] = []
+	for side in SIDES:
+		if not tiles.has(cell + side):
+			walls.append(side)
+	if walls.size() != 2 or walls[0] == -walls[1]:
+		return
+	var roll := posmod(cell.x * 97 + cell.y * 53 + seed_value, 11)
+	if roll < 6:
+		return
+	var n := Vector3(walls[0].x, 0, walls[0].y)
+	var cross := Vector3(walls[1].x, 0, walls[1].y)
+	var at := origin + (n + cross) * 1.12
+	match style:
+		"crypt":
+			box("trim", at + Vector3.UP * 0.18, Vector3(0.52, 0.36, 0.52))
+			box("bone", at + Vector3.UP * 0.43, Vector3(0.21, 0.19, 0.19))
+			for side in [-1.0, 1.0]:
+				box("dark", at + cross * side * 0.05 - n * 0.10 + Vector3.UP * 0.46, Vector3(0.042, 0.045, 0.042))
+		"storeroom", "library":
+			for j in range(3):
+				box("wood", at + Vector3.UP * (0.12 + j * 0.16), Vector3(0.44, 0.15, 0.44), float(j) * 0.12)
+				box("iron", at + Vector3.UP * (0.19 + j * 0.16), Vector3(0.46, 0.035, 0.46))
+		"shrine":
+			box("marble", at + Vector3.UP * 0.25, Vector3(0.44, 0.5, 0.44))
+			box("gold", at + Vector3.UP * 0.53, Vector3(0.49, 0.08, 0.49))
+			for j in range(3):
+				box("paper", at + cross * (j - 1) * 0.11 + Vector3.UP * 0.66, Vector3(0.065, 0.18, 0.065))
+				box("ember", at + cross * (j - 1) * 0.11 + Vector3.UP * 0.78, Vector3(0.045, 0.08, 0.045))
+		"cistern":
+			for j in range(3):
+				box("crystal", at + cross * (j - 1) * 0.13 + Vector3.UP * (0.18 + j * 0.065), Vector3(0.10, 0.36 + j * 0.13, 0.10), float(j) * 0.7)
+		"armory":
+			box("wood", at + Vector3.UP * 0.38, Vector3(0.46, 0.76, 0.46))
+			box("iron", at - n * 0.24 + Vector3.UP * 0.52, Vector3(0.12, 0.42, 0.33))
+		_:
+			for j in range(4):
+				box("rubble", at - n * j * 0.07 + Vector3.UP * (0.07 + j * 0.045), Vector3(0.25, 0.13, 0.22), float(j) * 0.9)
