@@ -48,3 +48,6 @@ func _physics_process(delta: float) -> void:
 			bodies[i].freeze = true
 	if age >= 2.5:
 		set_physics_process(false)
+		for child in get_children():
+			child.queue_free()
+		bodies.clear()
