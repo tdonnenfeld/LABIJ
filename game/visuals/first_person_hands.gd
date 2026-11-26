@@ -24,6 +24,10 @@ var release_time := 0.0
 var cast_charge := 0.0
 var cast_color := Color.WHITE
 var spell_material: StandardMaterial3D
+var equip_time := 0.0
+var previous_aim := Vector2.ZERO
+var sway := Vector2.ZERO
+var last_drawing := false
 
 func _ready() -> void:
 	right = Node3D.new()
@@ -50,6 +54,7 @@ func _ready() -> void:
 func animate(actor, delta: float, motion: float) -> void:
 	var next: Array = [actor.inventory.weapon, actor.inventory.shield]
 	if next != key:
+		equip_time = 0.35
 		key = next
 		weapon = Assets.replace_held(weapon, key[0], right)
 		shield = Assets.replace_held(shield, key[1], left, true)
@@ -72,6 +77,14 @@ func animate(actor, delta: float, motion: float) -> void:
 	drink_time = maxf(0.0, drink_time - delta)
 	var weight := minf(1.0, delta * 15.0)
 	var casting: bool = actor.cast_id != ""
+	var aim := Vector2(actor.heading, actor.look_pitch)
+	var aim_change := Vector2(wrapf(aim.x - previous_aim.x, -PI, PI), aim.y - previous_aim.y)
+	previous_aim = aim
+	sway = sway.lerp((aim_change * -0.5).limit_length(0.12), minf(1.0, delta * 12.0))
+	equip_time = maxf(0.0, equip_time - delta)
+	if last_drawing and not actor.bow_drawing and actor.attack_phase != 0:
+		release_time = 0.18
+	last_drawing = actor.bow_drawing
 	if (last_phase == 1 and actor.attack_phase == 2) or (last_cast != "" and not casting):
 		release_time = 0.18
 	last_phase = actor.attack_phase
@@ -107,12 +120,24 @@ func animate(actor, delta: float, motion: float) -> void:
 	if casting:
 		target = Vector3(0.22, -0.16, -0.72)
 		rot.x = -0.4
+	if actor.bow_drawing:
+		target = Vector3(0.18, -0.18, -0.78)
+		rot = Vector3(-0.08, -0.2, -0.08)
+	if actor.aiming:
+		target.x *= 0.5
+		target.y += 0.08
+	var draw_weight := 1.4 if "axe" in str(key[0]) else (0.8 if "dagger" in str(key[0]) else 1.0)
+	target.y -= equip_time * draw_weight
+	rot.x += equip_time * 1.5 * draw_weight
+	target += Vector3(sway.x, sway.y, 0.0) * motion
 	target.z += release_time * 0.45
 	rot.x += release_time * 1.3
 	right.position = right.position.lerp(target, weight)
 	right.rotation = right.rotation.lerp(rot, weight)
 	var left_target := Vector3(-0.40 - bob, -0.38 + absf(bob), -0.76)
-	if casting:
+	if actor.bow_drawing:
+		left_target = Vector3(-0.12, -0.18, lerpf(-0.72, -0.30, actor.bow_charge))
+	elif casting:
 		left_target = Vector3(-0.22, -0.14, -0.66)
 	elif Catalog.get_item(key[0]).projectile_speed > 0 and actor.attack_phase == 1:
 		left_target = Vector3(-0.12, -0.19, -0.48)
@@ -124,7 +149,7 @@ func animate(actor, delta: float, motion: float) -> void:
 	left.rotation.x = lerpf(left.rotation.x, -0.35 if actor.blocking else (0.9 if drink_time > 0.0 else 0.0), weight)
 	drink.visible = drink_time > 0.0
 	if shield:
-		shield.visible = not drink.visible
+		shield.visible = not drink.visible and not casting and not actor.bow_drawing
 	spell.visible = casting or (release_time > 0.0 and cast_charge > 0.0)
 	spell.scale = Vector3.ONE * maxf(0.05, cast_charge * (0.9 + sin(clock * 8.0) * 0.1))
 	spell.rotation.y += delta * 3.0
