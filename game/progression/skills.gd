@@ -7,6 +7,7 @@ const Spells = preload("res://game/combat/spells.gd")
 const SCROLL_REQUIREMENTS := {"firebolt": 1, "frostbolt": 1, "spark": 1, "stonebolt": 1, "fireball": 2, "freeze": 2, "thunder": 2, "boulder": 2}
 signal usage_xp(domain: int, amount: float)
 var allocating := false
+var aptitudes: Dictionary = {}
 var total_xp := 0
 var xp: Array[float] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 var wallet: Array[float] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
@@ -27,6 +28,7 @@ func set_priority(index: int, priority: int) -> bool:
 
 func credit(domain: int, amount: float) -> void:
 	if domain >= 0 and domain < TITLES.size() and amount > 0:
+		amount *= float(aptitudes.get(domain, 1.0))
 		xp[domain] += amount
 		wallet[domain] += amount
 		if not allocating:
