@@ -9,6 +9,8 @@ var batches: Dictionary = {}
 var torches: Array[Vector3] = []
 var lights: Array[OmniLight3D] = []
 var light_timer := 0.0
+var theme_id := 0
+const THEMES := [Color("#ffffff"), Color("#a8b3a2"), Color("#a4a6bc"), Color("#948b80"), Color("#8f9ca6"), Color("#b99580"), Color("#c5b69a")]
 
 func box(id: String, at: Vector3, size: Vector3, angle: float = 0.0) -> void:
 	var chunk := Vector2i(floori(at.x / (CELL * CHUNK)), floori(at.z / (CELL * CHUNK)))
@@ -18,7 +20,8 @@ func box(id: String, at: Vector3, size: Vector3, angle: float = 0.0) -> void:
 	var basis := Basis(Vector3.UP, angle).scaled_local(size)
 	batches[key].transforms.append(Transform3D(basis, at))
 
-func build(tiles: Dictionary, seed_value: int, corridor_blocks: Array = []) -> void:
+func build(tiles: Dictionary, seed_value: int, corridor_blocks: Array = [], floor_theme: int = 0) -> void:
+	theme_id = clampi(floor_theme, 0, THEMES.size() - 1)
 	var narrowed: Dictionary = {}
 	for block in corridor_blocks:
 		var at: Vector3 = block[0]
@@ -50,7 +53,7 @@ func build(tiles: Dictionary, seed_value: int, corridor_blocks: Array = []) -> v
 	flush_batches()
 	for i in range(LIGHT_LIMIT):
 		var light := OmniLight3D.new()
-		light.light_color = Color("#ffb56a")
+		light.light_color = Color("#ff9766") if theme_id == 5 else (Color("#d5bb8c") if theme_id == 4 else Color("#ffb56a"))
 		light.omni_range = 8.5
 		light.omni_attenuation = 1.4
 		light.light_energy = 1.7
@@ -90,7 +93,7 @@ func flush_batches() -> void:
 	for batch in batches.values():
 		var mesh := BoxMesh.new()
 		mesh.size = Vector3.ONE
-		mesh.material = StoneKit.material(batch.material)
+		mesh.material = StoneKit.tinted(batch.material, THEMES[theme_id]) if batch.material in ["floor", "wall", "ceiling", "trim"] else StoneKit.material(batch.material)
 		var multimesh := MultiMesh.new()
 		multimesh.transform_format = MultiMesh.TRANSFORM_3D
 		multimesh.mesh = mesh

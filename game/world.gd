@@ -64,7 +64,7 @@ func build(seed_value: int, render_geometry: bool, size: int = 1) -> void:
 		add_child(level)
 		level.position.y = -i * SPACING
 		var room_count := (5 if i >= Routes.MAIN_COUNT else 9) + 3 * (clampi(party_size, 1, 8) - 1)
-		level.generate(seed_value + i * 7919, visual, room_count, i >= Routes.MAIN_COUNT)
+		level.generate(seed_value + i * 7919, visual, room_count, i >= Routes.MAIN_COUNT, i)
 		floors[i] = level
 		if i in [2, 3, Routes.SANCTUARY] and not level.side_rooms.is_empty():
 			var cell: Vector2i = level.side_rooms[0]
@@ -144,7 +144,8 @@ func spawn_monster(id: int, floor_id: int, kind: String, at: Vector3, group_size
 		var rig := ActorRig.new()
 		rig.name = "ActorRig"
 		mob.add_child(rig)
-		rig.setup(kind, float(stats[11]))
+		rig.kind = kind
+		rig.height = float(stats[11])
 		rig.ever_alive = not reserve
 		var label := Label3D.new()
 		label.text = stats[0]
@@ -260,6 +261,8 @@ func visible_floor(id: int) -> void:
 			rig.ever_alive = rig.ever_alive or alive
 		mob.node.visible = mob.floor == id and (alive or (rig != null and rig.ever_alive))
 		if visual and mob.node.visible:
+			if rig and not rig.model:
+				rig.setup(mob.kind, float(Bestiary.stats(mob.kind)[11]))
 			var label: Label3D = mob.node.get_child(1)
 			label.visible = alive
 			var filled := clampi(ceili(10.0 * mob.health / mob.max_health), 0, 10)
@@ -271,6 +274,7 @@ func visible_floor(id: int) -> void:
 func animate_monsters(delta: float) -> void:
 	if not visual:
 		return
+	projectiles.animate_visuals()
 	for mob in monsters.values():
 		if not mob.node.visible:
 			continue
@@ -567,7 +571,7 @@ func footsteps(actor, before: Vector3, delta: float) -> void:
 		var radius := Acoustics.QUIET if actor.quiet_walking else (Acoustics.SPRINT if actor.sprinting or actor.dash_timer > 0 else Acoustics.WALK)
 		if actor.inventory.armor_index >= 0:
 			radius *= Catalog.noise_multiplier(actor.inventory.items[actor.inventory.armor_index])
-		player_noise(actor, radius, "quiet" if actor.quiet_walking else ("sprint" if actor.sprinting or actor.dash_timer > 0 else "step"))
+		player_noise(actor, radius, "quiet" if actor.quiet_walking else ("sprint" if actor.sprinting or actor.dash_timer > 0 else ("step_mail" if actor.inventory.armor_index >= 0 and actor.inventory.items[actor.inventory.armor_index] in ["mail", "ward_mail"] else "step")))
 		if actor.quiet_walking:
 			credit_sneak(actor)
 
@@ -1004,7 +1008,7 @@ func player_hit(actor, peer: int, amount: float, blocked: bool, parried: bool, s
 	var effect := "Parried" if parried else ("Blocked" if blocked else "")
 	var number := "%0.1f" % amount if amount < 1.0 and amount > 0.0 else str(roundi(amount))
 	var popup := effect if amount == 0 and effect != "" else ("-" + number + (" (" + effect + ")" if effect != "" else ""))
-	journal.add("Combat", "%s hits %s for %s%s" % [source_name, actor.display_name, number, " (" + effect + ")" if effect != "" else ""], actor.floor_id, actor.position + Vector3.UP, popup, "blocked" if blocked else "incoming", peer)
+	journal.add("Combat", "%s hits %s for %s%s" % [source_name, actor.display_name, number, " (" + effect + ")" if effect != "" else ""], actor.floor_id, actor.position + Vector3.UP, popup, "blocked" if blocked else "incoming", peer, actor.last_damage_source)
 	if actor.health <= 0:
 		fail_party(actor.display_name)
 

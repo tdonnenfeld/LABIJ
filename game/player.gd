@@ -42,6 +42,7 @@ var wants_block := false
 var attack_phase := 0
 var attack_timer := 0.0
 var hurt_timer := 0.0
+var last_damage_source := Vector3.INF
 var swing_hit := false
 const ActorRig = preload("res://game/visuals/actor_rig.gd")
 const Hands = preload("res://game/visuals/first_person_hands.gd")
@@ -147,6 +148,7 @@ func advance_combat(delta: float) -> bool:
 func take_damage(amount: float, source: Vector3, magical: bool = false, source_name: String = "Enemy") -> void:
 	if health <= 0:
 		return
+	last_damage_source = source
 	var before := health
 	var blocked := false
 	var parried := false

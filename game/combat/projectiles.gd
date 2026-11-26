@@ -21,8 +21,10 @@ func make_node(at: Vector3, color: Color) -> Node3D:
 	if visual:
 		var mesh := MeshInstance3D.new()
 		var shape := SphereMesh.new()
-		shape.radius = 0.12
-		shape.height = 0.24
+		shape.radius = 0.095
+		shape.height = 0.19
+		shape.radial_segments = 6
+		shape.rings = 3
 		mesh.mesh = shape
 		var material := StandardMaterial3D.new()
 		material.albedo_color = color
@@ -30,6 +32,17 @@ func make_node(at: Vector3, color: Color) -> Node3D:
 		material.emission = color
 		mesh.material_override = material
 		node.add_child(mesh)
+		var tail := MeshInstance3D.new()
+		var trail := CylinderMesh.new()
+		trail.top_radius = 0.025
+		trail.bottom_radius = 0.07
+		trail.height = 0.35
+		trail.radial_segments = 5
+		tail.mesh = trail
+		tail.material_override = material
+		node.add_child(tail)
+		tail.rotation.x = PI / 2.0
+		tail.position.z = 0.21
 	return node
 
 func remove(id: int) -> void:
@@ -135,3 +148,17 @@ func visible_floor(floor_id: int) -> void:
 func advance_network_motion(delta: float) -> void:
 	for shot in shots.values():
 		NetMotion.advance(shot.node, delta)
+
+func animate_visuals() -> void:
+	if not visual:
+		return
+	for shot in shots.values():
+		if not shot.node.visible:
+			continue
+		var node: Node3D = shot.node
+		var previous: Vector3 = node.get_meta("visual_previous", node.position)
+		var motion := node.position - previous
+		if motion.length_squared() > 0.00001:
+			var direction := motion.normalized()
+			node.look_at(node.global_position + direction, Vector3.FORWARD if absf(direction.y) > 0.95 else Vector3.UP)
+		node.set_meta("visual_previous", node.position)

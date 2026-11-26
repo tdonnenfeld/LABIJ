@@ -68,3 +68,11 @@ static func material(id: String) -> StandardMaterial3D:
 		materials["flame"] = solid(Color("#ff9238"), 2.5)
 		materials["ember"] = solid(Color("#ffd18a"), 2.0)
 	return materials[id]
+
+static func tinted(id: String, tint: Color) -> StandardMaterial3D:
+	var key := id + ":" + tint.to_html()
+	if not materials.has(key):
+		var mat: StandardMaterial3D = material(id).duplicate()
+		mat.albedo_color *= tint
+		materials[key] = mat
+	return materials[key]

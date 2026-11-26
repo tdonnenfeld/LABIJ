@@ -5,9 +5,9 @@ var history: Array = []
 var pending: Array = []
 var sequence := 0
 
-func add(category: String, message: String, floor_id: int = -1, at: Vector3 = Vector3.ZERO, floating: String = "", style: String = "", target: int = 0) -> void:
+func add(category: String, message: String, floor_id: int = -1, at: Vector3 = Vector3.ZERO, floating: String = "", style: String = "", target: int = 0, source: Vector3 = Vector3.INF) -> void:
 	sequence += 1
-	var entry := {"id": sequence, "category": category, "message": message, "floor": floor_id, "position": at, "floating": floating, "style": style, "target": target}
+	var entry := {"id": sequence, "category": category, "message": message, "floor": floor_id, "position": at, "floating": floating, "style": style, "target": target, "source": source}
 	history.append(entry)
 	pending.append(entry)
 	if history.size() > LIMIT:

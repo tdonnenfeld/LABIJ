@@ -27,7 +27,7 @@ var secret_direction := Vector2i.ZERO
 var secret_door: StaticBody3D
 var secret_open := false
 
-func generate(seed_value: int, render_geometry: bool = true, room_count: int = 9, boss_room: bool = false) -> void:
+func generate(seed_value: int, render_geometry: bool = true, room_count: int = 9, boss_room: bool = false, theme_id: int = 0) -> void:
 	visual = render_geometry
 	debug_geometry = "--debug-geometry" in OS.get_cmdline_user_args()
 	var rng := RandomNumberGenerator.new()
@@ -55,7 +55,7 @@ func generate(seed_value: int, render_geometry: bool = true, room_count: int = 9
 	if visual and not debug_geometry:
 		visual_builder = VisualBuilder.new()
 		add_child(visual_builder)
-		visual_builder.build(tiles, seed_value, corridor_blocks)
+		visual_builder.build(tiles, seed_value, corridor_blocks, theme_id)
 	if not hidden_tiles.is_empty():
 		build_secret_door()
 		for cell in hidden_tiles:

@@ -20,6 +20,11 @@ const ENEMY_STEPS := [
 	preload("res://art/audio/steps/kenney_09.ogg")
 ]
 const CUES := {
+	"step_mail": [preload("res://art/audio/items/chainmail.wav")],
+	"pickup": [preload("res://art/audio/items/coin.ogg")],
+	"equip": [preload("res://art/audio/items/equip.ogg")],
+	"potion": [preload("res://art/audio/items/potion.wav")],
+	"scroll": [preload("res://art/audio/items/scroll.ogg")],
 	"melee": [preload("res://art/audio/combat/swing_01.wav"), preload("res://art/audio/combat/swing_02.wav")],
 	"bow": [preload("res://art/audio/combat/bow.wav")],
 	"magic": [preload("res://art/audio/magic/cast.wav")],
@@ -120,6 +125,7 @@ func play_sound(kind: String, at: Vector3, radius: float) -> void:
 	voice.max_distance = maxf(1.5, radius)
 	match kind:
 		"quiet": voice.volume_db = -19.0
+		"step_mail", "pickup", "equip", "potion", "scroll": voice.volume_db = -18.0
 		"step": voice.volume_db = -12.0
 		"sprint": voice.volume_db = -7.0
 		"enemy_step": voice.volume_db = -13.0
