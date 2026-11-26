@@ -153,7 +153,7 @@ func spawn_monster(id: int, floor_id: int, kind: String, at: Vector3, group_size
 			ring.position.y = 0.04 - float(stats[11]) * 0.5
 			ring.hide()
 
-	monsters[id] = {"node": mob, "kind": kind, "floor": floor_id, "target": 0, "threat": {}, "health": 0.0 if reserve else hp, "boss": boss, "reserve": reserve, "rewarded": false, "max_health": hp, "forced_target": 0, "force_timer": 0.0, "phase": 0, "timer": 0.0, "attack_target": 0, "aim": Vector3.ZERO, "hurt": 0.0, "bleed": 0.0, "bleed_damage": 0.0, "bleed_owner": 0, "stun": 0.0, "burn": 0.0, "burn_damage": 0.0, "burn_owner": 0, "slow": 0.0, "poison": 0.0, "poison_damage": 0.0, "poison_owner": 0, "dot_amount": {}, "dot_time": 0.0, "asleep": not boss and not reserve and awareness_rng.randf() < 0.45, "investigate": 0.0, "heard_at": at, "roam_goal": Acoustics.cell(at), "roam_wait": awareness_rng.randf_range(0.5, 3.0)}
+	monsters[id] = {"node": mob, "kind": kind, "floor": floor_id, "target": 0, "threat": {}, "health": 0.0 if reserve else hp, "boss": boss, "reserve": reserve, "rewarded": false, "max_health": hp, "forced_target": 0, "force_timer": 0.0, "phase": 0, "timer": 0.0, "attack_target": 0, "aim": Vector3.ZERO, "hurt": 0.0, "bleed": 0.0, "bleed_damage": 0.0, "bleed_owner": 0, "stun": 0.0, "burn": 0.0, "burn_damage": 0.0, "burn_owner": 0, "slow": 0.0, "poison": 0.0, "poison_damage": 0.0, "poison_owner": 0, "dot_amount": {}, "dot_time": 0.0, "asleep": not boss and not reserve and awareness_rng.randf() < 0.45, "investigate": 0.0, "heard_at": at, "roam_goal": Acoustics.cell(at), "roam_wait": awareness_rng.randf_range(0.5, 3.0), "stealth_seen": {}, "ambush_used": false}
 	mob.visible = not reserve
 
 func marker(level: Node3D, at: Vector3, caption: String, color: Color) -> Label3D:
@@ -329,7 +329,10 @@ func simulate(actors: Dictionary, delta: float) -> void:
 			var distance := horizontal_distance(actor.position, node.position)
 			eligible[id] = true
 			distances[id] = distance
-			if distance < closest and Combat.clear_path(node, actor.position):
+			var sight := closest
+			if not mob.asleep and actor.quiet_walking:
+				sight = minf(sight, (5.0 + objective.pressure() * 2.0) * (1.0 - actor.skills.bonus("concealment")))
+			if distance < sight and Combat.clear_path(node, actor.position):
 				closest = distance
 				seen = id
 		var target := Threat.choose(mob, eligible, distances)
@@ -454,7 +457,7 @@ func emit_noise(floor_id: int, at: Vector3, radius: float) -> void:
 			mob.heard_at = at
 
 func player_noise(actor, radius: float) -> void:
-	radius *= 1.0 - actor.skills.bonus("noise")
+	radius *= maxf(0.1, 1.0 - actor.skills.bonus("noise"))
 	actor.noise_level = maxf(actor.noise_level, radius)
 	emit_noise(actor.floor_id, actor.position, radius)
 
@@ -464,7 +467,21 @@ func footsteps(actor, before: Vector3, delta: float) -> void:
 	if actor.step_distance >= 1.25:
 		actor.step_distance = fmod(actor.step_distance, 1.25)
 		var radius := Acoustics.QUIET if actor.quiet_walking else (Acoustics.SPRINT if actor.sprinting or actor.dash_timer > 0 else Acoustics.WALK)
+		if actor.inventory.armor_index >= 0:
+			radius *= Catalog.noise_multiplier(actor.inventory.items[actor.inventory.armor_index])
 		player_noise(actor, radius)
+		if actor.quiet_walking:
+			credit_sneak(actor)
+
+func credit_sneak(actor) -> void:
+	var peer := str(actor.name)
+	for mob in monsters.values():
+		if mob.health <= 0 or mob.floor != actor.floor_id or mob.target != 0 or mob.boss or mob.reserve or mob.stealth_seen.has(peer):
+			continue
+		var distance := horizontal_distance(actor.position, mob.node.position)
+		if distance >= 3.0 and distance <= 7.0 and Combat.clear_path(actor, mob.node.position):
+			mob.stealth_seen[peer] = true
+			actor.skills.credit(11, 3)
 
 func awareness_name(mob: Dictionary) -> String:
 	if mob.asleep:
@@ -551,8 +568,9 @@ func strike(actor, party: Dictionary = {}) -> bool:
 	if actor.health <= 0:
 		return false
 	var weapon = Catalog.get_item(actor.inventory.weapon)
-	player_noise(actor, Acoustics.BOW if weapon.projectile_speed > 0 else Acoustics.MELEE)
+	var radius: float = (Acoustics.BOW if weapon.projectile_speed > 0 else Acoustics.MELEE) * Catalog.noise_multiplier(actor.inventory.weapon)
 	if weapon.projectile_speed > 0:
+		player_noise(actor, radius)
 		var source_peer = party.find_key(actor)
 		var direction := Vector3(-sin(actor.heading), 0, -cos(actor.heading))
 		var effect := "arrow_poison" if actor.skills.learned.has("venom_arrow") else "arrow"
@@ -573,6 +591,7 @@ func strike(actor, party: Dictionary = {}) -> bool:
 			nearest = mob
 			best = distance
 	if nearest == null:
+		player_noise(actor, radius)
 		journal.add("Combat", "%s misses" % actor.display_name, actor.floor_id, actor.position + Vector3.UP, "Miss", "status", int(actor.name) if str(actor.name).is_valid_int() else 0)
 		actor.empowered = ""
 		return false
@@ -580,16 +599,23 @@ func strike(actor, party: Dictionary = {}) -> bool:
 		hits = [nearest]
 	for mob in hits:
 		hit_monster(actor, mob, party)
+	player_noise(actor, radius)
 	actor.empowered = ""
 	return true
 
 func hit_monster(actor, mob: Dictionary, party: Dictionary) -> void:
 	if mob.health <= 0:
 		return
+	var ambush: bool = mob.target == 0 and mob.threat.is_empty() and not mob.boss and not mob.reserve and not mob.ambush_used and actor.skills.bonus("ambush") > 0
+	mob.ambush_used = true
 	wake(mob)
 	var stats := Bestiary.stats(mob.kind)
 	var domain: int = actor.skills.weapon_domain(actor.inventory.weapon)
 	var damage: float = actor.attack_damage()
+	if ambush:
+		damage *= 1.0 + actor.skills.bonus("ambush")
+		status_event(mob, "Ambush")
+		actor.skills.credit(11, 8)
 	if mob.health <= float(mob.get("max_health", stats[1])) * 0.3:
 		damage *= 1.0 + actor.skills.bonus("execute")
 	if mob.phase == 2:
@@ -605,7 +631,7 @@ func hit_monster(actor, mob: Dictionary, party: Dictionary) -> void:
 	if mob.health <= 0:
 		reward_kill(mob, actor, party)
 		return
-	var bleed: float = actor.skills.bonus("bleed", domain)
+	var bleed: float = actor.skills.bonus("bleed", domain) + (actor.skills.bonus("ambush_bleed") if ambush else 0.0)
 	if bleed > 0:
 		if mob.bleed <= 0:
 			status_event(mob, "Bleeding")
@@ -650,7 +676,7 @@ func reward_kill(mob: Dictionary, killer, party: Dictionary) -> void:
 		killer.gain_xp(reward)
 		killer.skills.credit(0, 10)
 		killer.health = minf(killer.max_health(), killer.health + killer.skills.bonus("heal_kill"))
-	var choices := ["potion", "potion", "axe", "spear", "iron_shield", "leather", "mail", "staff", "bow", "venom_dagger", "ward_mail", "scroll_firebolt", "scroll_frostbolt", "scroll_spark", "scroll_stonebolt"]
+	var choices := ["potion", "potion", "noise_stone", "noise_stone", "axe", "spear", "iron_shield", "leather", "mail", "staff", "bow", "venom_dagger", "ward_mail", "scroll_firebolt", "scroll_frostbolt", "scroll_spark", "scroll_stonebolt"]
 	if mob.floor >= 1:
 		choices.append_array(["longbow", "ember_staff", "scroll_fireball", "scroll_freeze", "scroll_thunder", "scroll_boulder"])
 	var at: Vector3 = mob.node.position
@@ -878,3 +904,17 @@ func flush_dots(mob: Dictionary) -> void:
 		log_monster_hit(mob, key, mob.dot_amount[key], "magic")
 	mob.dot_amount.clear()
 	mob.dot_time = 0.0
+
+func throw_distraction(actor, index: int, peer: int) -> bool:
+	if objective.result != "" or actor.health <= 0 or actor.attack_phase != 0 or actor.cast_id != "" or index < 0 or index >= actor.inventory.items.size():
+		return false
+	if actor.inventory.items[index] != "noise_stone" or actor.inventory.remove(index) == "":
+		return false
+	var direction := Vector3(-sin(actor.heading), 0, -cos(actor.heading))
+	projectiles.launch(actor.floor_id, actor.position, direction, 12.0, 12.0, 0.0, Color("#b0b9c3"), peer, false, "distraction", 11, actor.skills.bonus("distraction"))
+	journal.add("Loot", "%s throws a Noise Stone" % actor.display_name)
+	return true
+
+func distraction_lands(shot: Dictionary, at: Vector3) -> void:
+	emit_noise(shot.floor, at, 14.0 * (1.0 + shot.bonus))
+	journal.add("Combat", "Noise Stone lands", shot.floor, at, "Noise", "status")

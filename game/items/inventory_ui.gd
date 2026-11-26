@@ -71,12 +71,19 @@ func update_details() -> void:
 			var node := Skills.Talents.find(item.spell_id)
 			details.text = "Read to learn permanently | %s mastery %d" % [Skills.TITLES[node[1]], Skills.SCROLL_REQUIREMENTS[item.spell_id]]
 			use_button.text = "Read scroll"
+		"distraction":
+			details.text = "Throw with H or use: distracts enemies, no damage"
+			use_button.text = "Throw stone"
 		"armor":
 			details.text = "Damage reduction: %s%% | Magic resist: %s%%" % [Numbers.number(item.armor * 100), Numbers.number(item.magic_resistance * 100)]
 		"shield":
 			details.text = "Damage blocked: %s%%" % Numbers.number(item.reduction * 100)
 		_:
 			details.text = "Restores %s HP" % Numbers.number(item.heal)
+
+	var noise_factor := Catalog.noise_multiplier(state_data[0][index])
+	if noise_factor != 1.0:
+		details.text += " | Noise x%s" % Numbers.number(noise_factor)
 
 func send(drop: bool) -> void:
 	var selected := list.get_selected_items()

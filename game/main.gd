@@ -23,6 +23,9 @@ var feedback: Node3D
 var party_names: Dictionary = {}
 var next_party_number := 1
 var action_bar: Label
+const Minimap = preload("res://game/ui/minimap.gd")
+var minimap: Control
+var map_timer := 0.0
 var noise_label: Label
 var target_label: Label
 const Catalog = preload("res://game/items/catalog.gd")
@@ -155,6 +158,15 @@ func _ready() -> void:
 		target_label.offset_right = 155
 		target_label.offset_top = 12
 		target_label.hide()
+		minimap = Minimap.new()
+		layer.add_child(minimap)
+		minimap.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
+		minimap.offset_left = -222
+		minimap.offset_right = -16
+		minimap.offset_top = -278
+		minimap.offset_bottom = -72
+		minimap.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		minimap.hide()
 		var popup_layer := Control.new()
 		layer.add_child(popup_layer)
 		popup_layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -240,6 +252,7 @@ func _start() -> void:
 			action_bar.show()
 			noise_label.show()
 			target_label.show()
+			minimap.show()
 
 func _solo() -> void:
 	party_size = 1
@@ -302,6 +315,8 @@ func _failed() -> void:
 		action_bar.hide()
 		noise_label.hide()
 		target_label.hide()
+		minimap.hide()
+		minimap.reset()
 		feedback.reset()
 		result_screen.hide()
 		damage_flash.color.a = 0.0
@@ -376,6 +391,9 @@ func remove_remote(id: int) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if not active or dedicated or world.objective.result != "":
 		return
+	if event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_M:
+		minimap.visible = not minimap.visible
+		return
 	if event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_L:
 		log_panel.visible = not log_panel.visible
 		return
@@ -413,8 +431,10 @@ func _unhandled_input(event: InputEvent) -> void:
 			item_requests[multiplayer.get_unique_id()] = [-1, false]
 		else:
 			request_item.rpc_id(1, -1, false)
-	elif event is InputEventKey and event.pressed and not event.echo and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and event.physical_keycode in [KEY_1, KEY_2, KEY_3, KEY_T, KEY_G]:
-		if event.physical_keycode == KEY_G:
+	elif event is InputEventKey and event.pressed and not event.echo and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and event.physical_keycode in [KEY_1, KEY_2, KEY_3, KEY_T, KEY_G, KEY_H]:
+		if event.physical_keycode == KEY_H:
+			_talent_action("throw_stone", "", 0)
+		elif event.physical_keycode == KEY_G:
 			_talent_action("drop_jewel", "", 0)
 		elif event.physical_keycode == KEY_T:
 			_talent_action("discover", "", 0)
@@ -511,6 +531,10 @@ func _physics_process(delta: float) -> void:
 		world.visible_floor(viewed_floor)
 		party_panel.refresh(actors, local_id, world)
 		update_awareness_hud(local, local_id)
+		map_timer -= delta
+		if map_timer <= 0:
+			minimap.refresh(world, local, actors, yaw)
+			map_timer = 0.15
 		for id in actors:
 			actors[id].visible = id == local_id or (actors[id].floor_id == viewed_floor and actors[id].health > 0)
 		local.update_hands(delta)
@@ -661,6 +685,11 @@ func apply_item_action(actor, index: int, drop: bool) -> void:
 		if index < 0 or index >= actor.inventory.items.size():
 			return
 		var item = Catalog.get_item(actor.inventory.items[index])
+		if item.kind == "distraction":
+			var peer = actors.find_key(actor)
+			if peer != null:
+				world.throw_distraction(actor, index, peer)
+			return
 		var before: float = actor.health
 		if actor.use_item(index):
 			world.journal.add("Loot", "%s %s %s" % [actor.display_name, "reads" if item.kind == "scroll" else ("uses" if item.kind == "consumable" else "equips"), item.title])
@@ -692,7 +721,7 @@ func _talent_action(action: String, id: String, index: int) -> void:
 func request_talent(action: String, id: String, index: int) -> void:
 	if multiplayer.is_server():
 		var peer := multiplayer.get_remote_sender_id()
-		if actors.has(peer) and id.length() <= 64 and action in ["buy", "slot", "activate", "discover", "drop_jewel"]:
+		if actors.has(peer) and id.length() <= 64 and action in ["buy", "slot", "activate", "discover", "drop_jewel", "throw_stone"]:
 			talent_requests[peer] = [action, id, index]
 
 func apply_talent(actor, request: Array) -> void:
@@ -709,6 +738,11 @@ func apply_talent(actor, request: Array) -> void:
 				world.threat_ability(actor, peer, ability)
 		else:
 			actor.activate(slot)
+		return
+	if request[0] == "throw_stone":
+		var peer = actors.find_key(actor)
+		if peer != null:
+			world.throw_distraction(actor, actor.inventory.items.find("noise_stone"), peer)
 		return
 	if request[0] == "drop_jewel":
 		var peer = actors.find_key(actor)

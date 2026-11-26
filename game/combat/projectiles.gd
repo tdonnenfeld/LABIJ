@@ -63,6 +63,15 @@ func step(world, actors: Dictionary, delta: float) -> void:
 		var limit := 1.1
 		if not wall.is_empty():
 			limit = from.distance_to(wall.position) / maxf(travel, 0.0001)
+		if shot.effect == "distraction":
+			if limit <= 1.0 or shot.remaining <= travel:
+				var landing := from.lerp(to, maxf(0.0, limit - 0.02)) if limit <= 1.0 else to
+				world.distraction_lands(shot, landing)
+				remove(id)
+			else:
+				shot.node.position = to
+				shot.remaining -= travel
+			continue
 		var target = null
 		if shot.enemy:
 			for actor in actors.values():
