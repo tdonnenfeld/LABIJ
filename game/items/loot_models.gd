@@ -12,6 +12,7 @@ static func material(color: Color) -> StandardMaterial3D:
 		var mat := StandardMaterial3D.new()
 		mat.albedo_color = color
 		mat.roughness = 0.75
+		mat.cull_mode = BaseMaterial3D.CULL_DISABLED
 		mat.emission_enabled = true
 		mat.emission = color
 		mat.emission_energy_multiplier = 0.16
@@ -49,6 +50,17 @@ static func gem(parent: Node3D, at: Vector3, radius: float, color: Color) -> voi
 	mesh.rings = 3
 	part(parent, mesh, at, color)
 
+static func blade(parent: Node3D, at: Vector3, width: float, length: float, color: Color) -> void:
+	var surface := SurfaceTool.new()
+	surface.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var points := [Vector3(-width * 0.5, 0, 0), Vector3(0, 0.022, 0), Vector3(width * 0.5, 0, 0), Vector3(0, -0.022, 0), Vector3(0, 0, -length)]
+	for i in range(4):
+		surface.add_vertex(points[i])
+		surface.add_vertex(points[(i + 1) % 4])
+		surface.add_vertex(points[4])
+	surface.generate_normals()
+	part(parent, surface.commit(), at, color)
+
 static func rod(parent: Node3D, start: Vector3, end: Vector3, width: float, color: Color) -> void:
 	var mesh := BoxMesh.new()
 	mesh.size = Vector3(width, width, start.distance_to(end))
@@ -66,11 +78,13 @@ static func build(id: String, parent: Node3D) -> Node3D:
 	var flat := Vector3(PI / 2.0, 0, 0)
 	match base:
 		"sword", "venom_dagger", "spear":
-			var length := 0.48 if base == "sword" else (0.23 if base == "venom_dagger" else 0.65)
-			box(model, Vector3(0, 0, 0.12), Vector3(0.045, 0.045, length), WOOD)
-			box(model, Vector3(0, 0, -0.04), Vector3(0.22, 0.04, 0.045), BRASS)
-			box(model, Vector3(0, 0, -0.20), Vector3(0.10, 0.035, 0.28 if base != "venom_dagger" else 0.16), STEEL if base != "venom_dagger" else Color("#789568"))
-			cylinder(model, Vector3(0, 0, -0.37 if base != "venom_dagger" else -0.28), 0.05, 0.12, STEEL, 0.0, Vector3(-PI / 2.0, 0, 0))
+			var length := 0.51 if base == "sword" else (0.27 if base == "venom_dagger" else 0.22)
+			var handle := 0.72 if base == "spear" else 0.20
+			box(model, Vector3(0, 0, handle * 0.25), Vector3(0.045, 0.045, handle), WOOD)
+			var base_at := -handle * 0.25
+			box(model, Vector3(0, 0, base_at), Vector3(0.10 if base == "spear" else 0.22, 0.04, 0.045), BRASS)
+			blade(model, Vector3(0, 0, base_at), 0.085 if base == "venom_dagger" else 0.12, length, STEEL if base != "venom_dagger" else Color("#789568"))
+			gem(model, Vector3(0, 0, handle * 0.75), 0.04, BRASS)
 		"axe":
 			box(model, Vector3.ZERO, Vector3(0.05, 0.05, 0.65), WOOD)
 			box(model, Vector3(0.10, 0, -0.23), Vector3(0.25, 0.06, 0.22), STEEL)
