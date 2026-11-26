@@ -68,7 +68,7 @@ static func get_item(id: String) -> Resource:
 		"venom":
 			item.title += " of Venom"
 			item.poison += 2.0
-			"cursed":
+		"cursed":
 			item.title = "Cursed " + item.title
 			item.damage *= 1.45
 			item.stamina_cost *= 1.35
