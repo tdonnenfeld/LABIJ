@@ -1,6 +1,7 @@
 extends Node3D
 
 const Numbers = preload("res://game/ui/numbers.gd")
+const Parchment = preload("res://game/ui/parchment.gd")
 
 const World = preload("res://game/world.gd")
 const Player = preload("res://game/player.gd")
@@ -22,7 +23,8 @@ var party_panel: PanelContainer
 var feedback: Node3D
 var party_names: Dictionary = {}
 var next_party_number := 1
-var action_bar: Label
+var action_bar: HBoxContainer
+var action_slots: Array[Label] = []
 const Minimap = preload("res://game/ui/minimap.gd")
 var minimap: Control
 var map_timer := 0.0
@@ -109,15 +111,21 @@ func _ready() -> void:
 	else:
 		AudioMix.ensure()
 		_build_menu()
-		var layer := CanvasLayer.new()
-		add_child(layer)
+		var canvas := CanvasLayer.new()
+		add_child(canvas)
+		var layer := Control.new()
+		canvas.add_child(layer)
+		layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		layer.theme = Parchment.build(false)
 		hud = Label.new()
-		hud.position = Vector2(16, 16)
+		hud.position = Vector2(16, 12)
+		Parchment.plate(hud, 12)
 		layer.add_child(hud)
 		hud.hide()
-		hp_bar = make_bar(layer, Vector2(16, 78), Color("#a64e48"))
-		stamina_bar = make_bar(layer, Vector2(16, 106), Color("#6a9d65"))
-		mana_bar = make_bar(layer, Vector2(16, 134), Color("#668cc4"))
+		hp_bar = make_bar(layer, Vector2(16, 78), Parchment.HP, "HP")
+		stamina_bar = make_bar(layer, Vector2(16, 106), Parchment.STAMINA, "Stamina")
+		mana_bar = make_bar(layer, Vector2(16, 134), Parchment.MANA, "Mana")
 		damage_flash = ColorRect.new()
 		damage_flash.color = Color(0.8, 0.05, 0.05, 0)
 		damage_flash.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -140,13 +148,15 @@ func _ready() -> void:
 		skills_ui.talent_action.connect(_talent_action)
 		xp_label = Label.new()
 		xp_label.position = Vector2(16, 160)
+		Parchment.plate(xp_label, 12)
 		layer.add_child(xp_label)
 		xp_label.hide()
 		objective_label = Label.new()
 		objective_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		Parchment.plate(objective_label, 12)
 		layer.add_child(objective_label)
 		objective_label.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
-		objective_label.offset_left = -340
+		objective_label.offset_left = -330
 		objective_label.offset_right = -16
 		objective_label.offset_top = 16
 		objective_label.hide()
@@ -161,21 +171,33 @@ func _ready() -> void:
 		party_panel = PartyPanel.new()
 		layer.add_child(party_panel)
 		party_panel.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
-		party_panel.offset_left = -360
+		party_panel.offset_left = -330
 		party_panel.offset_right = -16
 		party_panel.offset_top = 92
 		party_panel.hide()
-		action_bar = Label.new()
-		action_bar.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		action_bar = HBoxContainer.new()
+		action_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		layer.add_child(action_bar)
 		action_bar.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
-		action_bar.offset_left = -240
-		action_bar.offset_right = 240
-		action_bar.offset_top = -58
-		action_bar.offset_bottom = -16
+		action_bar.offset_left = -80
+		action_bar.offset_right = 262
+		action_bar.offset_top = -64
+		action_bar.offset_bottom = -12
+		for i in range(3):
+			var slot := Label.new()
+			slot.custom_minimum_size = Vector2(108, 48)
+			slot.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			slot.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			slot.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+			slot.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			Parchment.plate(slot, 12)
+			slot.text = "%d · Empty" % (i + 1)
+			action_bar.add_child(slot)
+			action_slots.append(slot)
 		action_bar.hide()
 		noise_label = Label.new()
 		noise_label.position = Vector2(16, 184)
+		Parchment.plate(noise_label, 12)
 		layer.add_child(noise_label)
 		noise_label.hide()
 		noise_meter = NoiseMeter.new()
@@ -191,20 +213,21 @@ func _ready() -> void:
 		voice_label.hide()
 		target_label = Label.new()
 		target_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		Parchment.plate(target_label, 12)
 		target_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		layer.add_child(target_label)
 		target_label.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
-		target_label.offset_left = -155
-		target_label.offset_right = 155
+		target_label.offset_left = -130
+		target_label.offset_right = 130
 		target_label.offset_top = 12
 		target_label.hide()
 		minimap = Minimap.new()
 		layer.add_child(minimap)
 		minimap.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
-		minimap.offset_left = -222
+		minimap.offset_left = -202
 		minimap.offset_right = -16
-		minimap.offset_top = -278
-		minimap.offset_bottom = -72
+		minimap.offset_top = -202
+		minimap.offset_bottom = -16
 		minimap.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		minimap.hide()
 		var popup_layer := Control.new()
@@ -225,11 +248,13 @@ func _ready() -> void:
 		result_screen.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 		var panel := PanelContainer.new()
 		result_screen.add_child(panel)
+		panel.theme = Parchment.build(true)
 		var column := VBoxContainer.new()
 		column.custom_minimum_size.x = 320
 		panel.add_child(column)
 		result_label = Label.new()
 		result_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		Parchment.heading(result_label, 23)
 		column.add_child(result_label)
 		var back := Button.new()
 		back.text = "Return to menu"
@@ -237,28 +262,66 @@ func _ready() -> void:
 		back.pressed.connect(_failed)
 		result_screen.hide()
 
-func make_bar(layer: CanvasLayer, at: Vector2, color: Color) -> ProgressBar:
+func make_bar(layer: Control, at: Vector2, color: Color, caption: String) -> ProgressBar:
 	var bar := ProgressBar.new()
 	bar.position = at
 	bar.size = Vector2(200, 20)
 	bar.max_value = 100
 	bar.value = 100
-	var fill := StyleBoxFlat.new()
-	fill.bg_color = color
-	bar.add_theme_stylebox_override("fill", fill)
+	Parchment.decorate_bar(bar, color)
+	bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	layer.add_child(bar)
+	var label := Label.new()
+	label.text = caption + " 100 / 100"
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	label.add_theme_font_size_override("font_size", 12)
+	label.add_theme_color_override("font_outline_color", Color("#201813"))
+	label.add_theme_constant_override("outline_size", 3)
+	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	bar.add_child(label)
+	label.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	bar.hide()
 	return bar
 
 func _build_menu() -> void:
 	menu = CanvasLayer.new()
 	add_child(menu)
+	var page := Control.new()
+	menu.add_child(page)
+	page.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	page.theme = Parchment.build(true)
+	var backdrop := ColorRect.new()
+	backdrop.color = Color("#1e211d")
+	backdrop.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	page.add_child(backdrop)
+	backdrop.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	var margin := MarginContainer.new()
+	page.add_child(margin)
+	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	for side in ["left", "top", "right", "bottom"]:
+		margin.add_theme_constant_override("margin_" + side, 20)
+	var scroll := ScrollContainer.new()
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	margin.add_child(scroll)
+	var spread := HBoxContainer.new()
+	spread.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	spread.add_theme_constant_override("separation", 16)
+	scroll.add_child(spread)
+	var left_page := PanelContainer.new()
+	left_page.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	spread.add_child(left_page)
 	var panel := VBoxContainer.new()
-	panel.position = Vector2(30, 30)
-	menu.add_child(panel)
+	left_page.add_child(panel)
 	var title := Label.new()
-	title.text = "LABIJ — First Descent"
+	title.text = "LABIJ"
+	Parchment.heading(title, 32)
 	panel.add_child(title)
+	var subtitle := Label.new()
+	subtitle.text = "THE EXPEDITION JOURNAL · FIRST DESCENT"
+	subtitle.add_theme_font_size_override("font_size", 12)
+	panel.add_child(subtitle)
+	panel.add_child(HSeparator.new())
 	character_name = LineEdit.new()
 	character_name.placeholder_text = "Character name (optional)"
 	character_name.max_length = 24
@@ -296,26 +359,32 @@ func _build_menu() -> void:
 	var voice_hint := Label.new()
 	voice_hint.text = "Voice reaches nearby teammates and enemies. N mutes."
 	panel.add_child(voice_hint)
+	var choices := HBoxContainer.new()
+	panel.add_child(choices)
 	for entry in [["Solo", _solo], ["Host", _host], ["Join", _join]]:
 		var button := Button.new()
 		button.text = entry[0]
 		button.pressed.connect(entry[1])
-		panel.add_child(button)
+		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		choices.add_child(button)
 	status = Label.new()
-	status.text = "WASD / ZQSD physical keys • mouse • Esc releases mouse"
+	status.text = "WASD / ZQSD · mouse · Esc releases mouse\nI: Inventory · K: Talents · M: Map · L: Log"
 	panel.add_child(status)
+	var right_page := PanelContainer.new()
+	right_page.custom_minimum_size.x = 260
+	spread.add_child(right_page)
 	var audio_panel := VBoxContainer.new()
-	audio_panel.position = Vector2(570, 30)
-	audio_panel.custom_minimum_size.x = 210
-	menu.add_child(audio_panel)
+	right_page.add_child(audio_panel)
 	var audio_title := Label.new()
-	audio_title.text = "Audio"
+	audio_title.text = "Field instruments"
+	Parchment.heading(audio_title, 21)
 	audio_panel.add_child(audio_title)
 	for entry in [["Effects", AudioMix.EFFECTS, 0.85], ["Ambience", AudioMix.AMBIENCE, 0.65], ["Voice playback", AudioMix.VOICE, 1.0]]:
 		add_audio_slider(audio_panel, entry[0], entry[1], entry[2])
 	var credit := Label.new()
 	credit.text = "Fire Loop — Iwan \"qubodup\" Gabovitch\nCC BY 3.0 · see art/audio/CREDITS.md"
 	credit.add_theme_font_size_override("font_size", 11)
+	credit.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	audio_panel.add_child(credit)
 
 func add_audio_slider(panel: VBoxContainer, title: String, bus: String, default_value: float) -> void:
@@ -701,18 +770,21 @@ func _physics_process(delta: float) -> void:
 		if hp_bar:
 			hp_bar.max_value = local.max_health()
 			hp_bar.value = local.health
-			xp_label.text = "Level %d | %d XP | K: Talents | 1–3: Abilities" % [local.skills.character_level(), local.skills.total_xp]
-			var ability_text: PackedStringArray = []
+			xp_label.text = "Level %d · %d XP" % [local.skills.character_level(), local.skills.total_xp]
 			for i in range(3):
 				var ability: String = local.skills.slots[i]
 				var node: Array = local.Skills.Talents.find(ability)
 				var cooldown: float = local.skills.cooldowns.get(ability, 0.0)
-				ability_text.append("[%d] %s%s" % [i + 1, "Empty" if node.is_empty() else node[2], " %.1fs" % cooldown if cooldown > 0 else ""])
-			action_bar.text = "    |    ".join(ability_text)
+				var slot := action_slots[i]
+				slot.text = "%d · %s\n%s" % [i + 1, "Empty" if node.is_empty() else node[2], "%.1fs" % cooldown if cooldown > 0 else ("—" if node.is_empty() else "Ready")]
+				slot.modulate = Color("#b8a88b") if cooldown > 0 else Color.WHITE
 			if skills_ui and skills_ui.visible:
 				skills_ui.refresh(local.skills.state(), world.safe(local))
 			stamina_bar.value = local.stamina
 			mana_bar.value = local.mana
+			hp_bar.get_child(0).text = "HP  %d / %d" % [ceili(local.health), ceili(local.max_health())]
+			stamina_bar.get_child(0).text = "Stamina  %d / %d" % [ceili(local.stamina), int(stamina_bar.max_value)]
+			mana_bar.get_child(0).text = "Mana  %d / %d" % [ceili(local.mana), int(mana_bar.max_value)]
 			if local.camera:
 				local.camera.fov = lerpf(local.camera.fov, 85.0 if local.sprinting else 75.0, minf(1.0, delta * 8.0))
 			crosshair.modulate = Color("#90df87") if local.swing_hit and local.attack_phase == 2 else Color.WHITE
@@ -728,7 +800,7 @@ func _physics_process(delta: float) -> void:
 			if local.health <= 0:
 				hud.text += "\nParty defeated"
 			else:
-				hud.text += "\nLMB: Attack | RMB: Block | Shift: Sprint | Ctrl: Quiet | I: Inventory"
+				hud.text += "\nI: Inventory  ·  K: Talents"
 				var aggro := 0
 				for mob in world.monsters.values():
 					if mob.health > 0 and mob.floor == local.floor_id and mob.target == local_id:
@@ -1017,7 +1089,9 @@ func update_awareness_hud(local, local_id: int) -> void:
 	var mob: Dictionary = world.focused_enemy(local, yaw)
 	if mob.is_empty():
 		target_label.text = ""
+		target_label.hide()
 		return
+	target_label.show()
 	var target_name := "None"
 	if actors.has(mob.target):
 		target_name = actors[mob.target].display_name

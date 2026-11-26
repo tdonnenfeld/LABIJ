@@ -18,11 +18,11 @@ func _ready() -> void:
 		tabs.add_child(button)
 		button.pressed.connect(select_filter.bind(category))
 	var hint := Label.new()
-	hint.text = "Party log [L] — Esc for mouse / scroll"
+	hint.text = "EXPEDITION LOG [L] · Esc to scroll"
 	hint.add_theme_font_size_override("font_size", 12)
 	column.add_child(hint)
 	feed = RichTextLabel.new()
-	feed.custom_minimum_size = Vector2(350, 112)
+	feed.custom_minimum_size = Vector2(345, 104)
 	feed.add_theme_font_size_override("normal_font_size", 13)
 	feed.scroll_following = true
 	feed.selection_enabled = true
