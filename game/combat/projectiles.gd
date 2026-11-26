@@ -11,18 +11,18 @@ func launch(floor_id: int, at: Vector3, direction: Vector3, speed: float, reach:
 		return
 	var id := next_id
 	next_id += 1
-	var node := make_node(at, color)
+	var node := make_node(at, color, effect)
 	shots[id] = {"node": node, "floor": floor_id, "velocity": direction.normalized() * speed, "remaining": reach, "damage": damage, "color": color, "owner": source_peer, "enemy": enemy, "effect": effect, "domain": domain, "bonus": bonus}
 
-func make_node(at: Vector3, color: Color) -> Node3D:
+func make_node(at: Vector3, color: Color, effect: String = "") -> Node3D:
 	var node := Node3D.new()
 	add_child(node)
 	node.position = at
 	if visual:
 		var mesh := MeshInstance3D.new()
 		var shape := SphereMesh.new()
-		shape.radius = 0.095
-		shape.height = 0.19
+		shape.radius = 0.20 if effect == "blast" else (0.15 if effect == "stone" else 0.095)
+		shape.height = shape.radius * 2.0
 		shape.radial_segments = 6
 		shape.rings = 3
 		mesh.mesh = shape
@@ -36,13 +36,19 @@ func make_node(at: Vector3, color: Color) -> Node3D:
 		var trail := CylinderMesh.new()
 		trail.top_radius = 0.025
 		trail.bottom_radius = 0.07
-		trail.height = 0.35
+		trail.height = 0.75 if effect in ["shock", "chain"] else (0.65 if effect.begins_with("arrow") else 0.35)
 		trail.radial_segments = 5
 		tail.mesh = trail
 		tail.material_override = material
 		node.add_child(tail)
 		tail.rotation.x = PI / 2.0
-		tail.position.z = 0.21
+		tail.position.z = trail.height * 0.5
+		if effect.begins_with("arrow"):
+			shape.radius = 0.035
+			shape.height = 0.07
+			trail.top_radius = 0.018
+			trail.bottom_radius = 0.018
+			material.emission_enabled = false
 	return node
 
 func remove(id: int) -> void:
@@ -71,6 +77,10 @@ func step(world, actors: Dictionary, delta: float) -> void:
 			break
 		var shot: Dictionary = shots[id]
 		var from: Vector3 = shot.node.position
+		if shot.effect == "blast":
+			shot.velocity.y -= 9.8 * delta
+		elif shot.effect.begins_with("arrow") or shot.effect == "stone":
+			shot.velocity.y -= 2.0 * delta
 		var travel: float = minf(shot.remaining, shot.velocity.length() * delta)
 		var to: Vector3 = from + shot.velocity.normalized() * travel
 		var query := PhysicsRayQueryParameters3D.create(from, to, 1)
@@ -113,19 +123,21 @@ func step(world, actors: Dictionary, delta: float) -> void:
 			remove(id)
 		elif limit <= 1.0:
 			if shot.effect == "blast":
-				world.spell_blast(shot, from.lerp(to, limit), actors)
+				world.spell_blast(shot, from.lerp(to, maxf(0.0, limit - 0.01)), actors)
 			remove(id)
 		else:
 			shot.node.position = to
 			shot.remaining -= travel
 			if shot.remaining <= 0:
+				if shot.effect == "blast":
+					world.spell_blast(shot, to, actors)
 				remove(id)
 
 func state() -> Dictionary:
 	var result := {}
 	for id in shots:
 		var shot: Dictionary = shots[id]
-		result[id] = [shot.floor, shot.node.position, shot.color]
+		result[id] = [shot.floor, shot.node.position, shot.color, shot.effect, shot.velocity]
 	return result
 
 func apply(data: Dictionary, smooth: bool = false) -> void:
@@ -134,7 +146,9 @@ func apply(data: Dictionary, smooth: bool = false) -> void:
 			remove(id)
 	for id in data:
 		if not shots.has(id):
-			shots[id] = {"node": make_node(data[id][1], data[id][2]), "floor": data[id][0], "color": data[id][2]}
+			shots[id] = {"node": make_node(data[id][1], data[id][2], data[id][3] if data[id].size() > 3 else ""), "floor": data[id][0], "color": data[id][2]}
+		if data[id].size() > 4:
+			shots[id].node.set_meta("shot_velocity", data[id][4])
 		if smooth:
 			NetMotion.receive(shots[id].node, data[id][1], 0.0, false, false)
 		else:
@@ -158,6 +172,8 @@ func animate_visuals() -> void:
 		var node: Node3D = shot.node
 		var previous: Vector3 = node.get_meta("visual_previous", node.position)
 		var motion := node.position - previous
+		if motion.length_squared() <= 0.00001:
+			motion = shot.get("velocity", node.get_meta("shot_velocity", Vector3.ZERO))
 		if motion.length_squared() > 0.00001:
 			var direction := motion.normalized()
 			node.look_at(node.global_position + direction, Vector3.FORWARD if absf(direction.y) > 0.95 else Vector3.UP)
