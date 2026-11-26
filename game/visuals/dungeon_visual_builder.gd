@@ -70,6 +70,8 @@ func build(tiles: Dictionary, seed_value: int, corridor_blocks: Array = [], floo
 	for block in corridor_blocks:
 		box("wall", block[0], block[1])
 	flush_batches()
+	if theme_id >= 2 and DisplayServer.get_name() != "headless":
+		add_motes()
 	for i in range(LIGHT_LIMIT):
 		var light := OmniLight3D.new()
 		light.light_color = [Color("#ffb56a"), Color("#d8ae85"), Color("#8bc5cf"), Color("#eac18c"), Color("#c7c9e2"), Color("#ff9766"), Color("#f8d58b")][theme_id]
@@ -124,6 +126,9 @@ func flush_batches() -> void:
 		add_child(instance)
 
 func update_lighting(viewer: Vector3, delta: float) -> void:
+	var motes := get_node_or_null("DungeonMotes") as Node3D
+	if motes:
+		motes.position = viewer
 	light_timer -= delta
 	if light_timer <= 0.0:
 		light_timer = 0.25
@@ -140,7 +145,7 @@ func update_lighting(viewer: Vector3, delta: float) -> void:
 	for i in range(lights.size()):
 		if lights[i].visible:
 			var phase := lights[i].position.x * 0.8 + lights[i].position.z * 0.6
-			lights[i].light_energy = 1.65 + 0.14 * sin(time * 7.7 + phase) + 0.09 * sin(time * 13.0 + phase)
+			lights[i].light_energy = (1.65 + 0.14 * sin(time * 7.7 + phase) + 0.09 * sin(time * 13.0 + phase)) * (1.0 - theme_id * 0.045)
 
 static func route_marker(parent: Node3D, at: Vector3, color: Color, descending: bool) -> void:
 	var stone := StoneKit.material("wall")
@@ -336,3 +341,26 @@ func decorate_corner(tiles: Dictionary, cell: Vector2i, origin: Vector3, style: 
 		_:
 			for j in range(4):
 				box("rubble", at - n * j * 0.07 + Vector3.UP * (0.07 + j * 0.045), Vector3(0.25, 0.13, 0.22), float(j) * 0.9)
+
+func add_motes() -> void:
+	var particles := GPUParticles3D.new()
+	particles.amount = 36
+	particles.lifetime = 5.0
+	particles.local_coords = true
+	particles.visibility_aabb = AABB(Vector3(-8, -2, -8), Vector3(16, 5, 16))
+	var process := ParticleProcessMaterial.new()
+	process.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_BOX
+	process.emission_box_extents = Vector3(6, 1.2, 6)
+	process.gravity = Vector3(0, 0.015, 0)
+	process.initial_velocity_min = 0.03
+	process.initial_velocity_max = 0.15
+	particles.process_material = process
+	var dot := SphereMesh.new()
+	dot.radius = 0.012
+	dot.height = 0.024
+	dot.radial_segments = 4
+	dot.rings = 2
+	dot.material = StoneKit.solid(Color("#9fb3a5"), 0.4)
+	particles.draw_pass_1 = dot
+	particles.name = "DungeonMotes"
+	add_child(particles)
