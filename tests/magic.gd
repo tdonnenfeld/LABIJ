@@ -48,6 +48,27 @@ func run() -> void:
 	ok = ok and mob.burn == 4.0 and mob.health == 35.0
 	world.apply_spell_damage({"owner": 1, "damage": 10.0, "effect": "slow", "domain": 7, "bonus": 0.0}, mob, {1: player})
 	ok = ok and mob.burn == 0.0 and mob.slow == 4.0 and mob.health == 22.5
+	var bow := Player.new()
+	root.add_child(bow)
+	bow.setup(false, false)
+	bow.inventory.reset_items(["bow", "arrows"])
+	bow.inventory.add("arrows", 5)
+	bow.set_trigger(true)
+	ok = ok and bow.bow_drawing
+	bow.advance_combat(0.45)
+	ok = ok and is_equal_approx(bow.bow_charge, 0.5)
+	bow.set_trigger(false)
+	ok = ok and bow.attack_phase == 1 and is_equal_approx(bow.shot_power, 0.5)
+	bow.advance_combat(1.0)
+	bow.advance_combat(2.0)
+	bow.set_trigger(true)
+	bow.set_trigger(false, true)
+	ok = ok and not bow.bow_drawing and bow.attack_phase == 0
+	ok = ok and player.select_spell(0) and player.selected_spell == "firebolt"
+	ok = ok and player.select_spell(-1) and player.selected_spell == ""
+	var drops_before := world.loot.drops.size()
+	world.recover_arrow(0, Vector3.ZERO)
+	ok = ok and world.loot.drops.size() == drops_before + 1
 	if not ok:
 		push_error("Magic and sprint tests failed")
 	quit(0 if ok else 1)
