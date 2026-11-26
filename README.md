@@ -82,3 +82,7 @@ The server measures RMS of the actual voice packets, applies a -48 dBFS gate and
 ## Stone dungeon art pass
 
 The first environment theme uses original procedural low-resolution stone textures, modular wall trim, corridor frames, decorative stair plaques, warm flickering sconces and distance fog. Repeated architecture is batched by material and 8x8-cell chunk; no gameplay geometry, floor layouts, monsters, loot or routes changed. The torch light pool uses up to four nearby non-shadow-casting lights per visible floor. Use `godot --path . -- --debug-geometry` to restore the original primitive rendering. See `docs/ART_DIRECTION.md` for art dimensions and follow-up milestones.
+
+## Recorded audio assets
+
+Stone footsteps now use six CC0 Fantozzi recordings, enemy footsteps use four CC0 Kenney RPG Audio variants, and hit/block sounds use two Kenney Impact Sounds samples. Variants avoid immediate repetition, with presentation-only randomized pitch and volume. Quiet movement uses softer playback; sprinting uses louder, slightly lower-pitched playback. Existing authoritative noise radius, voice chat and enemy detection are unchanged. Other cues retain synthesized placeholders. Assets are committed, so no external download is needed at runtime. See `art/audio/CREDITS.md` for provenance.
