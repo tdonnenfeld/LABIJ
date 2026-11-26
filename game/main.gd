@@ -83,10 +83,14 @@ func _ready() -> void:
 		var environment := WorldEnvironment.new()
 		var settings := Environment.new()
 		settings.background_mode = Environment.BG_COLOR
-		settings.background_color = Color("#141311")
+		settings.background_color = Color("#141611")
 		settings.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-		settings.ambient_light_color = Color("#a7a08d")
-		settings.ambient_light_energy = 0.35
+		settings.ambient_light_color = Color("#a3ae9e")
+		settings.ambient_light_energy = 0.32
+		if not "--debug-geometry" in OS.get_cmdline_user_args():
+			settings.fog_enabled = true
+			settings.fog_light_color = Color("#252a25")
+			settings.fog_density = 0.027
 		environment.environment = settings
 		add_child(environment)
 	multiplayer.peer_connected.connect(_peer_joined)
@@ -643,6 +647,9 @@ func _physics_process(delta: float) -> void:
 		var viewed_floor: int = local.floor_id
 		feedback.viewed_floor = viewed_floor
 		world.visible_floor(viewed_floor)
+		var builder = world.floors[viewed_floor].visual_builder
+		if builder:
+			builder.update_lighting(local.position - world.floors[viewed_floor].position, delta)
 		party_panel.refresh(actors, local_id, world)
 		update_awareness_hud(local, local_id)
 		map_timer -= delta

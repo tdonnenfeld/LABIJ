@@ -1,6 +1,9 @@
 extends Node3D
 
 const CELL := 3.0
+const VisualBuilder = preload("res://game/visuals/dungeon_visual_builder.gd")
+var visual_builder: Node3D
+var debug_geometry := false
 var tiles: Dictionary = {}
 var floor_material: StandardMaterial3D
 var wall_material: StandardMaterial3D
@@ -10,9 +13,10 @@ var rooms: Array[Vector2i] = []
 
 func generate(seed_value: int, render_geometry: bool = true, room_count: int = 9) -> void:
 	visual = render_geometry
+	debug_geometry = "--debug-geometry" in OS.get_cmdline_user_args()
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed_value
-	if visual:
+	if visual and debug_geometry:
 		floor_material = StandardMaterial3D.new()
 		wall_material = StandardMaterial3D.new()
 		floor_material.albedo_color = Color("#514d43")
@@ -50,9 +54,14 @@ func generate(seed_value: int, render_geometry: bool = true, room_count: int = 9
 				var dimensions := Vector3(0.2, 3, CELL) if d.x != 0 else Vector3(CELL, 3, 0.2)
 				add_box(origin + offset + Vector3.UP * 1.5, dimensions, wall_material)
 
+	if visual and not debug_geometry:
+		visual_builder = VisualBuilder.new()
+		add_child(visual_builder)
+		visual_builder.build(tiles, seed_value)
+
 func add_box(at: Vector3, dimensions: Vector3, material: StandardMaterial3D) -> void:
 	var body := StaticBody3D.new()
-	if visual:
+	if visual and debug_geometry:
 		var mesh := MeshInstance3D.new()
 		var box := BoxMesh.new()
 		box.size = dimensions

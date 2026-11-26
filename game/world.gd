@@ -170,6 +170,19 @@ func spawn_monster(id: int, floor_id: int, kind: String, at: Vector3, group_size
 	mob.visible = not reserve
 
 func marker(level: Node3D, at: Vector3, caption: String, color: Color) -> Label3D:
+	if level is Dungeon and not level.debug_geometry and not caption.begins_with("ANCIENT"):
+		Dungeon.VisualBuilder.route_marker(level, at, color, caption.begins_with("DOWN") or not (caption.begins_with("UP") or caption.begins_with("RETURN") or caption.begins_with("SURFACE")))
+	else:
+		add_marker_disc(level, at, color)
+	var label := Label3D.new()
+	label.text = caption
+	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	label.position = at + Vector3.UP * 1.5
+	label.modulate = color
+	level.add_child(label)
+	return label
+
+func add_marker_disc(level: Node3D, at: Vector3, color: Color) -> void:
 	var mesh := MeshInstance3D.new()
 	var shape := CylinderMesh.new()
 	shape.top_radius = 0.85
@@ -183,13 +196,6 @@ func marker(level: Node3D, at: Vector3, caption: String, color: Color) -> Label3
 	mesh.material_override = mat
 	level.add_child(mesh)
 	mesh.position = at + Vector3.UP * 0.08
-	var label := Label3D.new()
-	label.text = caption
-	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	label.position = at + Vector3.UP * 1.5
-	label.modulate = color
-	level.add_child(label)
-	return label
 
 func stair_position(id: int, down: bool) -> Vector3:
 	var level = floors[id]

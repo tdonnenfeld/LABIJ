@@ -76,7 +76,8 @@ func setup(local: bool, visual: bool = true) -> void:
 		add_child(camera)
 		var light := OmniLight3D.new()
 		light.omni_range = 14
-		light.light_energy = 2.5
+		light.light_color = Color("#e8dfc5")
+		light.light_energy = 2.5 if "--debug-geometry" in OS.get_cmdline_user_args() else 1.5
 		camera.add_child(light)
 		sword = hand_item(Vector3(0.42, -0.36, -0.85), Vector3(0.10, 0.75, 0.10), Color("#bcb8a9"))
 		shield = hand_item(Vector3(-0.48, -0.38, -0.8), Vector3(0.40, 0.52, 0.12), Color("#78604a"))
