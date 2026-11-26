@@ -1030,7 +1030,7 @@ func submit_input(move: Vector2, angle: float, block: bool, sprint: bool, quiet:
 	if not multiplayer.is_server() or not move.is_finite() or not is_finite(angle):
 		return
 	var id := multiplayer.get_remote_sender_id()
-	if ready_peers.has(id) and actors.has(id):
+	if remote_gameplay_ready(id):
 		actors[id].direction = move.limit_length()
 		actors[id].heading = angle
 		actors[id].wants_block = block
@@ -1078,7 +1078,7 @@ func apply_snapshot(sequence: int, states: Dictionary, mobs: Dictionary, drops: 
 
 @rpc("any_peer", "call_remote", "reliable")
 func request_stairs() -> void:
-	if multiplayer.is_server():
+	if remote_gameplay_ready(multiplayer.get_remote_sender_id()):
 		var id := multiplayer.get_remote_sender_id()
 		if actors.has(id):
 			stair_requests[id] = true
@@ -1097,7 +1097,7 @@ func transition(sequence: int, id: int, floor_id: int, at: Vector3, mobs: Dictio
 
 @rpc("any_peer", "call_remote", "reliable")
 func request_attack() -> void:
-	if multiplayer.is_server():
+	if remote_gameplay_ready(multiplayer.get_remote_sender_id()):
 		var id := multiplayer.get_remote_sender_id()
 		if actors.has(id):
 			attack_requests[id] = true
@@ -1117,7 +1117,7 @@ func _inventory_move(index: int, at: Vector2i, split: bool, revision: int) -> vo
 
 @rpc("any_peer", "call_remote", "reliable")
 func request_inventory_move(index: int, at: Vector2i, split: bool, revision: int) -> void:
-	if multiplayer.is_server():
+	if remote_gameplay_ready(multiplayer.get_remote_sender_id()):
 		apply_inventory_move(multiplayer.get_remote_sender_id(), index, at, split, revision)
 
 func apply_inventory_move(id: int, index: int, at: Vector2i, split: bool, revision: int) -> void:
@@ -1133,7 +1133,7 @@ func apply_inventory_move(id: int, index: int, at: Vector2i, split: bool, revisi
 
 @rpc("any_peer", "call_remote", "reliable")
 func request_item(index: int, drop: bool, revision: int = -1) -> void:
-	if multiplayer.is_server():
+	if remote_gameplay_ready(multiplayer.get_remote_sender_id()):
 		var id := multiplayer.get_remote_sender_id()
 		if actors.has(id) and index >= -1 and index < actors[id].inventory.items.size():
 			item_requests[id] = [index, drop, revision]
@@ -1187,7 +1187,7 @@ func _skill_action(index: int, value: int) -> void:
 
 @rpc("any_peer", "call_remote", "reliable")
 func request_skill(index: int, value: int) -> void:
-	if multiplayer.is_server():
+	if remote_gameplay_ready(multiplayer.get_remote_sender_id()):
 		var id := multiplayer.get_remote_sender_id()
 		if actors.has(id) and actors[id].health > 0:
 			actors[id].skills.set_priority(index, value)
@@ -1200,7 +1200,7 @@ func _talent_action(action: String, id: String, index: int) -> void:
 
 @rpc("any_peer", "call_remote", "reliable")
 func request_talent(action: String, id: String, index: int) -> void:
-	if multiplayer.is_server():
+	if remote_gameplay_ready(multiplayer.get_remote_sender_id()):
 		var peer := multiplayer.get_remote_sender_id()
 		if actors.has(peer) and id.length() <= 64 and action in ["buy", "slot", "activate", "discover", "drop_jewel", "throw_stone"]:
 			talent_requests[peer] = [action, id, index]
@@ -1446,7 +1446,7 @@ func advance_voice(delta: float) -> void:
 
 @rpc("any_peer", "call_remote", "unreliable_ordered", 3)
 func submit_voice(data: PackedByteArray) -> void:
-	if multiplayer.is_server():
+	if remote_gameplay_ready(multiplayer.get_remote_sender_id()):
 		accept_voice(multiplayer.get_remote_sender_id(), data)
 
 func accept_voice(id: int, data: PackedByteArray) -> void:
@@ -1466,7 +1466,7 @@ func accept_voice(id: int, data: PackedByteArray) -> void:
 			continue
 		if not dedicated and listener_id == multiplayer.get_unique_id():
 			receive_voice(id, speaker.position, speaker.floor_id, radius, data)
-		elif multiplayer.has_multiplayer_peer():
+		elif ready_peers.has(listener_id):
 			receive_voice.rpc_id(listener_id, id, speaker.position, speaker.floor_id, radius, data)
 
 @rpc("authority", "call_remote", "unreliable_ordered", 3)
@@ -1485,7 +1485,7 @@ func _inventory_organize(operation: String, index: int, revision: int) -> void:
 
 @rpc("any_peer", "call_remote", "reliable")
 func request_inventory_organize(operation: String, index: int, revision: int) -> void:
-	if multiplayer.is_server():
+	if remote_gameplay_ready(multiplayer.get_remote_sender_id()):
 		apply_inventory_organize(multiplayer.get_remote_sender_id(), operation, index, revision)
 
 func apply_inventory_organize(id: int, operation: String, index: int, revision: int) -> void:
@@ -1511,7 +1511,7 @@ func apply_inventory_organize(id: int, operation: String, index: int, revision: 
 
 @rpc("any_peer", "call_remote", "reliable")
 func request_belt(slot: int) -> void:
-	if multiplayer.is_server():
+	if remote_gameplay_ready(multiplayer.get_remote_sender_id()):
 		use_belt(multiplayer.get_remote_sender_id(), slot)
 
 func use_belt(id: int, slot: int) -> void:
@@ -1538,7 +1538,7 @@ func _trade_action(operation: String, value: int, session_id: int, version: int,
 
 @rpc("any_peer", "call_remote", "reliable")
 func request_trade(operation: String, value: int, session_id: int, version: int, revision: int) -> void:
-	if multiplayer.is_server():
+	if remote_gameplay_ready(multiplayer.get_remote_sender_id()):
 		apply_trade(multiplayer.get_remote_sender_id(), operation, value, session_id, version, revision)
 
 func apply_trade(id: int, operation: String, value: int, session_id: int, version: int, revision: int) -> void:
@@ -1576,7 +1576,7 @@ func _inventory_equip_slot(index: int, slot: int, revision: int) -> void:
 
 @rpc("any_peer", "call_remote", "reliable")
 func request_inventory_equip_slot(index: int, slot: int, revision: int) -> void:
-	if multiplayer.is_server():
+	if remote_gameplay_ready(multiplayer.get_remote_sender_id()):
 		apply_inventory_equip_slot(multiplayer.get_remote_sender_id(), index, slot, revision)
 
 func apply_inventory_equip_slot(id: int, index: int, slot: int, revision: int) -> void:
@@ -1705,6 +1705,9 @@ func close_skills() -> void:
 	skills_ui.hide()
 	if active and world.objective.result == "":
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+
+func remote_gameplay_ready(id: int) -> bool:
+	return active and multiplayer.is_server() and ready_peers.has(id) and actors.has(id) and is_instance_valid(world) and world.objective.result == ""
 
 func reserved_slots() -> int:
 	var count := actors.size()
