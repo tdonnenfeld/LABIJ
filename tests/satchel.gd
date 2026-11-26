@@ -44,7 +44,7 @@ func run() -> void:
 	satchel.select_item(5)
 	check(satchel.use_button.text == "Throw stone", "Distraction action")
 	satchel.select_item(7)
-	check("ENCHANTED" in satchel.item_kind.text and satchel.item_picture.texture == Icons.texture("sword"), "Affix presentation")
+	check("UNCOMMON" in satchel.item_kind.text and satchel.item_title.text == Catalog.get_item("sword:keen").title and satchel.item_picture.texture == Icons.texture("sword"), "Affix presentation")
 	inventory.equip(6)
 	satchel.refresh(inventory.state())
 	satchel.equipment.select_equipment(2)
