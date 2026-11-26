@@ -20,12 +20,10 @@ var rng := RandomNumberGenerator.new()
 func _ready() -> void:
 	Mix.ensure()
 	wind = AudioStreamPlayer.new()
-	wind.stream = WIND
 	wind.bus = Mix.AMBIENCE
 	wind.volume_db = -80.0
 	add_child(wind)
 	drip = AudioStreamPlayer3D.new()
-	drip.stream = DRIP
 	drip.bus = Mix.AMBIENCE
 	drip.volume_db = -26.0
 	drip.unit_size = 3.0
@@ -57,9 +55,13 @@ static func drip_sources(tiles: Dictionary, viewer: Vector3, origin: Vector3) ->
 	return sources
 
 func update_environment(level, listener, delta: float) -> void:
+	if DisplayServer.get_name() == "headless":
+		return
 	if listener.floor_id != floor_id:
 		reset()
 		floor_id = listener.floor_id
+		wind.stream = WIND
+		drip.stream = DRIP
 		drip_timer = rng.randf_range(3.0, 7.0)
 		wind_timer = 0.0
 	scan_timer -= delta
@@ -97,6 +99,7 @@ func refresh_torches(nearby: Array[Vector3]) -> void:
 	for at in torches.keys():
 		if not nearby.has(at):
 			torches[at].stop()
+			torches[at].stream = null
 			torches[at].queue_free()
 			torches.erase(at)
 	for at in nearby:
@@ -118,11 +121,14 @@ func refresh_torches(nearby: Array[Vector3]) -> void:
 func reset() -> void:
 	for player in torches.values():
 		player.stop()
+		player.stream = null
 		player.queue_free()
 	torches.clear()
 	if wind:
 		wind.stop()
+		wind.stream = null
 	if drip:
 		drip.stop()
+		drip.stream = null
 	floor_id = -1
 	scan_timer = 0.0

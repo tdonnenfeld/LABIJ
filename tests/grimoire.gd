@@ -64,6 +64,8 @@ func run() -> void:
 	await physics_frame
 	await physics_frame
 	check(game.level_up.visible and game.level_up.last_level == 2, "Local gameplay level-up")
+	if DisplayServer.get_name() == "headless":
+		check(not game.environmental_audio.wind.playing and game.environmental_audio.wind.stream == null, "Headless run has no wind playback")
 	var popup := {"floating": "+100 XP", "floor": 0, "style": "xp", "target": 1}
 	game.feedback.show_event(popup, 1)
 	var label: Node = game.feedback.local_layer.get_child(-1)
@@ -72,6 +74,7 @@ func run() -> void:
 	check(not tween.is_valid() and not label.has_meta("feedback_tween"), "Exit cancels floating XP animation")
 	tween = null
 	check(not game.level_up.visible and game.level_up.last_level == 0, "Exit clears notification")
+	check(game.environmental_audio.wind.stream == null and game.environmental_audio.drip.stream == null, "Reset releases ambient streams")
 	game.queue_free()
 	await process_frame
 	await process_frame
