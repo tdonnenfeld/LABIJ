@@ -11,13 +11,13 @@ static func elbow_position(start: Vector3, target: Vector3, pole: Vector3, a: fl
 	var along := (a * a - b * b + distance * distance) / (2.0 * distance)
 	return start + axis * along + bend * sqrt(maxf(0.0, a * a - along * along))
 
-static func align(part: Node3D, direction: Vector3, weight: float) -> void:
+static func align(part: Node3D, direction: Vector3, weight: float, axis: Vector3 = Vector3.DOWN) -> void:
 	if direction.length_squared() < 0.000001:
 		return
 	var parent := part.get_parent_node_3d()
 	var local := parent.global_basis.inverse() * direction
 	var current := part.quaternion
-	var from := current * Vector3.DOWN
+	var from := current * axis.normalized()
 	var rotation := Quaternion(from.normalized(), local.normalized()) * current
 	part.quaternion = current.slerp(rotation.normalized(), clampf(weight, 0.0, 1.0))
 
@@ -34,5 +34,5 @@ static func solve(upper: Node3D, lower: Node3D, endpoint: Vector3, target: Vecto
 		return
 	var reachable := start + offset.normalized() * clampf(offset.length(), absf(a - b) + 0.0001, a + b - 0.0001)
 	var joint := elbow_position(start, reachable, pole, a, b)
-	align(upper, joint - start, weight)
-	align(lower, reachable - lower.global_position, weight)
+	align(upper, joint - start, weight, lower.position)
+	align(lower, reachable - lower.global_position, weight, endpoint)
