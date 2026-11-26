@@ -64,6 +64,7 @@ func _process(delta: float) -> void:
 		leaf.rotation.y = -PI * 0.5 * eased
 	else:
 		leaf.position.y = eased * 2.95
+		leaf.visible = amount < 0.99
 
 func obstructed(at: Vector3, radius: float = 0.55) -> bool:
 	var local := to_local(at)
