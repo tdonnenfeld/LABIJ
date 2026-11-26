@@ -1,5 +1,7 @@
 extends Node3D
 
+const IK = preload("res://game/visuals/limb_ik.gd")
+const VisualRagdoll = preload("res://game/visuals/visual_ragdoll.gd")
 const ArticulatedSkeleton = preload("res://game/visuals/articulated_skeleton.gd")
 const Motion = preload("res://game/visuals/motion_curves.gd")
 const Assets = preload("res://game/visuals/asset_registry.gd")
@@ -42,6 +44,10 @@ var knee_r: Node3D
 var knee_l: Node3D
 var strafe := 0.0
 var stride_direction := 1.0
+var ragdoll: VisualRagdoll
+var held_id := ""
+var support_socket: Marker3D
+var foot_weight := 0.0
 
 func setup(id: String, h: float) -> void:
 	kind = id
@@ -72,12 +78,14 @@ func setup(id: String, h: float) -> void:
 		knee_l = skeleton.drivers.get("KneeL")
 	if grip_r and grip_l:
 		var weapon: String = {"goblin": "venom_dagger", "brute": "axe", "archer": "bow", "guardian": "sword", "mage": "staff", "crypt_warden": "axe", "ember_oracle": "ember_staff", "jewel_sentinel": "spear", "jewel_hunter": "venom_dagger"}.get(id, "unarmed")
+		held_id = weapon
 		right_item = Assets.held(weapon, grip_r)
 		if id in ["guardian", "crypt_warden", "jewel_sentinel"]:
 			left_item = Assets.held("iron_shield", grip_l, true)
 		for item in [right_item, left_item]:
 			if is_instance_valid(item):
 				item.scale = Vector3.ONE * 0.7
+		configure_support_grip()
 
 func equip_inventory(bag) -> void:
 	var key: Array = [bag.weapon, bag.shield]
@@ -88,11 +96,13 @@ func equip_inventory(bag) -> void:
 		return
 	gear_key = key
 	if grip_r and grip_l:
+		held_id = key[0]
 		right_item = Assets.replace_held(right_item, key[0], grip_r)
 		left_item = Assets.replace_held(left_item, key[1], grip_l, true)
 		for item in [right_item, left_item]:
 			if is_instance_valid(item):
 				item.scale = Vector3.ONE * 0.72
+		configure_support_grip()
 	for piece in worn:
 		piece.hide()
 		piece.queue_free()
@@ -130,6 +140,18 @@ func angle(part: Node3D, target: float, weight: float) -> void:
 func animate(delta: float, alive: bool, phase: int, asleep: bool, hurt: bool, blocking: bool = false, casting: bool = false, hit_direction: float = 0.0, progress: float = -1.0) -> void:
 	var parent := get_parent_node_3d()
 	var at := parent.global_position
+	if alive and is_instance_valid(ragdoll):
+		ragdoll.queue_free()
+		ragdoll = null
+		model.rotation.x = 0.0
+		pose = 0.0
+	if not alive and is_instance_valid(ragdoll):
+		return
+	if not alive and ever_alive and skeleton and kind != "adventurer" and DisplayServer.get_name() != "headless":
+		ragdoll = VisualRagdoll.new()
+		add_child(ragdoll)
+		ragdoll.start(skeleton, parent.global_basis.x.normalized() * -hit_direction * 1.2)
+		return
 	var heading := parent.rotation.y
 	var turn := wrapf(heading - previous_yaw, -PI, PI) if sampled else 0.0
 	previous_yaw = heading
@@ -232,4 +254,54 @@ func animate(delta: float, alive: bool, phase: int, asleep: bool, hurt: bool, bl
 	if tail:
 		tail.rotation.y = sin(clock + breath_clock * 0.35) * 0.35
 	if skeleton:
+		apply_foot_ik(delta, gait)
 		skeleton.sync_parts()
+		apply_hand_ik(phase, p)
+		skeleton.sync_parts()
+
+func configure_support_grip() -> void:
+	if not is_instance_valid(right_item):
+		support_socket = null
+		return
+	var base := held_id.get_slice(":", 0)
+	if base not in ["bow", "longbow", "spear", "staff", "ember_staff", "oracle_staff", "axe"]:
+		support_socket = null
+		return
+	support_socket = Marker3D.new()
+	support_socket.name = "SupportGrip"
+	right_item.add_child(support_socket)
+	match base:
+		"bow", "longbow":
+			support_socket.position = Vector3(0.22, 0, 0)
+		"spear":
+			support_socket.position = Vector3(0, 0, 0.23)
+		_:
+			support_socket.position = Vector3(0, 0, 0.20)
+
+func apply_hand_ik(phase: int, progress: float) -> void:
+	if not is_instance_valid(support_socket) or not elbow_l or not grip_l or is_instance_valid(left_item):
+		return
+	var target := support_socket.global_position
+	var endpoint := Vector3(0, -0.22, 0)
+	if is_instance_valid(grip_l):
+		endpoint = grip_l.position
+	# Bow support uses the real bow handle; other weapons use a shaft marker.
+	var pole := -global_basis.x.normalized()
+	IK.solve(arm_l, elbow_l, endpoint, target, pole, 1.0 if phase != 2 else 1.0 - Motion.settle(progress) * 0.35)
+
+func apply_foot_ik(delta: float, gait: float) -> void:
+	if is_rat or not is_inside_tree() or not knee_r or not knee_l:
+		return
+	foot_weight = lerpf(foot_weight, 1.0, Motion.blend(delta, 8.0))
+	for pair in [[leg_r, knee_r, gait], [leg_l, knee_l, -gait]]:
+		var upper: Node3D = pair[0]
+		var lower: Node3D = pair[1]
+		var endpoint := Vector3(0, -0.19, 0)
+		var foot := lower.to_global(endpoint)
+		var query := PhysicsRayQueryParameters3D.create(foot + Vector3.UP * 0.30, foot - Vector3.UP * 0.40, 1)
+		var ground := get_world_3d().direct_space_state.intersect_ray(query)
+		if ground.is_empty():
+			continue
+		var target: Vector3 = ground.position + Vector3.UP * 0.035
+		var stance := 1.0 - clampf(maxf(0.0, float(pair[2])) * 2.0, 0.0, 1.0)
+		IK.solve(upper, lower, endpoint, target, -global_basis.z.normalized(), foot_weight * stance * 0.75)
