@@ -175,6 +175,8 @@ func animate(delta: float, alive: bool, phase: int, asleep: bool, hurt: bool, bl
 		leg_l.rotation.z = lerpf(leg_l.rotation.z, -gait * strafe * 0.55, weight)
 	angle(knee_r, maxf(0.0, -gait) * 1.1, weight)
 	angle(knee_l, maxf(0.0, gait) * 1.1, weight)
+	if skeleton and not is_rat:
+		skeleton.sample_gait(clock, speed, clampf(speed / 2.3, 0.0, 1.0))
 	var windup := -1.45
 	var release := 0.65
 	match kind:
