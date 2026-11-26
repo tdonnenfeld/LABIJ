@@ -291,6 +291,8 @@ func transfer(actor, peer_id: int, actors: Dictionary = {}) -> bool:
 		return false
 	if interact_objective(actor, peer_id):
 		return true
+	if revive_companion(actor, actors):
+		return true
 	var old: int = actor.floor_id
 	if discover_secret(actor):
 		return true
@@ -351,6 +353,7 @@ func simulate(actors: Dictionary, delta: float) -> void:
 		mob.hurt = maxf(0.0, mob.hurt - delta)
 		mob.force_timer = maxf(0.0, mob.force_timer - delta)
 		var stats := Bestiary.stats(mob.kind)
+		var tactics := Bestiary.tactics(mob.kind)
 		mob.slow = maxf(0.0, mob.slow - delta)
 		if mob.burn > 0:
 			var burn_elapsed := minf(delta, mob.burn)
@@ -422,6 +425,14 @@ func simulate(actors: Dictionary, delta: float) -> void:
 		if target != 0:
 			closest = distances[target]
 		if mob.phase != 0:
+			if mob.phase == 1:
+				var moving_target = actors.get(mob.attack_target)
+				if moving_target != null and moving_target.health > 0 and moving_target.floor_id == mob.floor:
+					if float(tactics[2]) == 0.0 and horizontal_distance(node.position, moving_target.position) > float(stats[3]) * 0.65:
+						move_monster(mob, moving_target.position, delta, float(stats[4]) * float(tactics[1]))
+					elif float(tactics[2]) > 0.0 and horizontal_distance(node.position, moving_target.position) < float(tactics[2]):
+						retreat_monster(mob, moving_target.position, delta, float(stats[4]) * float(tactics[1]))
+					face_toward(mob, moving_target.position, delta)
 			mob.timer -= delta
 			if mob.timer <= 0:
 				if mob.phase == 1:
@@ -452,7 +463,7 @@ func simulate(actors: Dictionary, delta: float) -> void:
 			if not mob.asleep and occupied.has(mob.floor):
 				idle_move(mob, delta)
 			continue
-		if closest <= float(stats[3]) and Combat.clear_path(node, actors[target].position):
+		if closest <= float(stats[3]) + float(tactics[0]) and Combat.clear_path(node, actors[target].position):
 			face_toward(mob, actors[target].position)
 			mob.move_speed = 0.0
 			mob.phase = 1
@@ -461,6 +472,13 @@ func simulate(actors: Dictionary, delta: float) -> void:
 			mob.aim = actors[target].position
 			continue
 		move_monster(mob, actors[target].position, delta, float(stats[4]) * (1.0 + 0.08 * objective.pressure()))
+
+func retreat_monster(mob: Dictionary, target: Vector3, delta: float, speed: float) -> void:
+	var node: CharacterBody3D = mob.node
+	var away := node.position - target
+	away.y = 0.0
+	if away.length_squared() > 0.01:
+		node.move_and_collide(away.normalized() * speed * delta, false, 0.001)
 
 func move_monster(mob: Dictionary, at: Vector3, delta: float, speed: float) -> void:
 	var node: CharacterBody3D = mob.node
@@ -989,10 +1007,13 @@ func release_jewel(actor, peer: int) -> bool:
 func update_objective(actors: Dictionary, delta: float) -> void:
 	if objective.result != "":
 		return
+	var living := 0
 	for actor in actors.values():
-		if actor.health <= 0:
-			fail_party(actor.display_name)
-			return
+		if actor.health > 0:
+			living += 1
+	if living == 0 and not actors.is_empty():
+		fail_party("The party")
+		return
 	if objective.started:
 		objective.elapsed += delta
 
@@ -1017,7 +1038,31 @@ func player_hit(actor, peer: int, amount: float, blocked: bool, parried: bool, s
 	var popup := effect if amount == 0 and effect != "" else ("-" + number + (" (" + effect + ")" if effect != "" else ""))
 	journal.add("Combat", "%s hits %s for %s%s" % [source_name, actor.display_name, number, " (" + effect + ")" if effect != "" else ""], actor.floor_id, actor.position + Vector3.UP, popup, "blocked" if blocked else "incoming", peer, actor.last_damage_source)
 	if actor.health <= 0:
-		fail_party(actor.display_name)
+		release_jewel(actor, peer)
+		journal.add("Party", "%s is downed — a companion can revive them" % actor.display_name)
+
+func revive_companion(actor, actors: Dictionary) -> bool:
+	if actor.health <= 0 or actor.attack_phase != 0 or actor.cast_id != "" or not safe(actor):
+		return false
+	for other in actors.values():
+		if other == actor or other.health > 0 or other.floor_id != actor.floor_id:
+			continue
+		if horizontal_distance(actor.position, other.position) > 2.0 or not Combat.clear_path(actor, other.position):
+			continue
+		var landing := arrival_position(other.floor_id, other.position, actors, other)
+		if landing == Vector3.INF:
+			continue
+		other.position = landing
+		other.health = other.max_health() * 0.3
+		other.stamina = 30.0
+		other.velocity = Vector3.ZERO
+		other.direction = Vector2.ZERO
+		other.collision_layer = 2
+		other.collision_mask = 7
+		journal.add("Party", "%s revives %s" % [actor.display_name, other.display_name])
+		sound(actor.floor_id, actor.position, 4.0, "potion")
+		return true
+	return false
 
 func fail_party(player_name: String) -> void:
 	if objective.result != "":
