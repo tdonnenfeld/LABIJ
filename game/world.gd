@@ -291,7 +291,7 @@ func animate_monsters(delta: float) -> void:
 			continue
 		var rig = mob.node.get_node_or_null("ActorRig")
 		if rig:
-			rig.animate(delta, mob.health > 0, mob.phase, mob.asleep, mob.hurt > 0)
+			rig.animate(delta, mob.health > 0, mob.phase, mob.asleep, mob.hurt > 0, false, false, float(mob.get("hit_direction", 0.0)))
 
 
 func transfer(actor, peer_id: int, actors: Dictionary = {}) -> bool:
@@ -681,7 +681,7 @@ func monster_snapshot() -> Dictionary:
 	var states := {}
 	for id in monsters:
 		var mob = monsters[id]
-		states[id] = [mob.floor, mob.node.position, mob.health, mob.phase, mob.hurt, mob.stun, mob.bleed, mob.burn, mob.slow, mob.target, mob.poison, mob.asleep, mob.investigate, mob.threat.duplicate(), mob.node.rotation.y]
+		states[id] = [mob.floor, mob.node.position, mob.health, mob.phase, mob.hurt, mob.stun, mob.bleed, mob.burn, mob.slow, mob.target, mob.poison, mob.asleep, mob.investigate, mob.threat.duplicate(), mob.node.rotation.y, mob.get("hit_direction", 0.0)]
 	return states
 
 func apply_monsters(states: Dictionary, smooth: bool = false) -> void:
@@ -707,6 +707,8 @@ func apply_monsters(states: Dictionary, smooth: bool = false) -> void:
 			monsters[id].asleep = states[id][11]
 			monsters[id].investigate = states[id][12]
 			monsters[id].threat = states[id][13]
+			if states[id].size() > 15:
+				mob.hit_direction = states[id][15]
 			set_monster_collision(monsters[id])
 
 func strike(actor, party: Dictionary = {}) -> bool:
@@ -722,7 +724,7 @@ func strike(actor, party: Dictionary = {}) -> bool:
 		var source_peer = party.find_key(actor)
 		var direction := Combat.aim_direction(actor.heading, actor.look_pitch)
 		var effect := "arrow_poison" if actor.skills.learned.has("venom_arrow") else "arrow"
-		projectiles.launch(actor.floor_id, Combat.shot_origin(actor), direction, weapon.projectile_speed, actor.attack_reach(), actor.attack_damage(), weapon.tint, 0 if source_peer == null else source_peer, false, effect, 10, actor.skills.bonus("pierce", 10))
+		projectiles.launch(actor.floor_id, Combat.shot_origin(actor), direction, weapon.projectile_speed * lerpf(0.45, 1.0, actor.shot_power), actor.attack_reach() * lerpf(0.5, 1.0, actor.shot_power), actor.attack_damage() * lerpf(0.4, 1.0, actor.shot_power), weapon.tint, 0 if source_peer == null else source_peer, false, effect, 10, actor.skills.bonus("pierce", 10))
 		actor.empowered = ""
 		return false
 	var hits: Array = []
@@ -766,6 +768,8 @@ func hit_monster(actor, mob: Dictionary, party: Dictionary) -> void:
 	var stats := Bestiary.stats(mob.kind)
 	var domain: int = actor.skills.weapon_domain(actor.inventory.weapon)
 	var damage: float = actor.attack_damage()
+	if mob.stun > 0.0 and mob.slow > 0.0 and domain in [2, 3]:
+		damage *= 1.3
 	if ambush:
 		damage *= 1.0 + actor.skills.bonus("ambush")
 		status_event(mob, "Ambush")
@@ -789,6 +793,10 @@ func hit_monster(actor, mob: Dictionary, party: Dictionary) -> void:
 	log_monster_hit(mob, actor.display_name, minf(mob.health, damage), "damage")
 	mob.health = maxf(0.0, mob.health - damage)
 	mob.hurt = 0.18
+	mob.hit_direction = hit_side(mob, actor.position)
+	if mob.stun > 0.0 and mob.slow > 0.0 and domain in [2, 3]:
+		status_event(mob, "Shattered")
+		mob.slow = 0.0
 	actor.skills.credit(domain, 8)
 	if mob.health <= 0:
 		reward_kill(mob, actor, party)
@@ -872,13 +880,16 @@ func discover(actor) -> bool:
 	actor.skills.discovered.append(secret_id)
 	return true
 
-func cast(actor, source_peer: int, id: String) -> void:
+func cast(actor, source_peer: int, id: String, party: Dictionary = {}) -> void:
 	player_noise(actor, Acoustics.MAGIC, "magic")
 	var stats := Spells.get_spell(id)
 	var direction := Combat.aim_direction(actor.heading, actor.look_pitch)
 	var damage: float = stats[2] * (1.0 + actor.skills.bonus("spell_damage", stats[0]) + Catalog.get_item(actor.inventory.weapon).spell_power)
 	var bonus: float = actor.skills.bonus("burn_bonus", stats[0]) + actor.skills.bonus("slow_bonus", stats[0])
-	projectiles.launch(actor.floor_id, Combat.shot_origin(actor), direction, stats[3], stats[4], damage, stats[6], source_peer, false, stats[7], stats[0], bonus)
+	if id == "spark" and actor.selected_spell == id:
+		cast_beam(actor, source_peer, direction, damage * 0.25, stats[4], party)
+	else:
+		projectiles.launch(actor.floor_id, Combat.shot_origin(actor), direction, stats[3], stats[4], damage, stats[6], source_peer, false, stats[7], stats[0], bonus)
 
 func spell_hit(shot: Dictionary, mob: Dictionary, actors: Dictionary) -> void:
 	if shot.effect == "blast":
@@ -903,6 +914,7 @@ func spell_hit(shot: Dictionary, mob: Dictionary, actors: Dictionary) -> void:
 			damage *= 0.65
 			var jump := shot.duplicate()
 			jump.damage = damage
+			journal.add("Combat", "Lightning arcs", shot.floor, nearest.node.position, "", "lightning", 0, source.position)
 			apply_spell_damage(jump, nearest, actors)
 			visited.append(nearest)
 			source = nearest.node
@@ -910,6 +922,11 @@ func spell_hit(shot: Dictionary, mob: Dictionary, actors: Dictionary) -> void:
 		apply_spell_damage(shot, mob, actors)
 
 func spell_blast(shot: Dictionary, at: Vector3, actors: Dictionary) -> void:
+	for entry in fixtures.values():
+		if not entry.used and entry.kind == "crate" and entry.floor == shot.floor and entry.at.distance_to(at) <= 2.5:
+			var ray := PhysicsRayQueryParameters3D.create(at, entry.at + Vector3.UP * 0.4, 1)
+			if get_world_3d().direct_space_state.intersect_ray(ray).is_empty():
+				destroy_crate(entry)
 	emit_noise(shot.floor, at, Acoustics.EXPLOSION)
 	sound(shot.floor, at, Acoustics.EXPLOSION, "explosion")
 	for mob in monsters.values():
@@ -939,6 +956,8 @@ func apply_spell_damage(shot: Dictionary, mob: Dictionary, actors: Dictionary) -
 	log_monster_hit(mob, caster.display_name if caster != null else "Projectile", minf(mob.health, damage), "damage" if shot.effect.begins_with("arrow") else "magic")
 	mob.health = maxf(0.0, mob.health - damage)
 	mob.hurt = 0.18
+	if caster != null:
+		mob.hit_direction = hit_side(mob, caster.position)
 	if caster != null and caster.health > 0:
 		caster.skills.credit(shot.domain, 8)
 	if mob.health <= 0:
@@ -964,6 +983,7 @@ func apply_spell_damage(shot: Dictionary, mob: Dictionary, actors: Dictionary) -
 		"freeze":
 			status_event(mob, "Frozen")
 			mob.stun = maxf(mob.stun, 2.0)
+			mob.slow = maxf(mob.slow, 2.0)
 			mob.phase = 0
 		"shock", "chain", "stone":
 			status_event(mob, "Staggered")
@@ -1348,3 +1368,60 @@ func break_fixture(actor) -> bool:
 		journal.add("Loot", "%s breaks a supply crate" % actor.display_name)
 		return true
 	return false
+
+func hit_side(mob: Dictionary, source: Vector3) -> float:
+	var node: Node3D = mob.node
+	var offset := source - node.position
+	return clampf(node.global_basis.x.dot(offset.normalized()), -1.0, 1.0)
+
+func recover_arrow(floor_id: int, at: Vector3) -> void:
+	var level = floors[floor_id]
+	var cell := Acoustics.cell(at)
+	if not level.tiles.has(cell):
+		return
+	var landing := Vector3(at.x, level.position.y + 0.3, at.z)
+	loot.spawn("arrows", floor_id, landing, 1)
+
+func destroy_crate(entry: Dictionary) -> void:
+	if entry.used:
+		return
+	mark_fixture_used(entry)
+	loot.spawn("noise_stone", entry.floor, entry.at + Vector3.UP * 0.3, 2)
+	journal.add("Exploration", "A supply crate breaks")
+	sound(entry.floor, entry.at, 5.0, "impact")
+
+func projectile_fixture_hit(floor_id: int, from: Vector3, to: Vector3, limit: float) -> float:
+	var closest: Dictionary = {}
+	var best := limit
+	for entry in fixtures.values():
+		if entry.used or entry.kind != "crate" or entry.floor != floor_id:
+			continue
+		var t := Projectiles.segment_hit(from, to, entry.at + Vector3.UP * 0.25, 0.45)
+		if t >= 0.0 and t < best:
+			closest = entry
+			best = t
+	if closest.is_empty():
+		return -1.0
+	destroy_crate(closest)
+	return best
+
+func cast_beam(actor, peer: int, direction: Vector3, damage: float, reach: float, party: Dictionary) -> void:
+	var from := Combat.shot_origin(actor)
+	var to := from + direction * reach
+	var query := PhysicsRayQueryParameters3D.create(from, to, 1)
+	var wall := get_world_3d().direct_space_state.intersect_ray(query)
+	var limit := 1.0 if wall.is_empty() else from.distance_to(wall.position) / reach
+	var target: Dictionary = {}
+	for mob in monsters.values():
+		if mob.health <= 0 or mob.floor != actor.floor_id:
+			continue
+		var radius := maxf(0.45, float(Bestiary.stats(mob.kind)[11]) * 0.5)
+		var t := Projectiles.segment_hit(from, to, mob.node.position, radius)
+		if t >= 0.0 and t < limit:
+			limit = t
+			target = mob
+	journal.add("Combat", "Lightning beam", actor.floor_id, from.lerp(to, limit), "", "lightning", 0, from)
+	if projectile_fixture_hit(actor.floor_id, from, to, limit) >= 0.0:
+		return
+	if not target.is_empty():
+		apply_spell_damage({"owner": peer, "damage": damage, "effect": "shock", "domain": 8, "bonus": 0.0}, target, party if not party.is_empty() else {peer: actor})

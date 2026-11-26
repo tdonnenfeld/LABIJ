@@ -74,6 +74,7 @@ var dungeon_environment: Environment
 var atmosphere_floor := -1
 var cancel_join_button: Button
 var input_age: Dictionary = {}
+var local_trigger := false
 var selected_profile: Array = ["", 0, 0]
 var noise_label: Label
 var target_label: Label
@@ -496,6 +497,7 @@ func add_audio_slider(panel: VBoxContainer, title: String, bus: String, default_
 	slider.value_changed.connect(func(value: float): settings.set_volume(bus, value); settings.save_file())
 
 func _start() -> void:
+	local_trigger = false
 	if not dedicated and not actors.has(multiplayer.get_unique_id()):
 		return
 	connecting = false
@@ -597,6 +599,7 @@ func _connected() -> void:
 	status.text = "Generating expedition..."
 
 func _failed(message: String = "Choose Solo, Host or Join") -> void:
+	local_trigger = false
 	active = false
 	connecting = false
 	bootstrapping = false
@@ -852,10 +855,8 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif settings.matches(event, "discover"):
 		_talent_action("discover", "", 0)
 	elif settings.matches(event, "attack"):
-		if multiplayer.is_server():
-			attack_requests[multiplayer.get_unique_id()] = true
-		else:
-			request_attack.rpc_id(1)
+		set_local_trigger(true, false)
+		return
 	elif event is InputEventMouseMotion:
 		yaw -= event.relative.x * 0.002 * settings.sensitivity
 		pitch = clampf(pitch - event.relative.y * 0.002 * settings.sensitivity, -1.4, 1.4)
@@ -867,10 +868,28 @@ func _unhandled_input(event: InputEvent) -> void:
 				else:
 					request_belt.rpc_id(1, i)
 				return
+		if event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_0:
+			_talent_action("select_spell", "", -1)
+			return
 		for i in range(3):
 			if settings.matches(event, "ability%d" % (i + 1)):
-				_talent_action("activate", "", i)
+				var actor = actors.get(multiplayer.get_unique_id())
+				if actor != null and not actor.Spells.get_spell(actor.skills.slots[i]).is_empty() and not Input.is_physical_key_pressed(KEY_ALT):
+					_talent_action("select_spell", "", i)
+				else:
+					_talent_action("activate", "", i)
 				return
+
+func set_local_trigger(held: bool, cancel: bool) -> void:
+	if local_trigger == held:
+		return
+	local_trigger = held
+	if multiplayer.is_server():
+		var actor = actors.get(multiplayer.get_unique_id())
+		if actor != null:
+			actor.set_trigger(held, cancel)
+	else:
+		request_trigger.rpc_id(1, held, cancel)
 
 func _physics_process(delta: float) -> void:
 	if not active:
@@ -891,10 +910,14 @@ func _physics_process(delta: float) -> void:
 		actor.rotation.y = yaw
 		var enabled := Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and not escape_menu.visible and get_window().has_focus()
 		var block := enabled and settings.pressed("block")
+		var held := enabled and settings.pressed("attack")
+		if held != local_trigger:
+			set_local_trigger(held, not enabled)
 		var sprint := enabled and settings.pressed("sprint")
 		var quiet := enabled and settings.pressed("quiet")
 		if multiplayer.is_server():
-			actor.wants_block = block
+			actor.aiming = block and actor.ranged_mode()
+			actor.wants_block = block and not actor.ranged_mode()
 			actor.wants_sprint = sprint
 			actor.wants_quiet = quiet
 			actor.direction = move.limit_length()
@@ -913,6 +936,8 @@ func _physics_process(delta: float) -> void:
 				actors[peer].wants_block = false
 				actors[peer].wants_sprint = false
 				actors[peer].wants_quiet = false
+				actors[peer].aiming = false
+				actors[peer].set_trigger(false, true)
 		for id in pending_profiles.keys():
 			pending_profiles[id] -= delta
 			if pending_profiles[id] <= 0:
@@ -939,7 +964,7 @@ func _physics_process(delta: float) -> void:
 		for id in actors:
 			var spell_id: String = actors[id].advance_cast(delta)
 			if spell_id != "":
-				world.cast(actors[id], id, spell_id)
+				world.cast(actors[id], id, spell_id, actors)
 		world.simulate(actors, delta)
 		if world.objective.result == "":
 			world.projectiles.step(world, actors, delta)
@@ -1030,7 +1055,7 @@ func _physics_process(delta: float) -> void:
 			stamina_bar.get_child(0).text = "Stamina  %d / %d" % [ceili(local.stamina), int(stamina_bar.max_value)]
 			mana_bar.get_child(0).text = "Mana  %d / %d" % [ceili(local.mana), int(mana_bar.max_value)]
 			if local.camera:
-				local.camera.fov = lerpf(local.camera.fov, 85.0 if local.sprinting else 75.0, minf(1.0, delta * 8.0))
+				local.camera.fov = lerpf(local.camera.fov, 52.0 if local.aiming else (85.0 if local.sprinting else 75.0), minf(1.0, delta * 8.0))
 			crosshair.modulate = Color("#90df87") if local.swing_hit and local.attack_phase == 2 else Color.WHITE
 		if hud:
 			var route: Dictionary = world.route_at(local.floor_id, local.position)
@@ -1040,6 +1065,10 @@ func _physics_process(delta: float) -> void:
 			if world.secret_near(local):
 				hud.text += "  |  %s: Inspect loose masonry" % settings.label("interact")
 			var hint: String = world.objective_hint(local, local_id)
+			if local.selected_spell != "":
+				hint += "\nSpell: %s · LMB cast · 0 weapon" % local.selected_spell.capitalize()
+			elif local.bow_drawing:
+				hint += "\nDraw: %d%%" % roundi(local.bow_charge * 100.0)
 			if hint != "":
 				hud.text += "  |  " + hint.replace("E:", settings.label("interact") + ":").replace("G:", settings.label("drop_jewel") + ":")
 			update_objective_hud(local_id)
@@ -1073,7 +1102,8 @@ func submit_input(move: Vector2, angle: float, block: bool, sprint: bool, quiet:
 		actors[id].direction = move.limit_length()
 		actors[id].heading = wrapf(angle, -PI, PI)
 		actors[id].look_pitch = clampf(vertical, -1.4, 1.4)
-		actors[id].wants_block = block
+		actors[id].aiming = block and actors[id].ranged_mode()
+		actors[id].wants_block = block and not actors[id].ranged_mode()
 		actors[id].wants_sprint = sprint
 		actors[id].wants_quiet = quiet
 
@@ -1115,6 +1145,11 @@ func apply_snapshot(sequence: int, states: Dictionary, mobs: Dictionary, drops: 
 			actors[id].noise_peak = states[id][17]
 			if states[id].size() > 18:
 				actor.look_pitch = states[id][18]
+			if states[id].size() > 22:
+				actor.selected_spell = states[id][19]
+				actor.aiming = states[id][20]
+				actor.bow_charge = states[id][21]
+				actor.bow_drawing = states[id][22]
 			actors[id].collision_layer = 2 if actors[id].health > 0 else 0
 			actors[id].collision_mask = 7 if actors[id].health > 0 else 0
 
@@ -1138,10 +1173,16 @@ func transition(sequence: int, id: int, floor_id: int, at: Vector3, mobs: Dictio
 	world.apply_secrets(secrets)
 
 @rpc("any_peer", "call_remote", "reliable")
+func request_trigger(held: bool, cancel: bool) -> void:
+	var id := multiplayer.get_remote_sender_id()
+	if remote_gameplay_ready(id):
+		actors[id].set_trigger(held, cancel)
+
+@rpc("any_peer", "call_remote", "reliable")
 func request_attack() -> void:
 	if remote_gameplay_ready(multiplayer.get_remote_sender_id()):
 		var id := multiplayer.get_remote_sender_id()
-		if actors.has(id):
+		if actors.has(id) and not actors[id].ranged_mode():
 			attack_requests[id] = true
 
 func _inventory_action(index: int, drop: bool) -> void:
@@ -1244,11 +1285,15 @@ func _talent_action(action: String, id: String, index: int) -> void:
 func request_talent(action: String, id: String, index: int) -> void:
 	if remote_gameplay_ready(multiplayer.get_remote_sender_id()):
 		var peer := multiplayer.get_remote_sender_id()
-		if actors.has(peer) and id.length() <= 64 and action in ["buy", "slot", "activate", "discover", "drop_jewel", "throw_stone"]:
+		if actors.has(peer) and id.length() <= 64 and action in ["buy", "slot", "activate", "select_spell", "discover", "drop_jewel", "throw_stone"]:
 			talent_requests[peer] = [action, id, index]
 
 func apply_talent(actor, request: Array) -> void:
 	if actor.health <= 0:
+		return
+	if request[0] == "select_spell":
+		actor.set_trigger(false, true)
+		actor.select_spell(request[2])
 		return
 	if request[0] == "activate":
 		var slot: int = request[2]
@@ -1413,7 +1458,9 @@ func display_events(events: Array) -> void:
 			feedback.show_event(event, local_id)
 			if event.target == local_id and event.style in ["incoming", "blocked"]:
 				damage_direction.hit(event.get("source", Vector3.INF), event.style == "blocked")
-			if DisplayServer.get_name() != "headless" and event.target != local_id:
+			if DisplayServer.get_name() != "headless" and event.style == "lightning":
+				combat_fx.lightning(event.source, event.position, event.floor, event.id)
+			elif DisplayServer.get_name() != "headless" and event.target != local_id:
 				combat_fx.burst(event.position - Vector3.UP * 0.35, event.floor, event.style, event.id)
 
 func update_awareness_hud(local, local_id: int) -> void:
@@ -1771,7 +1818,7 @@ func reserved_slots() -> int:
 func player_states() -> Dictionary:
 	var states := {}
 	for id in actors:
-		states[id] = [actors[id].position, actors[id].heading, actors[id].floor_id, actors[id].health, actors[id].stamina, actors[id].blocking, actors[id].attack_phase, actors[id].hurt_timer, actors[id].swing_hit, actors[id].inventory.state(), actors[id].skills.state(), actors[id].combat_timer, actors[id].mana, actors[id].sprinting, actors[id].cast_id, actors[id].noise_level, actors[id].quiet_walking, actors[id].noise_peak, actors[id].look_pitch]
+		states[id] = [actors[id].position, actors[id].heading, actors[id].floor_id, actors[id].health, actors[id].stamina, actors[id].blocking, actors[id].attack_phase, actors[id].hurt_timer, actors[id].swing_hit, actors[id].inventory.state(), actors[id].skills.state(), actors[id].combat_timer, actors[id].mana, actors[id].sprinting, actors[id].cast_id, actors[id].noise_level, actors[id].quiet_walking, actors[id].noise_peak, actors[id].look_pitch, actors[id].selected_spell, actors[id].aiming, actors[id].bow_charge, actors[id].bow_drawing]
 
 	return states
 

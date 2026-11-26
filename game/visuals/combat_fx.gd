@@ -59,3 +59,30 @@ func reset() -> void:
 	for entry in bursts:
 		entry.node.queue_free()
 	bursts.clear()
+
+func lightning(from: Vector3, to: Vector3, floor_id: int, seed_value: int) -> void:
+	if floor_id != viewed_floor or from.distance_squared_to(to) < 0.001:
+		return
+	if bursts.size() >= LIMIT:
+		var oldest: Dictionary = bursts.pop_front()
+		oldest.node.queue_free()
+	var rng := RandomNumberGenerator.new()
+	rng.seed = seed_value
+	var node := Node3D.new()
+	add_child(node)
+	var previous := from
+	for i in range(1, 9):
+		var point := from.lerp(to, float(i) / 8.0)
+		if i < 8:
+			point += Vector3(rng.randf_range(-0.12, 0.12), rng.randf_range(-0.12, 0.12), rng.randf_range(-0.12, 0.12))
+		var part := MeshInstance3D.new()
+		part.mesh = mesh
+		part.material_override = material(Color("#f1e8a5"))
+		node.add_child(part)
+		part.position = (previous + point) * 0.5
+		var direction := point - previous
+		if direction.length_squared() > 0.00001:
+			part.look_at(part.global_position + direction, Vector3.FORWARD if absf(direction.normalized().y) > 0.95 else Vector3.UP)
+		part.scale = Vector3(0.045, 0.045, direction.length())
+		previous = point
+	bursts.append({"node": node, "floor": floor_id, "age": 0.20, "particles": []})
