@@ -1,6 +1,7 @@
 extends SceneTree
 
 const Skills = preload("res://game/progression/skills.gd")
+const Inventory = preload("res://game/items/inventory.gd")
 const UI = preload("res://game/progression/skills_ui.gd")
 const Banner = preload("res://game/ui/level_up.gd")
 var failures := 0
@@ -23,7 +24,17 @@ func run() -> void:
 	for node in Skills.Talents.NODES:
 		if node[8]:
 			model.discovered.append(node[0])
-	ui.refresh(model.state(), true)
+	model.credit(6, 3000)
+	model.read_scroll("firebolt")
+	model.assign_slot(0, "firebolt")
+	var bag := Inventory.new()
+	bag.add("axe")
+	ui.refresh(model.state(), true, bag.state())
+	check(ui.pages.get_tab_count() == 4 and ui.training_rows.get_child_count() == 13, "Training and equipment tabs")
+	check(ui.training_rows.get_child(1).get_child(0).text == "Fire Magic", "Highest lifetime XP first")
+	check(ui.known_rows.get_child_count() >= 4, "Learned spell library")
+	check(ui.equipment_rows.get_child_count() >= 12, "Owned equipment displayed")
+	ui.pages.current_tab = 0
 	var paper: StyleBoxTexture = ui.get_theme_stylebox("panel")
 	check(paper.texture.get_image().get_format() == Image.FORMAT_RGB8, "Opaque grimoire paper")
 	for domain in range(Skills.TITLES.size()):
