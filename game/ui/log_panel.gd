@@ -5,6 +5,7 @@ var history: Array = []
 var filter := "All"
 var feed: RichTextLabel
 var last_id := 0
+var filter_buttons: Dictionary = {}
 
 func _ready() -> void:
 	var column := VBoxContainer.new()
@@ -14,15 +15,19 @@ func _ready() -> void:
 	for category in ["All", "Combat", "XP", "Loot", "Party"]:
 		var button := Button.new()
 		button.text = category
+		button.toggle_mode = true
+		button.button_pressed = category == filter
+		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		filter_buttons[category] = button
 		button.focus_mode = Control.FOCUS_NONE
 		tabs.add_child(button)
 		button.pressed.connect(select_filter.bind(category))
 	var hint := Label.new()
-	hint.text = "EXPEDITION LOG [L] · Esc to scroll"
+	hint.text = "Journal [L] · Esc to scroll"
 	hint.add_theme_font_size_override("font_size", 12)
 	column.add_child(hint)
 	feed = RichTextLabel.new()
-	feed.custom_minimum_size = Vector2(345, 104)
+	feed.custom_minimum_size = Vector2(248, 86)
 	feed.add_theme_font_size_override("normal_font_size", 13)
 	feed.scroll_following = true
 	feed.selection_enabled = true
@@ -30,6 +35,8 @@ func _ready() -> void:
 
 func select_filter(category: String) -> void:
 	filter = category
+	for id in filter_buttons:
+		filter_buttons[id].set_pressed_no_signal(id == filter)
 	rebuild()
 
 func receive(events: Array) -> void:
@@ -57,5 +64,4 @@ func rebuild() -> void:
 func reset() -> void:
 	history.clear()
 	last_id = 0
-	filter = "All"
-	rebuild()
+	select_filter("All")
