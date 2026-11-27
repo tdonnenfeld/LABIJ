@@ -23,7 +23,7 @@ func check(ok: bool, description: String) -> void:
 
 func run() -> void:
 	check(is_equal_approx(Motion.blend(0.2, 10.0), 1.0 - pow(1.0 - Motion.blend(0.1, 10.0), 2.0)), "Frame-rate independent smoothing")
-	check(Motion.strike(0.0) == 0.0 and Motion.strike(0.22) == 1.0 and Motion.settle(1.0) == 1.0, "Strike and recovery curve endpoints")
+	check(Motion.strike(0.0) == 0.0 and Motion.strike(0.72) == 0.0 and Motion.strike(1.0) == 1.0 and Motion.settle(0.0) == 0.0 and Motion.settle(1.0) == 1.0, "Strike finishes at the damage boundary; recovery starts at impact")
 	check(Motion.swing("axe") != Motion.swing("spear"), "Distinct weapon trajectories")
 	var bend := IK.elbow_position(Vector3.ZERO, Vector3(1, 0, 0), Vector3.UP, 1.0, 1.0)
 	check(is_equal_approx(bend.length(), 1.0) and is_equal_approx(bend.distance_to(Vector3.RIGHT), 1.0), "Two-bone IK preserves limb lengths")

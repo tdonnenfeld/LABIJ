@@ -329,6 +329,8 @@ func animate_monsters(delta: float) -> void:
 		if rig:
 			var stats := Bestiary.stats(mob.kind)
 			var duration: float = float(stats[5] if mob.phase == 1 else stats[6])
+			if mob.get("rage_phase", false):
+				duration *= 0.82 if mob.phase == 1 else 0.72
 			rig.animate(delta, mob.health > 0, mob.phase, mob.asleep, mob.hurt > 0, false, false, float(mob.get("hit_direction", 0.0)), clampf(1.0 - float(mob.timer) / duration, 0.0, 1.0))
 
 
@@ -489,11 +491,13 @@ func simulate(actors: Dictionary, delta: float) -> void:
 			if mob.phase == 1 or (mob.phase == 2 and float(tactics[2]) > 0.0):
 				var moving_target = actors.get(mob.attack_target)
 				if moving_target != null and moving_target.health > 0 and moving_target.floor_id == mob.floor:
-					if mob.phase == 1 and float(tactics[2]) == 0.0 and horizontal_distance(node.position, moving_target.position) > float(stats[3]) * 0.65:
+					if mob.phase == 1 and mob.timer > float(stats[5]) * 0.28 and float(tactics[2]) == 0.0 and horizontal_distance(node.position, moving_target.position) > float(stats[3]) * 0.65:
 						move_monster(mob, moving_target.position, delta, float(stats[4]) * float(tactics[1]))
 					elif float(tactics[2]) > 0.0 and horizontal_distance(node.position, moving_target.position) < float(tactics[2]):
 						retreat_monster(mob, moving_target.position, delta, float(stats[4]) * float(tactics[1]))
-					face_toward(mob, moving_target.position, delta)
+					if mob.phase == 1 and mob.timer > float(stats[5]) * 0.28:
+						face_toward(mob, moving_target.position, delta)
+						mob.aim = moving_target.position
 			mob.timer -= delta
 			if mob.timer <= 0:
 				if mob.phase == 1:
@@ -510,7 +514,7 @@ func simulate(actors: Dictionary, delta: float) -> void:
 					elif mob.kind in ["archer", "mage"]:
 						var direction: Vector3 = mob.aim - node.position
 						projectiles.launch(mob.floor, node.position, direction, 14.0 if mob.kind == "archer" else 9.0, float(stats[3]), float(stats[2]), Color("#d8c7a0") if mob.kind == "archer" else Color("#cf73e8"), 0, true, "hex" if mob.kind == "mage" else "enemy_arrow", -1, 0.0, node)
-					elif victim != null and victim.health > 0 and victim.floor_id == mob.floor and horizontal_distance(victim.position, node.position) <= float(stats[3]) and Combat.clear_path(node, victim.position):
+					elif victim != null and victim.health > 0 and victim.floor_id == mob.floor and Combat.can_hit(node.position, victim.position, node.rotation.y, float(stats[3])) and Combat.clear_path(node, victim.position):
 						guarded_hit(victim, float(stats[2]), node.position, stats[0], actors)
 					elif victim != null and victim.health > 0 and victim.floor_id == mob.floor and horizontal_distance(victim.position, node.position) <= 4.0:
 						victim.skills.credit(5, 4)
@@ -567,9 +571,9 @@ func move_monster(mob: Dictionary, at: Vector3, delta: float, speed: float) -> v
 	if next != start:
 		var center := Vector3(start.x * Dungeon.CELL, node.position.y, start.y * Dungeon.CELL)
 		var offset := destination - center
-		if absf(offset.x) > 0.1 and absf(node.position.z - center.z) > 0.08:
+		if absf(offset.x) > 0.1 and absf(node.position.z - center.z) > 0.22:
 			destination = Vector3(node.position.x, node.position.y, center.z)
-		elif absf(offset.z) > 0.1 and absf(node.position.x - center.x) > 0.08:
+		elif absf(offset.z) > 0.1 and absf(node.position.x - center.x) > 0.22:
 			destination = Vector3(center.x, node.position.y, node.position.z)
 	face_toward(mob, destination, delta)
 	mob.moved_last = true

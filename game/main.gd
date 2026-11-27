@@ -996,7 +996,7 @@ func _physics_process(delta: float) -> void:
 			publish_trade_views()
 		else:
 			trade_book.reset()
-		if tick % 6 == 0 or world.objective.result != "":
+		if tick % 2 == 0 or world.objective.result != "":
 			flush_events()
 			flush_sounds()
 		tick += 1

@@ -11,10 +11,10 @@ static func smooth(t: float) -> float:
 	return t * t * (3.0 - 2.0 * t)
 
 static func strike(t: float) -> float:
-	return smooth(t / 0.22)
+	return smooth((t - 0.72) / 0.28)
 
 static func settle(t: float) -> float:
-	return smooth((t - 0.22) / 0.78)
+	return smooth(t)
 
 static func swing(id: String) -> Array:
 	if "axe" in id:
@@ -26,3 +26,6 @@ static func swing(id: String) -> Array:
 	if "staff" in id:
 		return [Vector3(0.12, 0.18, 0.08), Vector3(0.8, -0.4, -0.5), Vector3(-0.20, 0.04, -0.24), Vector3(-0.65, 0.6, 0.65)]
 	return [Vector3(0.16, 0.15, 0.08), Vector3(0.85, -0.65, -0.52), Vector3(-0.29, 0.08, -0.22), Vector3(-0.82, 0.75, 0.85)]
+
+static func windup_pose(t: float) -> float:
+	return smooth(t / 0.72)

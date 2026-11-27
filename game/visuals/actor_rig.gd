@@ -229,12 +229,12 @@ func animate(delta: float, alive: bool, phase: int, asleep: bool, hurt: bool, bl
 	var attack := -gait * 0.65
 	var twist := 0.0
 	if phase == 1:
-		attack = lerpf(attack, windup, Motion.smooth(p))
-		twist = -0.22 * Motion.smooth(p)
+		attack = lerpf(lerpf(attack, windup, Motion.windup_pose(p)), release, Motion.strike(p))
+		twist = lerpf(-0.22 * Motion.windup_pose(p), 0.32, Motion.strike(p))
 	elif phase == 2:
-		attack = lerpf(lerpf(windup, release, Motion.strike(p)), attack, Motion.settle(p))
-		twist = lerpf(lerpf(-0.22, 0.32, Motion.strike(p)), 0.0, Motion.settle(p))
-	angle(arm_r, -1.15 if casting else attack, weight)
+		attack = lerpf(release, attack, Motion.settle(p))
+		twist = lerpf(0.32, 0.0, Motion.settle(p))
+	angle(arm_r, -1.15 if casting else attack, Motion.blend(delta, 55.0) if phase != 0 else weight)
 	var two_handed := kind == "archer" or (kind == "adventurer" and not gear_key.is_empty() and "bow" in str(gear_key[0]))
 	angle(arm_l, -1.4 if blocking or casting else (lerpf(gait * 0.65, -1.4, Motion.smooth(p)) if two_handed and phase == 1 else gait * 0.65), weight)
 	var elbow_bend := 0.2 + absf(gait) * 0.2

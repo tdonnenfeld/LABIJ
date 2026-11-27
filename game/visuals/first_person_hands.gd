@@ -88,6 +88,8 @@ func animate(actor, delta: float, motion: float) -> void:
 	var casting: bool = actor.cast_id != ""
 	var aim := Vector2(actor.camera.global_rotation.y, actor.camera.rotation.x) if actor.camera else Vector2(actor.heading, actor.look_pitch)
 	var aim_change := Vector2(wrapf(aim.x - previous_aim.x, -PI, PI), aim.y - previous_aim.y)
+	if aim_change.length() > 0.8:
+		aim_change = Vector2.ZERO
 	previous_aim = aim
 	sway = sway.lerp((aim_change / maxf(delta, 0.001) * -0.012).limit_length(0.12), Motion.blend(delta, 14.0))
 	aim_blend = lerpf(aim_blend, 1.0 if actor.aiming else 0.0, Motion.blend(delta, 12.0))
@@ -121,15 +123,15 @@ func animate(actor, delta: float, motion: float) -> void:
 	var offset: Vector3 = Vector3.ZERO
 	var rotation_offset: Vector3 = Vector3.ZERO
 	if actor.attack_phase == 1:
-		var p := Motion.smooth(Motion.progress(actor.attack_timer, item.windup * actor.attack_speed_factor()))
-		offset = Vector3.ZERO.lerp(poses[0], p)
-		rotation_offset = Vector3.ZERO.lerp(poses[1], p)
+		var p := Motion.progress(actor.attack_timer, item.windup * actor.attack_speed_factor())
+		offset = Vector3.ZERO.lerp(poses[0], Motion.windup_pose(p)).lerp(poses[2], Motion.strike(p))
+		rotation_offset = Vector3.ZERO.lerp(poses[1], Motion.windup_pose(p)).lerp(poses[3], Motion.strike(p))
 	elif actor.attack_phase == 2:
 		var p := Motion.progress(actor.attack_timer, item.recovery * actor.attack_speed_factor())
-		var windup: Vector3 = poses[0]
-		var windup_rot: Vector3 = poses[1]
-		offset = windup.lerp(poses[2], Motion.strike(p)).lerp(Vector3.ZERO, Motion.settle(p))
-		rotation_offset = windup_rot.lerp(poses[3], Motion.strike(p)).lerp(Vector3.ZERO, Motion.settle(p))
+		var impact: Vector3 = poses[2]
+		var impact_rot: Vector3 = poses[3]
+		offset = impact.lerp(Vector3.ZERO, Motion.settle(p))
+		rotation_offset = impact_rot.lerp(Vector3.ZERO, Motion.settle(p))
 	target += offset
 	rot += rotation_offset
 	if cast_pose > 0.01:
@@ -154,8 +156,9 @@ func animate(actor, delta: float, motion: float) -> void:
 	target += (Vector3(sway.x, sway.y, 0.0) + inertia) * motion * (1.0 - aim_blend * 0.6)
 	target.z += release_time * 0.45
 	rot.x += release_time * 1.3
-	right.position = right.position.lerp(target, weight)
-	right.rotation = right.rotation.lerp(rot, weight)
+	var swing_weight := Motion.blend(delta, 65.0) if actor.attack_phase != 0 else weight
+	right.position = right.position.lerp(target, swing_weight)
+	right.rotation = right.rotation.lerp(rot, swing_weight)
 	var left_target := Vector3(-0.40 - bob, -0.38 + absf(bob) + breath, -0.76)
 	if actor.bow_drawing:
 		left_target = Vector3(-0.12, -0.18, lerpf(-0.72, -0.30, Motion.smooth(actor.bow_charge)))
