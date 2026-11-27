@@ -166,8 +166,8 @@ func _ready() -> void:
 		interaction_prompt.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
 		interaction_prompt.offset_left = -205
 		interaction_prompt.offset_right = 205
-		interaction_prompt.offset_top = 40
-		interaction_prompt.offset_bottom = 76
+		interaction_prompt.offset_top = 24
+		interaction_prompt.offset_bottom = 58
 		interaction_prompt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		interaction_prompt.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		Parchment.plate(interaction_prompt, 14)
@@ -231,7 +231,7 @@ func _ready() -> void:
 		log_panel.offset_left = 16
 		log_panel.offset_top = -154
 		log_panel.offset_bottom = -16
-		log_panel.offset_right = 284
+		log_panel.offset_right = 306
 		log_panel.hide()
 		party_panel = PartyPanel.new()
 		layer.add_child(party_panel)
@@ -244,8 +244,8 @@ func _ready() -> void:
 		action_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		layer.add_child(action_bar)
 		action_bar.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
-		action_bar.offset_left = -170
-		action_bar.offset_right = 170
+		action_bar.offset_left = -162
+		action_bar.offset_right = 162
 		action_bar.offset_top = -64
 		action_bar.offset_bottom = -12
 		for i in range(3):
@@ -1089,7 +1089,7 @@ func _physics_process(delta: float) -> void:
 				var node: Array = local.Skills.Talents.find(ability)
 				var cooldown: float = local.skills.cooldowns.get(ability, 0.0)
 				var slot := action_slots[i]
-				slot.text = "%s · %s\n%s" % [settings.label("ability%d" % (i + 1)), "Empty" if node.is_empty() else node[2], "%.1fs" % cooldown if cooldown > 0 else ("—" if node.is_empty() else "Ready")]
+				slot.text = "%s · %s\n%s" % [settings.label("ability%d" % (i + 1)), "Empty" if node.is_empty() else node[2], "%.1fs" % cooldown if cooldown > 0 else ("" if node.is_empty() else "Ready")]
 				slot.modulate = Color("#b8a88b") if cooldown > 0 else Color.WHITE
 			if skills_ui and skills_ui.visible:
 				skills_ui.refresh(local.skills.state(), world.safe(local), local.inventory.state())
@@ -1104,6 +1104,8 @@ func _physics_process(delta: float) -> void:
 		if hud:
 			var route: Dictionary = world.route_at(local.floor_id, local.position)
 			hud.text = World.Routes.NAMES[local.floor_id]
+			if Catalog.get_item(local.inventory.weapon).projectile_speed > 0:
+				xp_label.text += " · %d arrows" % local.inventory.count("arrows")
 			var hints: PackedStringArray = []
 			if local.health > 0:
 				if not route.is_empty():
@@ -1121,13 +1123,11 @@ func _physics_process(delta: float) -> void:
 					hints.append("%s · LMB cast · 0 weapon" % local.selected_spell.capitalize())
 				elif local.bow_drawing:
 					hints.append("Draw: %d%%" % roundi(local.bow_charge * 100.0))
-				if Catalog.get_item(local.inventory.weapon).projectile_speed > 0:
-					hints.append("Arrows: %d" % local.inventory.count("arrows"))
 				if trade_panel.session.get("incoming", false):
 					hints.append("%s: Trade invitation" % settings.label("trade"))
 			else:
 				hints.append("Downed")
-			interaction_prompt.text = "\n".join(hints)
+			interaction_prompt.text = "\n".join(hints.slice(0, 3))
 			interaction_prompt.visible = not hints.is_empty() and not inventory_ui.visible and not skills_ui.visible and not trade_panel.visible and not escape_menu.visible
 			update_objective_hud(local_id)
 
