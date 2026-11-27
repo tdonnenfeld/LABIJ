@@ -63,6 +63,9 @@ func build(tiles: Dictionary, seed_value: int, corridor_blocks: Array = [], floo
 			if hash_value in [4, 11] and not narrowed.has(cell):
 				box("wall", at - normal * 0.04 + Vector3.UP * 1.5, Vector3(0.34, 3.0, 0.20), angle)
 		add_arch(tiles, cell, origin)
+		if not narrowed.has(cell) and tile_variant % 3 == 0:
+			var rib_angle := PI / 2.0 if tiles.has(cell + Vector2i.RIGHT) and tiles.has(cell + Vector2i.LEFT) else 0.0
+			box("trim", origin + Vector3.UP * 2.94, Vector3(3.0, 0.12, 0.18), rib_angle)
 		if not narrowed.has(cell):
 			decorate_cell(tiles, cell, origin, seed_value)
 			decorate_corner(tiles, cell, origin, style, seed_value)
@@ -75,10 +78,12 @@ func build(tiles: Dictionary, seed_value: int, corridor_blocks: Array = [], floo
 	for i in range(LIGHT_LIMIT):
 		var light := OmniLight3D.new()
 		light.light_color = [Color("#ffb56a"), Color("#d8ae85"), Color("#8bc5cf"), Color("#eac18c"), Color("#c7c9e2"), Color("#ff9766"), Color("#f8d58b")][theme_id]
-		light.omni_range = 8.5
-		light.omni_attenuation = 1.4
+		light.omni_range = 7.0
+		light.omni_attenuation = 1.65
 		light.light_energy = 1.7
-		light.shadow_enabled = false
+		light.shadow_enabled = i == 0
+		light.shadow_bias = 0.06
+		light.shadow_normal_bias = 0.5
 		add_child(light)
 		light.hide()
 		lights.append(light)
@@ -96,10 +101,16 @@ func add_arch(tiles: Dictionary, cell: Vector2i, origin: Vector3) -> void:
 			var cross := Vector3(across.x, 0, across.y)
 			var angle := PI / 2.0 if direction.x != 0 else 0.0
 			var at := origin + forward * 1.35
-			box("trim", at + Vector3.UP * 2.88, Vector3(3.0, 0.24, 0.32), angle)
+			box("trim", at + Vector3.UP * 2.94, Vector3(3.0, 0.12, 0.32), angle)
 			for sign_value in [-1.0, 1.0]:
-				box("trim", at + cross * sign_value * 1.40 + Vector3.UP * 1.45, Vector3(0.14, 2.90, 0.32), angle)
-				box("wall", at + cross * sign_value * 1.25 + Vector3.UP * 2.75, Vector3(0.42, 0.30, 0.32), angle)
+				box("trim", at + cross * sign_value * 1.40 + Vector3.UP * 1.25, Vector3(0.14, 2.50, 0.32), angle)
+				box("trim", at + cross * sign_value * 1.38 + Vector3.UP * 2.48, Vector3(0.22, 0.12, 0.35), angle)
+			for i in range(11):
+				var t := PI * float(i) / 10.0
+				var x := cos(t) * 1.31
+				var y := 2.47 + sin(t) * 0.39
+				box("trim", at + cross * x + Vector3.UP * y, Vector3(0.31, 0.15, 0.32), angle)
+			box("gold" if theme_id in [3, 6] else "wall", at + Vector3.UP * 2.84, Vector3(0.18, 0.16, 0.35), angle)
 
 func add_torch(at: Vector3, normal: Vector3, angle: float) -> void:
 	var stem := at - normal * 0.24 + Vector3.UP * 1.75
@@ -109,6 +120,7 @@ func add_torch(at: Vector3, normal: Vector3, angle: float) -> void:
 	box("flame", stem + Vector3.UP * 0.36, Vector3(0.17, 0.24, 0.17), PI / 4, "round")
 	box("ember", stem + Vector3.UP * 0.42, Vector3(0.09, 0.22, 0.09), 0.0, "round")
 	torches.append(stem - normal * 0.18 + Vector3.UP * 0.32)
+	box("iron", stem + Vector3.UP * 0.15, Vector3(0.25, 0.045, 0.25), angle, "barrel")
 
 func flush_batches() -> void:
 	for batch in batches.values():
@@ -163,7 +175,7 @@ func update_lighting(viewer: Vector3, delta: float) -> void:
 	for i in range(lights.size()):
 		if lights[i].visible:
 			var phase := lights[i].position.x * 0.8 + lights[i].position.z * 0.6
-			lights[i].light_energy = (1.65 + 0.14 * sin(time * 7.7 + phase) + 0.09 * sin(time * 13.0 + phase)) * (1.0 - theme_id * 0.045)
+			lights[i].light_energy = (1.9 + 0.18 * sin(time * 7.7 + phase) + 0.10 * sin(time * 13.0 + phase)) * (1.0 - theme_id * 0.045)
 
 static func route_marker(parent: Node3D, at: Vector3, color: Color, descending: bool) -> void:
 	var stone := StoneKit.material("wall")

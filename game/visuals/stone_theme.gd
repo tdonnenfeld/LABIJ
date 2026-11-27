@@ -1,6 +1,7 @@
 extends RefCounted
 
 static var materials: Dictionary = {}
+static var normal_textures: Dictionary = {}
 const RESOLUTION := 128
 
 static func grain(x: int, y: int, salt: int) -> float:
@@ -21,7 +22,8 @@ static func stone_texture(bricks: bool, pattern: int = 0) -> ImageTexture:
 			var v: int = y % height
 			var edge := mini(mini(u, width - 1 - u), mini(v, height - 1 - v))
 			var stone := base * (0.84 + 0.26 * grain(posmod(col, floori(float(RESOLUTION) / width)), row, 3))
-			var noise := (grain(x, y, 7) - 0.5) * 0.16 + (grain(floori(x / 4.0), floori(y / 4.0), 19) - 0.5) * 0.13
+			var noise := (grain(x, y, 7) - 0.5) * 0.09 + (grain(floori(x / 4.0), floori(y / 4.0), 19) - 0.5) * 0.10
+			noise += 0.045 * sin(float(x + y) * 0.17 + grain(col, row, 8) * TAU)
 			var color := stone.lightened(maxf(0.0, noise)).darkened(maxf(0.0, -noise))
 			if edge == 0:
 				color = mortar.darkened(grain(x, y, 2) * 0.15)
@@ -35,9 +37,39 @@ static func stone_texture(bricks: bool, pattern: int = 0) -> ImageTexture:
 	image.generate_mipmaps()
 	return ImageTexture.create_from_image(image)
 
+static func stone_height(x: int, y: int, bricks: bool, pattern: int) -> float:
+	x = posmod(x, RESOLUTION)
+	y = posmod(y, RESOLUTION)
+	var width: int = [64, 32, 128, 32][pattern] if bricks else [32, 64, 32, 128][pattern]
+	var height: int = [32, 16, 64, 32][pattern] if bricks else [64, 64, 32, 32][pattern]
+	var row := floori(float(y) / height)
+	var u := posmod(x + (floori(width * 0.5) if bricks and row % 2 == 1 else 0), width)
+	var v := posmod(y, height)
+	var edge := mini(mini(u, width - 1 - u), mini(v, height - 1 - v))
+	return minf(float(edge) / 3.0, 1.0) * 0.7 + grain(x, y, 9) * 0.035
+
+static func stone_normal(bricks: bool, pattern: int) -> ImageTexture:
+	var key := "%s:%d" % [bricks, pattern]
+	if normal_textures.has(key):
+		return normal_textures[key]
+	var image := Image.create(RESOLUTION, RESOLUTION, false, Image.FORMAT_RGB8)
+	for y in range(RESOLUTION):
+		for x in range(RESOLUTION):
+			var dx := stone_height(x + 1, y, bricks, pattern) - stone_height(x - 1, y, bricks, pattern)
+			var dy := stone_height(x, y + 1, bricks, pattern) - stone_height(x, y - 1, bricks, pattern)
+			var n := Vector3(-dx, -dy, 1.0).normalized() * 0.5 + Vector3.ONE * 0.5
+			image.set_pixel(x, y, Color(n.x, n.y, n.z))
+	image.generate_mipmaps()
+	var texture := ImageTexture.create_from_image(image)
+	normal_textures[key] = texture
+	return texture
+
 static func stone(bricks: bool, pattern: int = 0) -> StandardMaterial3D:
 	var mat := StandardMaterial3D.new()
 	mat.albedo_texture = stone_texture(bricks, pattern)
+	mat.normal_enabled = true
+	mat.normal_texture = stone_normal(bricks, pattern)
+	mat.normal_scale = 0.65
 	mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST_WITH_MIPMAPS
 	mat.uv1_triplanar = true
 	mat.uv1_world_triplanar = true
@@ -69,12 +101,16 @@ static func material(id: String) -> StandardMaterial3D:
 		materials["ceiling"] = ceiling
 		materials["trim"] = solid(Color("#55564c"))
 		materials["iron"] = solid(Color("#363630"))
+		materials["iron"].metallic = 0.65
+		materials["iron"].roughness = 0.52
 		materials["wood"] = solid(Color("#67442a"))
 		materials["flame"] = solid(Color("#ff9238"), 2.5)
 		materials["ember"] = solid(Color("#ffd18a"), 2.0)
 		materials["water"] = solid(Color("#294b53"))
 		materials["water"].roughness = 0.18
 		materials["gold"] = solid(Color("#a68a4c"))
+		materials["gold"].metallic = 0.55
+		materials["gold"].roughness = 0.48
 		var colors := {"bone":"#b9ad91","cloth":"#703e38","cloth_blue":"#3f5a60","moss":"#48583b","rubble":"#77766b","clay":"#87563c","paper":"#c3ad7d","book":"#453a30","dark":"#242624","crystal":"#58858a","marble":"#aca391","grout":"#383a36","ash":"#4e4743"}
 		for key in colors:
 			materials[key] = solid(Color(colors[key]), 0.35 if key == "crystal" else 0.0)

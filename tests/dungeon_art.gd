@@ -48,6 +48,13 @@ func run() -> void:
 		check(rendered.get(cell, 0) == 1, "Every cell rendered once: %s" % cell)
 	check(ThemeKit.material("floor") == ThemeKit.material("floor"), "Shared material cache")
 	check(ThemeKit.material("wall").albedo_texture.get_width() == 128, "Low resolution texture")
+	check(ThemeKit.material("wall").normal_enabled and ThemeKit.material("wall").normal_texture.get_width() == 128, "Stone relief normal map")
+	check(ThemeKit.stone_normal(true, 0) == ThemeKit.material("wall").normal_texture, "Shared stone normal cache")
+	var shadow_count := 0
+	for light in builder.lights:
+		if light.shadow_enabled:
+			shadow_count += 1
+	check(shadow_count == 1, "Bounded shadow-casting torch pool")
 	builder.update_lighting(builder.torches[0], 0.3)
 	check(builder.lights[0].visible, "Torch lights activate near viewer")
 	check(plain.doors.keys() == decorated.doors.keys(), "Door placement deterministic")

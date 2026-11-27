@@ -122,7 +122,7 @@ func _ready() -> void:
 		settings.background_color = Color("#141611")
 		settings.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 		settings.ambient_light_color = Color("#a3ae9e")
-		settings.ambient_light_energy = 0.32
+		settings.ambient_light_energy = 0.25
 		if not "--debug-geometry" in OS.get_cmdline_user_args():
 			settings.fog_enabled = true
 			settings.fog_light_color = Color("#252a25")
@@ -1019,13 +1019,16 @@ func _physics_process(delta: float) -> void:
 		feedback.viewed_floor = viewed_floor
 		combat_fx.viewed_floor = viewed_floor
 		world.visible_floor(viewed_floor)
-		if dungeon_environment and atmosphere_floor != viewed_floor:
-			atmosphere_floor = viewed_floor
-			dungeon_environment.fog_light_color = [Color("#252a25"), Color("#292625"), Color("#213a42"), Color("#393126"), Color("#282c3a"), Color("#422923"), Color("#393323")][viewed_floor]
-			dungeon_environment.fog_density = 0.045 if viewed_floor == 2 else 0.027
 		if dungeon_environment:
-			var density: float = (0.045 if viewed_floor == 2 else 0.027) + (0.035 if world.mist_floors.get(viewed_floor, false) else 0.0)
-			dungeon_environment.fog_density = lerpf(dungeon_environment.fog_density, density, minf(1.0, delta * 2.0))
+			atmosphere_floor = viewed_floor
+			var ambient: Color = [Color("#a5a99a"), Color("#a49b91"), Color("#82a7ad"), Color("#b5a28a"), Color("#9299b4"), Color("#b39787"), Color("#b5b09b")][viewed_floor]
+			var fog: Color = [Color("#252a25"), Color("#292625"), Color("#213a42"), Color("#393126"), Color("#282c3a"), Color("#422923"), Color("#393323")][viewed_floor]
+			var density: float = [0.018, 0.022, 0.036, 0.016, 0.025, 0.021, 0.018][viewed_floor]
+			density += 0.035 if world.mist_floors.get(viewed_floor, false) else 0.0
+			var weight := 1.0 - exp(-delta * 2.0)
+			dungeon_environment.ambient_light_color = dungeon_environment.ambient_light_color.lerp(ambient, weight)
+			dungeon_environment.fog_light_color = dungeon_environment.fog_light_color.lerp(fog, weight)
+			dungeon_environment.fog_density = lerpf(dungeon_environment.fog_density, density, weight)
 		environmental_audio.update_environment(world.floors[viewed_floor], local, delta)
 		var builder = world.floors[viewed_floor].visual_builder
 		if builder:
