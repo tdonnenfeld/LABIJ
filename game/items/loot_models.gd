@@ -51,7 +51,7 @@ static func gem(parent: Node3D, at: Vector3, radius: float, color: Color) -> voi
 	mesh.rings = 5
 	part(parent, mesh, at, color)
 
-static func blade(parent: Node3D, at: Vector3, width: float, length: float, color: Color) -> void:
+static func blade(parent: Node3D, at: Vector3, width: float, length: float, color: Color, angle: Vector3 = Vector3.ZERO) -> void:
 	var surface := SurfaceTool.new()
 	surface.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var rings: Array[Array] = []
@@ -68,7 +68,7 @@ static func blade(parent: Node3D, at: Vector3, width: float, length: float, colo
 				for point in [rings[j][next], rings[j + 1][next], rings[j + 1][i]]:
 					surface.add_vertex(point)
 	surface.generate_normals()
-	part(parent, surface.commit(), at, color)
+	part(parent, surface.commit(), at, color, angle)
 
 static func rod(parent: Node3D, start: Vector3, end: Vector3, width: float, color: Color) -> void:
 	var mesh := BoxMesh.new()
@@ -100,11 +100,7 @@ static func build(id: String, parent: Node3D) -> Node3D:
 				box(model, Vector3(0, 0.019, base_at - length * 0.31), Vector3(0.014, 0.006, length * 0.48), Color("#59635f"))
 		"axe":
 			box(model, Vector3.ZERO, Vector3(0.05, 0.05, 0.65), WOOD)
-			var head := Node3D.new()
-			model.add_child(head)
-			head.position = Vector3(0, 0, -0.23)
-			head.rotation.y = -PI / 2.0
-			blade(head, Vector3.ZERO, 0.24, 0.26, STEEL)
+			blade(model, Vector3(0, 0, -0.23), 0.24, 0.26, STEEL, Vector3(0, -PI / 2.0, 0))
 			cylinder(model, Vector3(0, 0, -0.23), 0.045, 0.12, BRASS, -1.0, flat)
 			for i in range(6):
 				cylinder(model, Vector3(0, 0, 0.05 + i * 0.035), 0.031, 0.018, LEATHER, -1.0, flat)
