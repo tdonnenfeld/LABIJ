@@ -1,5 +1,7 @@
 extends PanelContainer
 
+const Parchment = preload("res://game/ui/parchment.gd")
+
 var rows := VBoxContainer.new()
 var previous := ""
 
@@ -23,8 +25,8 @@ func refresh(actors: Dictionary, local_id: int, world) -> void:
 		rows.remove_child(child)
 		child.queue_free()
 	var title := Label.new()
-	title.text = "COMPANIONS · %d/%d" % [actors.size(), world.party_size]
-	title.add_theme_font_size_override("font_size", 13)
+	title.text = "Companions · %d/%d" % [actors.size(), world.party_size]
+	Parchment.heading(title, 14)
 	rows.add_child(title)
 	for line in lines:
 		var label := Label.new()
@@ -32,4 +34,5 @@ func refresh(actors: Dictionary, local_id: int, world) -> void:
 		label.tooltip_text = line
 		label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 		label.add_theme_font_size_override("font_size", 12)
+		label.add_theme_color_override("font_color", Parchment.LIGHT)
 		rows.add_child(label)
