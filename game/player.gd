@@ -87,8 +87,9 @@ func setup(local: bool, visual: bool = true) -> void:
 		add_child(camera)
 		var light := OmniLight3D.new()
 		light.name = "Lantern"
-		light.omni_range = 14
-		light.light_color = Color("#e8dfc5")
+		light.omni_range = 11
+		light.omni_attenuation = 1.4
+		light.light_color = Color("#f0d5aa")
 		light.light_energy = 2.5 if "--debug-geometry" in OS.get_cmdline_user_args() else 1.5
 		camera.add_child(light)
 		hands = Hands.new()
