@@ -114,6 +114,7 @@ func _ready() -> void:
 	details.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	detail_scroll.add_child(details)
 	learn = Button.new()
+	Parchment.primary(learn)
 	learn.text = "Learn selected talent"
 	right.add_child(learn)
 	learn.pressed.connect(func(): talent_action.emit("buy", selected_id, 0))
@@ -146,7 +147,7 @@ func _ready() -> void:
 	pages.current_tab = 1
 	status_label = Label.new()
 	status_label.text = "Training and ability changes require a safe area · Equipment uses your inventory"
-	status_label.add_theme_font_size_override("font_size", 12)
+	Parchment.secondary(status_label)
 	column.add_child(status_label)
 	rebuild()
 	hide()
@@ -228,8 +229,8 @@ func build_known() -> void:
 	page.name = "Known abilities"
 	pages.add_child(page)
 	known_filter = OptionButton.new()
-	for caption in ["All learned", "Assignable abilities", "Passive talents"]:
-		known_filter.add_item(caption)
+	for filter_name in ["All learned", "Assignable abilities", "Passive talents"]:
+		known_filter.add_item(filter_name)
 	page.add_child(known_filter)
 	known_filter.item_selected.connect(func(_index): rebuild_known())
 	var list := ScrollContainer.new()
