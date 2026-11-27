@@ -11,11 +11,12 @@ static func material(color: Color) -> StandardMaterial3D:
 	if not materials.has(color):
 		var mat := StandardMaterial3D.new()
 		mat.albedo_color = color
-		mat.roughness = 0.75
+		mat.roughness = 0.46 if color == STEEL or color == BRASS else 0.88
+		mat.metallic = 0.55 if color == STEEL or color == BRASS else 0.0
 		mat.cull_mode = BaseMaterial3D.CULL_DISABLED
 		mat.emission_enabled = true
 		mat.emission = color
-		mat.emission_energy_multiplier = 0.16
+		mat.emission_energy_multiplier = 0.06
 		materials[color] = mat
 	return materials[color]
 
@@ -38,7 +39,7 @@ static func cylinder(parent: Node3D, at: Vector3, radius: float, height: float, 
 	mesh.top_radius = radius if tip < 0.0 else tip
 	mesh.bottom_radius = radius
 	mesh.height = height
-	mesh.radial_segments = 6
+	mesh.radial_segments = 12
 	mesh.rings = 0
 	part(parent, mesh, at, color, angle)
 
@@ -47,17 +48,25 @@ static func gem(parent: Node3D, at: Vector3, radius: float, color: Color) -> voi
 	mesh.radius = radius
 	mesh.height = radius * 1.7
 	mesh.radial_segments = 6
-	mesh.rings = 3
+	mesh.rings = 5
 	part(parent, mesh, at, color)
 
 static func blade(parent: Node3D, at: Vector3, width: float, length: float, color: Color) -> void:
 	var surface := SurfaceTool.new()
 	surface.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var points := [Vector3(-width * 0.5, 0, 0), Vector3(0, 0.022, 0), Vector3(width * 0.5, 0, 0), Vector3(0, -0.022, 0), Vector3(0, 0, -length)]
-	for i in range(4):
-		surface.add_vertex(points[i])
-		surface.add_vertex(points[(i + 1) % 4])
-		surface.add_vertex(points[4])
+	var rings: Array[Array] = []
+	for z in [0.0, -length * 0.72, -length]:
+		var w := width * (0.5 if z == 0.0 else (0.42 if z > -length else 0.0))
+		var thickness := 0.018 if z > -length else 0.0
+		rings.append([Vector3(-w, 0, z), Vector3(0, thickness, z), Vector3(w, 0, z), Vector3(0, -thickness, z)])
+	for j in range(2):
+		for i in range(4):
+			var next := (i + 1) % 4
+			for point in [rings[j][i], rings[j][next], rings[j + 1][i]]:
+				surface.add_vertex(point)
+			if j == 0:
+				for point in [rings[j][next], rings[j + 1][next], rings[j + 1][i]]:
+					surface.add_vertex(point)
 	surface.generate_normals()
 	part(parent, surface.commit(), at, color)
 
@@ -85,15 +94,30 @@ static func build(id: String, parent: Node3D) -> Node3D:
 			box(model, Vector3(0, 0, base_at), Vector3(0.10 if base == "spear" else 0.22, 0.04, 0.045), BRASS)
 			blade(model, Vector3(0, 0, base_at), 0.085 if base == "venom_dagger" else 0.12, length, STEEL if base != "venom_dagger" else Color("#789568"))
 			gem(model, Vector3(0, 0, handle * 0.75), 0.04, BRASS)
+			for i in range(5):
+				cylinder(model, Vector3(0, 0, handle * (0.06 + 0.13 * i)), 0.027, 0.018, LEATHER, -1.0, flat)
+			if base == "sword":
+				box(model, Vector3(0, 0.019, base_at - length * 0.31), Vector3(0.014, 0.006, length * 0.48), Color("#59635f"))
 		"axe":
 			box(model, Vector3.ZERO, Vector3(0.05, 0.05, 0.65), WOOD)
-			box(model, Vector3(0.10, 0, -0.23), Vector3(0.25, 0.06, 0.22), STEEL)
-			box(model, Vector3(0.23, 0, -0.23), Vector3(0.035, 0.08, 0.26), Color("#d9d9c5"))
+			var head := Node3D.new()
+			model.add_child(head)
+			head.position = Vector3(0, 0, -0.23)
+			head.rotation.y = -PI / 2.0
+			blade(head, Vector3.ZERO, 0.24, 0.26, STEEL)
+			cylinder(model, Vector3(0, 0, -0.23), 0.045, 0.12, BRASS, -1.0, flat)
+			for i in range(6):
+				cylinder(model, Vector3(0, 0, 0.05 + i * 0.035), 0.031, 0.018, LEATHER, -1.0, flat)
 		"bow", "longbow":
-			var points := [Vector3(0, 0, -0.34), Vector3(0.15, 0, -0.23), Vector3(0.22, 0, 0), Vector3(0.15, 0, 0.23), Vector3(0, 0, 0.34)]
+			var points: Array[Vector3] = []
+			var span := 0.43 if base == "longbow" else 0.34
+			for i in range(13):
+				var t := float(i) / 12.0
+				points.append(Vector3(sin(t * PI) * 0.22, 0, lerpf(-span, span, t)))
 			for i in range(points.size() - 1):
-				rod(model, points[i], points[i + 1], 0.055, WOOD)
-			rod(model, points[0], points[-1], 0.012, Color("#d5c19a"))
+				rod(model, points[i], points[i + 1], 0.035 + 0.018 * sin(float(i) / 12.0 * PI), WOOD)
+			rod(model, points[0], points[-1], 0.008, Color("#d5c19a"))
+			box(model, Vector3(0.22, 0, 0), Vector3(0.06, 0.065, 0.12), LEATHER)
 		"staff", "ember_staff", "oracle_staff":
 			box(model, Vector3.ZERO, Vector3(0.06, 0.06, 0.72), WOOD)
 			cylinder(model, Vector3(0, 0, -0.34), 0.095, 0.13, BRASS, 0.07, flat)
@@ -102,6 +126,12 @@ static func build(id: String, parent: Node3D) -> Node3D:
 			cylinder(model, Vector3.ZERO, 0.28, 0.055, BRASS)
 			cylinder(model, Vector3(0, 0.04, 0), 0.25, 0.04, WOOD if base == "shield" else STEEL)
 			gem(model, Vector3(0, 0.08, 0), 0.09, BRASS)
+			for i in range(8):
+				var angle := TAU * float(i) / 8.0
+				gem(model, Vector3(cos(angle) * 0.235, 0.065, sin(angle) * 0.235), 0.018, BRASS)
+			if base == "shield":
+				for x in [-0.12, 0.12]:
+					box(model, Vector3(x, 0.065, 0), Vector3(0.012, 0.01, 0.40), Color("#513b28"))
 		"leather", "mail", "ward_mail":
 			box(model, Vector3.ZERO, Vector3(0.37, 0.11, 0.43), LEATHER if base == "leather" else STEEL)
 			for x in [-0.23, 0.23]:
@@ -111,6 +141,9 @@ static func build(id: String, parent: Node3D) -> Node3D:
 		"iron_helm":
 			gem(model, Vector3(0, 0.08, 0), 0.17, STEEL)
 			box(model, Vector3(0, 0.02, -0.13), Vector3(0.20, 0.13, 0.06), STEEL)
+			box(model, Vector3(0, 0.06, -0.166), Vector3(0.16, 0.025, 0.012), Color("#302b26"))
+			for x in [-0.09, 0.09]:
+				gem(model, Vector3(x, 0.02, -0.163), 0.018, BRASS)
 		"leather_gloves", "iron_boots":
 			for x in [-0.10, 0.10]:
 				box(model, Vector3(x, 0.04, 0), Vector3(0.13, 0.10, 0.24), LEATHER if base == "leather_gloves" else STEEL)
@@ -126,6 +159,8 @@ static func build(id: String, parent: Node3D) -> Node3D:
 			cylinder(model, Vector3(0, 0.06, 0), 0.11, 0.20, Color("#9b4641"), 0.08)
 			cylinder(model, Vector3(0, 0.20, 0), 0.045, 0.08, Color("#a0b7aa"))
 			cylinder(model, Vector3(0, 0.25, 0), 0.05, 0.05, WOOD)
+			cylinder(model, Vector3(0, 0.17, 0), 0.065, 0.025, BRASS)
+			box(model, Vector3(0, 0.08, -0.10), Vector3(0.10, 0.095, 0.018), Color("#d5c19a"))
 		"noise_stone":
 			gem(model, Vector3(0, 0.025, 0), 0.14, Color("#83867a"))
 		"arrows":
