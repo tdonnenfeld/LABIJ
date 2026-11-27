@@ -56,8 +56,8 @@ static func blade(parent: Node3D, at: Vector3, width: float, length: float, colo
 	surface.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var rings: Array[Array] = []
 	for z in [0.0, -length * 0.72, -length]:
-		var w := width * (0.5 if z == 0.0 else (0.42 if z > -length else 0.0))
-		var thickness := 0.018 if z > -length else 0.0
+		var w: float = width * (0.5 if z == 0.0 else (0.42 if z > -length else 0.0))
+		var thickness: float = 0.018 if z > -length else 0.0
 		rings.append([Vector3(-w, 0, z), Vector3(0, thickness, z), Vector3(w, 0, z), Vector3(0, -thickness, z)])
 	for j in range(2):
 		for i in range(4):
