@@ -1,5 +1,6 @@
 extends Control
 
+const Parchment = preload("res://game/ui/parchment.gd")
 const Inventory = preload("res://game/items/inventory.gd")
 const Catalog = preload("res://game/items/catalog.gd")
 const Icons = preload("res://game/items/item_icons.gd")
@@ -134,7 +135,8 @@ func _draw() -> void:
 		var area := Rect2(Vector2(model.positions[i]) * CELL, Vector2(Inventory.footprint(id, model.rotated[i])) * CELL).grow(-2)
 		var active := i == chosen or i == hovered
 		draw_rect(area, Color("#88704a") if active else Color("#66523b"))
-		draw_rect(area, Color("#efcf85") if active else Color("#b39962"), false, 2.0)
+		var edge := Parchment.ACCENT if id.ends_with(":unknown") else Catalog.rarity_color(id)
+		draw_rect(area, Parchment.LIGHT if active else edge.darkened(0.2), false, 2.0)
 		var icon_size := minf(area.size.x, area.size.y) - 5.0
 		var icon_area := Rect2(area.get_center() - Vector2.ONE * icon_size * 0.5, Vector2.ONE * icon_size)
 		if model.rotated[i]:
