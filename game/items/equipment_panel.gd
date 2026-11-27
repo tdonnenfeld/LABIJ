@@ -1,5 +1,6 @@
 extends Control
 
+const Parchment = preload("res://game/ui/parchment.gd")
 const Inventory = preload("res://game/items/inventory.gd")
 const Icons = preload("res://game/items/item_icons.gd")
 const Catalog = preload("res://game/items/catalog.gd")
@@ -120,7 +121,9 @@ func _draw() -> void:
 		var index := model.slot_index(slot) if ready_data else -1
 		var active := index >= 0 and index == chosen
 		draw_rect(area, Color("#6b543c") if index >= 0 else Color("#49362be6"))
-		var border := Color("#e5c785") if active or slot == hover_slot else Color("#94784b")
+		var border := Parchment.ACCENT if active or slot == hover_slot else Parchment.BRASS
+		if index >= 0 and not active and slot != hover_slot:
+			border = Catalog.rarity_color(model.items[index]).darkened(0.2)
 		if slot == hover_slot and drop_status != 0:
 			border = Color("#81b96b") if drop_status == 1 else Color("#d16860")
 		draw_rect(area, border, false, 2.0)

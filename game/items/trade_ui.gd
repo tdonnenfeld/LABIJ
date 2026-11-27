@@ -28,10 +28,11 @@ func _ready() -> void:
 	add_child(column)
 	var heading := Label.new()
 	heading.text = "Companion exchange"
-	Parchment.heading(heading, 24)
+	Parchment.heading(heading, 23)
 	column.add_child(heading)
 	var hint := Label.new()
 	hint.text = "[J] / Esc to close · 3.5 m · outside combat"
+	Parchment.secondary(hint)
 	column.add_child(hint)
 	column.add_child(HSeparator.new())
 	status = Label.new()
@@ -48,6 +49,7 @@ func _ready() -> void:
 	offer_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	column.add_child(offer_label)
 	confirm = button(column, "Confirm exchange", func(): send("confirm"))
+	Parchment.primary(confirm)
 	cancel = button(column, "Cancel exchange", func(): send("cancel"))
 	refresh_state({"id": 0, "notice": ""})
 	hide()

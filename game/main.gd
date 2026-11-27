@@ -96,6 +96,7 @@ var party_selector: SpinBox
 var actors: Dictionary = {}
 var world: Node3D
 var hud: Label
+var interaction_prompt: Label
 var hp_bar: ProgressBar
 var stamina_bar: ProgressBar
 var crosshair: Label
@@ -154,12 +155,26 @@ func _ready() -> void:
 		layer.theme = Parchment.build(false)
 		hud = Label.new()
 		hud.position = Vector2(16, 12)
-		Parchment.plate(hud, 12)
+		hud.size = Vector2(200, 28)
+		hud.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		Parchment.plate(hud, 14)
+		Parchment.heading(hud, 14)
 		layer.add_child(hud)
 		hud.hide()
-		hp_bar = make_bar(layer, Vector2(16, 78), Parchment.HP, "HP")
-		stamina_bar = make_bar(layer, Vector2(16, 106), Parchment.STAMINA, "Stamina")
-		mana_bar = make_bar(layer, Vector2(16, 134), Parchment.MANA, "Mana")
+		interaction_prompt = Label.new()
+		layer.add_child(interaction_prompt)
+		interaction_prompt.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+		interaction_prompt.offset_left = -205
+		interaction_prompt.offset_right = 205
+		interaction_prompt.offset_top = 24
+		interaction_prompt.offset_bottom = 58
+		interaction_prompt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		interaction_prompt.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		Parchment.plate(interaction_prompt, 14)
+		interaction_prompt.hide()
+		hp_bar = make_bar(layer, Vector2(16, 48), Parchment.HP, "HP")
+		stamina_bar = make_bar(layer, Vector2(16, 72), Parchment.STAMINA, "Stamina")
+		mana_bar = make_bar(layer, Vector2(16, 96), Parchment.MANA, "Mana")
 		damage_flash = ColorRect.new()
 		damage_flash.color = Color(0.8, 0.05, 0.05, 0)
 		damage_flash.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -175,6 +190,7 @@ func _ready() -> void:
 		layer.add_child(inventory_ui)
 		inventory_ui.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
 		inventory_ui.offset_left = -450
+		inventory_ui.z_index = 20
 		inventory_ui.offset_right = 450
 		inventory_ui.offset_top = -245
 		inventory_ui.offset_bottom = 245
@@ -186,6 +202,7 @@ func _ready() -> void:
 		layer.add_child(skills_ui)
 		skills_ui.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 		skills_ui.offset_left = 20
+		skills_ui.z_index = 20
 		skills_ui.offset_top = 20
 		skills_ui.offset_right = -20
 		skills_ui.offset_bottom = -20
@@ -194,16 +211,17 @@ func _ready() -> void:
 		skills_ui.talent_action.connect(_talent_action)
 		skills_ui.equip_item.connect(_grimoire_equip)
 		xp_label = Label.new()
-		xp_label.position = Vector2(16, 160)
+		xp_label.position = Vector2(16, 122)
 		Parchment.plate(xp_label, 12)
 		layer.add_child(xp_label)
 		xp_label.hide()
 		objective_label = Label.new()
-		objective_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		objective_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+		objective_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		Parchment.plate(objective_label, 12)
 		layer.add_child(objective_label)
 		objective_label.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
-		objective_label.offset_left = -330
+		objective_label.offset_left = -282
 		objective_label.offset_right = -16
 		objective_label.offset_top = 16
 		objective_label.hide()
@@ -211,28 +229,28 @@ func _ready() -> void:
 		layer.add_child(log_panel)
 		log_panel.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
 		log_panel.offset_left = 16
-		log_panel.offset_top = -180
+		log_panel.offset_top = -154
 		log_panel.offset_bottom = -16
-		log_panel.offset_right = 396
+		log_panel.offset_right = 306
 		log_panel.hide()
 		party_panel = PartyPanel.new()
 		layer.add_child(party_panel)
 		party_panel.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
-		party_panel.offset_left = -330
+		party_panel.offset_left = -282
 		party_panel.offset_right = -16
-		party_panel.offset_top = 92
+		party_panel.offset_top = 108
 		party_panel.hide()
 		action_bar = HBoxContainer.new()
 		action_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		layer.add_child(action_bar)
 		action_bar.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
-		action_bar.offset_left = -80
-		action_bar.offset_right = 262
+		action_bar.offset_left = -162
+		action_bar.offset_right = 162
 		action_bar.offset_top = -64
 		action_bar.offset_bottom = -12
 		for i in range(3):
 			var slot := Label.new()
-			slot.custom_minimum_size = Vector2(108, 48)
+			slot.custom_minimum_size = Vector2(100, 48)
 			slot.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			slot.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 			slot.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
@@ -245,24 +263,24 @@ func _ready() -> void:
 		potion_belt = PotionBelt.new()
 		layer.add_child(potion_belt)
 		potion_belt.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
-		potion_belt.offset_left = -80
-		potion_belt.offset_right = 85
+		potion_belt.offset_left = -82
+		potion_belt.offset_right = 82
 		potion_belt.offset_top = -118
 		potion_belt.offset_bottom = -70
 		potion_belt.hide()
 		noise_label = Label.new()
-		noise_label.position = Vector2(16, 184)
+		noise_label.position = Vector2(16, 150)
 		Parchment.plate(noise_label, 12)
 		layer.add_child(noise_label)
 		noise_label.hide()
 		noise_meter = NoiseMeter.new()
 		layer.add_child(noise_meter)
-		noise_meter.position = Vector2(16, 207)
+		noise_meter.position = Vector2(16, 177)
 		noise_meter.size = Vector2(200, 12)
 		noise_meter.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		noise_meter.hide()
 		voice_label = Label.new()
-		voice_label.position = Vector2(16, 221)
+		voice_label.position = Vector2(16, 195)
 		voice_label.add_theme_font_size_override("font_size", 12)
 		layer.add_child(voice_label)
 		voice_label.hide()
@@ -307,11 +325,13 @@ func _ready() -> void:
 		layer.add_child(trade_panel)
 		trade_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
 		trade_panel.offset_left = -225
+		trade_panel.z_index = 20
 		trade_panel.offset_right = 225
 		trade_panel.offset_top = -195
 		trade_panel.offset_bottom = 195
 		trade_panel.action.connect(_trade_action)
 		result_screen = CenterContainer.new()
+		result_screen.z_index = 40
 		layer.add_child(result_screen)
 		result_screen.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 		var panel := PanelContainer.new()
@@ -331,6 +351,7 @@ func _ready() -> void:
 		result_screen.hide()
 		escape_menu = EscapeMenu.new()
 		escape_menu.settings = settings
+		escape_menu.z_index = 30
 		layer.add_child(escape_menu)
 		escape_menu.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 		escape_menu.resume.connect(close_escape_menu)
@@ -406,9 +427,10 @@ func _build_menu() -> void:
 	panel.add_child(title)
 	var subtitle := Label.new()
 	subtitle.text = "THE EXPEDITION JOURNAL · FIRST DESCENT"
-	subtitle.add_theme_font_size_override("font_size", 12)
+	Parchment.secondary(subtitle)
 	panel.add_child(subtitle)
 	panel.add_child(HSeparator.new())
+	Parchment.section(panel, "Character")
 	character_name = LineEdit.new()
 	character_name.placeholder_text = "Character name (optional)"
 	character_name.max_length = 24
@@ -423,13 +445,16 @@ func _build_menu() -> void:
 	panel.add_child(background_selector)
 	profile_details = Label.new()
 	profile_details.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	profile_details.custom_minimum_size.x = 420
+	profile_details.custom_minimum_size.x = 360
 	panel.add_child(profile_details)
 	species_selector.item_selected.connect(func(_index): refresh_profile_details())
 	background_selector.item_selected.connect(func(_index): refresh_profile_details())
 	refresh_profile_details()
+	panel.add_child(HSeparator.new())
+	Parchment.section(panel, "Expedition")
 	address = LineEdit.new()
 	address.text = "127.0.0.1"
+	address.placeholder_text = "Host address"
 	panel.add_child(address)
 	var party_label := Label.new()
 	party_label.text = "Expected party size (Host)"
@@ -445,12 +470,15 @@ func _build_menu() -> void:
 	panel.add_child(voice_selector)
 	var voice_hint := Label.new()
 	voice_hint.text = "Voice reaches nearby teammates and enemies. N mutes."
+	Parchment.secondary(voice_hint)
 	panel.add_child(voice_hint)
 	var choices := HBoxContainer.new()
 	panel.add_child(choices)
 	for entry in [["Solo", _solo], ["Host", _host], ["Join", _join]]:
 		var button := Button.new()
 		button.text = entry[0]
+		if entry[0] == "Solo":
+			Parchment.primary(button)
 		button.pressed.connect(entry[1])
 		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		choices.add_child(button)
@@ -461,6 +489,7 @@ func _build_menu() -> void:
 	cancel_join_button.hide()
 	status = Label.new()
 	status.text = "Physical movement keys · mouse · Esc opens expedition menu"
+	status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	panel.add_child(status)
 	var right_page := PanelContainer.new()
 	right_page.custom_minimum_size.x = 260
@@ -468,7 +497,7 @@ func _build_menu() -> void:
 	var audio_panel := VBoxContainer.new()
 	right_page.add_child(audio_panel)
 	var audio_title := Label.new()
-	audio_title.text = "Field instruments"
+	audio_title.text = "Settings"
 	Parchment.heading(audio_title, 21)
 	audio_panel.add_child(audio_title)
 	for entry in [["Master", "Master", 1.0], ["Effects", AudioMix.EFFECTS, 0.85], ["Ambience", AudioMix.AMBIENCE, 0.65], ["Voice playback", AudioMix.VOICE, 1.0]]:
@@ -532,6 +561,7 @@ func _start() -> void:
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 		if hud:
 			hud.show()
+			interaction_prompt.hide()
 			hp_bar.show()
 			stamina_bar.show()
 			mana_bar.show()
@@ -628,6 +658,7 @@ func _failed(message: String = "Choose Solo, Host or Join") -> void:
 	received_tick = -1
 	if hud:
 		hud.hide()
+		interaction_prompt.hide()
 		hp_bar.hide()
 		stamina_bar.hide()
 		mana_bar.hide()
@@ -1058,7 +1089,7 @@ func _physics_process(delta: float) -> void:
 				var node: Array = local.Skills.Talents.find(ability)
 				var cooldown: float = local.skills.cooldowns.get(ability, 0.0)
 				var slot := action_slots[i]
-				slot.text = "%s · %s\n%s" % [settings.label("ability%d" % (i + 1)), "Empty" if node.is_empty() else node[2], "%.1fs" % cooldown if cooldown > 0 else ("—" if node.is_empty() else "Ready")]
+				slot.text = "%s · %s\n%s" % [settings.label("ability%d" % (i + 1)), "Empty" if node.is_empty() else node[2], "%.1fs" % cooldown if cooldown > 0 else ("" if node.is_empty() else "Ready")]
 				slot.modulate = Color("#b8a88b") if cooldown > 0 else Color.WHITE
 			if skills_ui and skills_ui.visible:
 				skills_ui.refresh(local.skills.state(), world.safe(local), local.inventory.state())
@@ -1073,37 +1104,32 @@ func _physics_process(delta: float) -> void:
 		if hud:
 			var route: Dictionary = world.route_at(local.floor_id, local.position)
 			hud.text = World.Routes.NAMES[local.floor_id]
-			if not route.is_empty() and local.health > 0:
-				hud.text += "  |  " + ("" if route.get("locked", false) else settings.label("interact") + ": ") + route.label
-			if world.secret_near(local):
-				hud.text += "  |  %s: Inspect loose masonry" % settings.label("interact")
-			var hint: String = world.objective_hint(local, local_id)
-			if local.selected_spell != "":
-				hint += "\nSpell: %s · LMB cast · 0 weapon" % local.selected_spell.capitalize()
-			elif local.bow_drawing:
-				hint += "\nDraw: %d%%" % roundi(local.bow_charge * 100.0)
-			if hint != "":
-				hud.text += "  |  " + hint.replace("E:", settings.label("interact") + ":").replace("G:", settings.label("drop_jewel") + ":")
-			update_objective_hud(local_id)
-			if local.health <= 0:
-				hud.text += "\nParty defeated"
-			else:
-				hud.text += "\n%s: Inventory · %s: Talents · %s: Trade" % [settings.label("inventory"), settings.label("talents"), settings.label("trade")]
-				if trade_panel.session.get("incoming", false):
-					hud.text += "  ·  Trade invitation!"
-				if Catalog.get_item(local.inventory.weapon).projectile_speed > 0:
-					hud.text += "  ·  Arrows: %d" % local.inventory.count("arrows")
-				var aggro := 0
-				for mob in world.monsters.values():
-					if mob.health > 0 and mob.floor == local.floor_id and mob.target == local_id:
-						aggro += 1
-				if aggro > 0:
-					hud.text += " | Aggro: %d" % aggro
+			if Catalog.get_item(local.inventory.weapon).projectile_speed > 0:
+				xp_label.text += " · %d arrows" % local.inventory.count("arrows")
+			var hints: PackedStringArray = []
+			if local.health > 0:
+				if not route.is_empty():
+					hints.append(("" if route.get("locked", false) else settings.label("interact") + ": ") + route.label)
+				if world.secret_near(local):
+					hints.append("%s: Inspect loose masonry" % settings.label("interact"))
+				var hint: String = world.objective_hint(local, local_id)
+				if not hint.is_empty():
+					hints.append(hint.replace("E:", settings.label("interact") + ":").replace("G:", settings.label("drop_jewel") + ":"))
 				var drop_id: int = world.loot.nearest(local)
 				if drop_id != 0:
-					hud.text += "\n%s: Pick up " % settings.label("pickup") + Catalog.get_item(world.loot.drops[drop_id].item).title
-					if world.loot.drops[drop_id].amount > 1:
-						hud.text += " ×%d" % world.loot.drops[drop_id].amount
+					var drop = world.loot.drops[drop_id]
+					hints.append("%s: Pick up %s%s" % [settings.label("pickup"), Catalog.get_item(drop.item).title, " ×%d" % drop.amount if drop.amount > 1 else ""])
+				if local.selected_spell != "":
+					hints.append("%s · LMB cast · 0 weapon" % local.selected_spell.capitalize())
+				elif local.bow_drawing:
+					hints.append("Draw: %d%%" % roundi(local.bow_charge * 100.0))
+				if trade_panel.session.get("incoming", false):
+					hints.append("%s: Trade invitation" % settings.label("trade"))
+			else:
+				hints.append("Downed")
+			interaction_prompt.text = "\n".join(hints.slice(0, 3))
+			interaction_prompt.visible = not hints.is_empty() and not inventory_ui.visible and not skills_ui.visible and not trade_panel.visible and not escape_menu.visible
+			update_objective_hud(local_id)
 
 @rpc("any_peer", "call_remote", "unreliable_ordered")
 func submit_input(move: Vector2, angle: float, block: bool, sprint: bool, quiet: bool, vertical: float = 0.0) -> void:

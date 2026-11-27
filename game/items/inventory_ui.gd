@@ -38,7 +38,7 @@ func _ready() -> void:
 	column.add_child(heading)
 	var sub := Label.new()
 	sub.text = "EXPEDITION EQUIPMENT  ·  [I] / Esc to close"
-	sub.add_theme_font_size_override("font_size", 12)
+	Parchment.secondary(sub)
 	column.add_child(sub)
 	column.add_child(HSeparator.new())
 	var spread := HBoxContainer.new()
@@ -57,7 +57,7 @@ func _ready() -> void:
 	grid.moved.connect(func(index: int, at: Vector2i, split: bool, revision: int): moved.emit(index, at, split, revision))
 	var hint := Label.new()
 	hint.text = "Drag / merge · Shift-drag split · R rotate"
-	hint.add_theme_font_size_override("font_size", 12)
+	Parchment.secondary(hint)
 	left.add_child(hint)
 	var tools := HBoxContainer.new()
 	left.add_child(tools)
@@ -119,6 +119,7 @@ func _ready() -> void:
 	var actions := VBoxContainer.new()
 	right.add_child(actions)
 	use_button = Button.new()
+	Parchment.primary(use_button)
 	use_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	actions.add_child(use_button)
 	drop_button = Button.new()
@@ -189,7 +190,7 @@ func update_details() -> void:
 	item_picture.texture = Icons.texture(id)
 	item_title.text = item.title
 	var category: String = {"weapon": "WEAPON", "shield": "SHIELD", "armor": "ARMOUR", "helmet": "HEAD", "gloves": "GLOVES", "boots": "BOOTS", "amulet": "AMULET", "ring": "RING", "scroll": "SPELL SCROLL", "consumable": "CONSUMABLE", "distraction": "UTILITY", "ammo": "AMMUNITION"}.get(item.kind, "ITEM")
-	item_kind.text = category + " · " + Catalog.rarity(id).to_upper() + (" · EQUIPPED" if equipped(selection) else "")
+	item_kind.text = category + " · " + ("UNIDENTIFIED" if id.ends_with(":unknown") else Catalog.rarity(id).to_upper()) + (" · EQUIPPED" if equipped(selection) else "")
 	if id.ends_with(":unknown"):
 		details.text = "Identify in a safe area to reveal the equipment properties."
 		use_button.text = "Identify"

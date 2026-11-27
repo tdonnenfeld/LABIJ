@@ -4,6 +4,9 @@ const PAPER := Color("#d5c19a")
 const INK := Color("#30271e")
 const BRASS := Color("#94784b")
 const LEATHER := Color("#49362b")
+const MUTED := Color("#a99b83")
+const ACCENT := Color("#d5b675")
+const SURFACE := Color("#241e19f4")
 const LIGHT := Color("#e8d9b6")
 const HP := Color("#8c3935")
 const STAMINA := Color("#78804a")
@@ -50,7 +53,7 @@ static func frame(background: Color, border: Color = BRASS, margin: float = 5.0)
 	return style
 
 static func hud_plate() -> StyleBoxFlat:
-	return frame(Color("#241e19e8"), BRASS, 4.0)
+	return frame(SURFACE, BRASS.darkened(0.25), 6.0)
 
 static func resource_fill(color: Color) -> StyleBoxFlat:
 	var style := frame(color, color.lightened(0.28), 0.0)
@@ -115,8 +118,21 @@ static func build(light: bool) -> Theme:
 	result.set_color("default_color", "RichTextLabel", ink)
 	result.set_color("font_color", "TooltipLabel", LIGHT)
 	result.set_color("font_color", "ProgressBar", LIGHT)
-	result.set_constant("separation", "VBoxContainer", 4)
-	result.set_constant("separation", "HBoxContainer", 6)
+	result.set_constant("separation", "VBoxContainer", 6)
+	result.set_constant("separation", "HBoxContainer", 8)
+	result.set_stylebox("panel", "TabContainer", frame(Color("#c4ab80") if light else SURFACE, BRASS, 8.0))
+	for state in ["tab_selected", "tab_hovered", "tab_unselected", "tab_disabled"]:
+		var tab_color := LEATHER if state != "tab_selected" else Color("#766040")
+		result.set_stylebox(state, "TabContainer", frame(tab_color, BRASS, 7.0))
+		result.set_stylebox(state, "TabBar", frame(tab_color, BRASS, 7.0))
+	for type in ["TabContainer", "TabBar"]:
+		for key in ["font_selected_color", "font_hovered_color", "font_unselected_color"]:
+			result.set_color(key, type, LIGHT)
+		result.set_color("font_disabled_color", type, MUTED)
+	result.set_stylebox("slider", "HSlider", frame(Color("#382d24"), BRASS, 2.0))
+	result.set_stylebox("grabber_area", "HSlider", resource_fill(BRASS))
+	result.set_stylebox("grabber_area_highlight", "HSlider", resource_fill(ACCENT))
+	result.set_stylebox("separator", "HSeparator", frame(Color("#94784b70"), Color.TRANSPARENT, 0.0))
 	if light:
 		menu_theme = result
 	else:
@@ -129,3 +145,19 @@ static func heading(label: Label, font_size: int) -> void:
 	font.font_weight = 700
 	label.add_theme_font_override("font", font)
 	label.add_theme_font_size_override("font_size", font_size)
+
+static func secondary(label: Label, light: bool = true) -> void:
+	label.add_theme_font_size_override("font_size", 12)
+	label.add_theme_color_override("font_color", Color("#66503a") if light else MUTED)
+	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+
+static func primary(button: Button) -> void:
+	button.add_theme_stylebox_override("normal", frame(Color("#6a5135"), ACCENT, 6.0))
+	button.add_theme_stylebox_override("hover", frame(Color("#826442"), LIGHT, 6.0))
+
+static func section(parent: Control, caption: String) -> Label:
+	var label := Label.new()
+	label.text = caption
+	heading(label, 16)
+	parent.add_child(label)
+	return label

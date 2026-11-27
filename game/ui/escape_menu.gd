@@ -78,7 +78,7 @@ func _ready() -> void:
 	build_lobby()
 	build_exit()
 	notice = Label.new()
-	notice.add_theme_font_size_override("font_size", 12)
+	Parchment.secondary(notice)
 	column.add_child(notice)
 	button(column, "Resume expedition [Esc]", func(): resume.emit())
 	tabs.tab_changed.connect(func(_tab): cancel_binding(); reset_confirmations())
