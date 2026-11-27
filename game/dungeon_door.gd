@@ -35,7 +35,13 @@ func setup(at: Vector3, axis: Vector2i, span: float, kind: String, render: bool)
 				part(leaf, Vector3(width * 0.5, y, -0.075), Vector3(width, 0.11, 0.055), "iron")
 				part(leaf, Vector3(width * 0.5, y, 0.075), Vector3(width, 0.11, 0.055), "iron")
 			for z in [-0.10, 0.10]:
-				part(leaf, Vector3(width - 0.16, 1.15, z), Vector3(0.10, 0.12, 0.08), "gold")
+				part(leaf, Vector3(width - 0.16, 1.15, z), Vector3(0.10, 0.12, 0.035), "iron")
+				part(leaf, Vector3(width - 0.16, 1.15, z * 1.25), Vector3(0.07, 0.045, 0.075), "gold")
+				for y in [0.45, 2.35]:
+					for i in range(6):
+						part(leaf, Vector3(width * (i + 0.5) / 6.0, y, z * 1.06), Vector3(0.034, 0.034, 0.018), "gold")
+				for y in [0.75, 2.05]:
+					part(leaf, Vector3(0.08, y, z * 0.84), Vector3(0.14, 0.22, 0.035), "iron")
 		else:
 			for i in range(7):
 				part(leaf, Vector3(width * (float(i) / 6.0 - 0.5) * 0.9, 1.45, 0), Vector3(0.065, 2.9, 0.08), "iron")

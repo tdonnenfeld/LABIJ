@@ -14,11 +14,11 @@ var room_styles: Dictionary = {}
 const ROOM_STYLES := ["crypt", "storeroom", "library", "shrine", "prison", "cistern", "armory", "ruins"]
 const THEMES := [Color("#ffffff"), Color("#a3a09b"), Color("#7598a4"), Color("#b8a587"), Color("#8f9ca6"), Color("#b99580"), Color("#c5b69a")]
 
-func box(id: String, at: Vector3, size: Vector3, angle: float = 0.0) -> void:
+func box(id: String, at: Vector3, size: Vector3, angle: float = 0.0, shape: String = "box") -> void:
 	var chunk := Vector2i(floori(at.x / (CELL * CHUNK)), floori(at.z / (CELL * CHUNK)))
-	var key := "%s:%d:%d" % [id, chunk.x, chunk.y]
+	var key := "%s:%d:%d:%s" % [id, chunk.x, chunk.y, shape]
 	if not batches.has(key):
-		batches[key] = {"material": id, "transforms": []}
+		batches[key] = {"material": id, "transforms": [], "shape": shape}
 	var basis := Basis(Vector3.UP, angle).scaled_local(size)
 	batches[key].transforms.append(Transform3D(basis, at))
 
@@ -104,16 +104,34 @@ func add_arch(tiles: Dictionary, cell: Vector2i, origin: Vector3) -> void:
 func add_torch(at: Vector3, normal: Vector3, angle: float) -> void:
 	var stem := at - normal * 0.24 + Vector3.UP * 1.75
 	box("iron", at - normal * 0.14 + Vector3.UP * 1.7, Vector3(0.20, 0.28, 0.12), angle)
-	box("wood", stem, Vector3(0.11, 0.44, 0.11), angle)
-	box("iron", stem + Vector3.UP * 0.22, Vector3(0.20, 0.13, 0.20), angle)
-	box("flame", stem + Vector3.UP * 0.36, Vector3(0.17, 0.24, 0.17), PI / 4)
-	box("ember", stem + Vector3.UP * 0.42, Vector3(0.09, 0.22, 0.09))
+	box("wood", stem, Vector3(0.11, 0.44, 0.11), angle, "barrel")
+	box("iron", stem + Vector3.UP * 0.22, Vector3(0.20, 0.13, 0.20), angle, "barrel")
+	box("flame", stem + Vector3.UP * 0.36, Vector3(0.17, 0.24, 0.17), PI / 4, "round")
+	box("ember", stem + Vector3.UP * 0.42, Vector3(0.09, 0.22, 0.09), 0.0, "round")
 	torches.append(stem - normal * 0.18 + Vector3.UP * 0.32)
 
 func flush_batches() -> void:
 	for batch in batches.values():
-		var mesh := BoxMesh.new()
-		mesh.size = Vector3.ONE
+		var mesh: PrimitiveMesh
+		match batch.shape:
+			"barrel":
+				var cylinder := CylinderMesh.new()
+				cylinder.top_radius = 0.48
+				cylinder.bottom_radius = 0.48
+				cylinder.height = 1.0
+				cylinder.radial_segments = 12
+				mesh = cylinder
+			"round":
+				var sphere := SphereMesh.new()
+				sphere.radius = 0.5
+				sphere.height = 1.0
+				sphere.radial_segments = 10
+				sphere.rings = 4
+				mesh = sphere
+			_:
+				var block := BoxMesh.new()
+				block.size = Vector3.ONE
+				mesh = block
 		mesh.material = StoneKit.tinted(batch.material, THEMES[theme_id]) if (batch.material.begins_with("floor") or batch.material.begins_with("wall") or batch.material in ["ceiling", "trim"]) else StoneKit.material(batch.material)
 		var multimesh := MultiMesh.new()
 		multimesh.transform_format = MultiMesh.TRANSFORM_3D
@@ -180,20 +198,22 @@ func decorate_cell(tiles: Dictionary, cell: Vector2i, origin: Vector3, seed_valu
 	var across := Vector3(walls[1].x, 0, walls[1].y)
 	var at := origin + (normal + across) * 1.12
 	if variation == 0:
-		box("wood", at + Vector3.UP * 0.27, Vector3(0.46, 0.53, 0.46))
+		box("wood", at + Vector3.UP * 0.27, Vector3(0.46, 0.53, 0.46), 0.0, "barrel")
 		for y in [0.11, 0.44]:
-			box("iron", at + Vector3.UP * y, Vector3(0.49, 0.045, 0.49))
+			box("iron", at + Vector3.UP * y, Vector3(0.49, 0.045, 0.49), 0.0, "barrel")
 	elif variation == 1:
 		box("wood", at + Vector3.UP * 0.18, Vector3(0.50, 0.35, 0.50))
 		box("wood", at + Vector3.UP * 0.39, Vector3(0.51, 0.08, 0.51))
+		for x in [-0.17, 0.17]:
+			box("iron", at + Vector3(x, 0.43, 0), Vector3(0.045, 0.025, 0.50))
 		box("iron", at + Vector3.UP * 0.35 - normal * 0.26, Vector3(0.08, 0.10, 0.08))
 	elif variation == 2:
 		box("trim", at + Vector3.UP * 0.18, Vector3(0.45, 0.36, 0.45))
 		box("ember", at + Vector3.UP * 0.43, Vector3(0.055, 0.13, 0.055))
 	elif variation == 4:
-		box("wood", at + Vector3.UP * 0.24, Vector3(0.48, 0.48, 0.48))
+		box("wood", at + Vector3.UP * 0.24, Vector3(0.48, 0.48, 0.48), 0.0, "barrel")
 		for y in [0.08, 0.39]:
-			box("iron", at + Vector3.UP * y, Vector3(0.50, 0.045, 0.50))
+			box("iron", at + Vector3.UP * y, Vector3(0.50, 0.045, 0.50), 0.0, "barrel")
 		box("wood", at + Vector3.UP * 0.53, Vector3(0.32, 0.10, 0.32), PI / 4.0)
 	elif variation == 5:
 		box("trim", at + Vector3.UP * 0.09, Vector3(0.52, 0.18, 0.52))

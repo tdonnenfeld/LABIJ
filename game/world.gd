@@ -1437,23 +1437,38 @@ func add_fixture(id: int, floor_id: int, at: Vector3, kind: String) -> void:
 	var prop := Node3D.new()
 	floors[floor_id].add_child(prop)
 	prop.position = at - floors[floor_id].position
-	var mesh := MeshInstance3D.new()
-	var box := BoxMesh.new()
-	box.size = Vector3(0.75, 0.5, 0.48) if kind != "inscription" else Vector3(0.48, 0.9, 0.26)
-	if kind == "plate":
-		box.size = Vector3(1.05, 0.04, 1.05)
-	elif kind == "ward":
-		box.size = Vector3(0.45, 1.1, 0.45)
-	mesh.mesh = box
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color("#8a653b") if kind != "inscription" else Color("#8b9292")
-	if kind in ["ward", "plate"]:
-		mat.albedo_color = Color("#599c9b")
-		mat.emission_enabled = true
-		mat.emission = Color("#376969")
-	mesh.material_override = mat
-	prop.add_child(mesh)
-	mesh.position.y = box.size.y * 0.5
+	var kit = preload("res://game/items/loot_models.gd")
+	match kind:
+		"crate", "chest", "sealed_chest", "plate_cache":
+			kit.box(prop, Vector3(0, 0.22, 0), Vector3(0.68, 0.44, 0.46), kit.WOOD)
+			for x in [-0.25, 0.25]:
+				kit.box(prop, Vector3(x, 0.25, 0), Vector3(0.055, 0.50, 0.49), kit.STEEL)
+			if kind == "crate":
+				kit.box(prop, Vector3(0, 0.24, -0.24), Vector3(0.60, 0.06, 0.035), kit.LEATHER, Vector3(0, 0, 0.55))
+			else:
+				kit.cylinder(prop, Vector3(0, 0.42, 0), 0.23, 0.68, kit.WOOD, -1.0, Vector3(0, 0, PI / 2.0))
+				kit.box(prop, Vector3(0, 0.35, -0.25), Vector3(0.12, 0.13, 0.04), kit.BRASS)
+		"plate", "seal":
+			kit.cylinder(prop, Vector3(0, 0.025, 0), 0.49, 0.05, kit.STEEL)
+			kit.cylinder(prop, Vector3(0, 0.055, 0), 0.35, 0.025, Color("#599c9b"))
+			for i in range(4):
+				kit.gem(prop, Vector3(cos(i * PI / 2) * 0.38, 0.07, sin(i * PI / 2) * 0.38), 0.045, kit.BRASS)
+		"ward":
+			kit.cylinder(prop, Vector3(0, 0.12, 0), 0.22, 0.24, kit.STEEL)
+			kit.cylinder(prop, Vector3(0, 0.42, 0), 0.14, 0.44, kit.BRASS)
+			kit.gem(prop, Vector3(0, 0.83, 0), 0.21, Color("#599c9b"))
+		"key":
+			kit.box(prop, Vector3(0, 0.12, 0), Vector3(0.07, 0.06, 0.37), kit.BRASS)
+			kit.gem(prop, Vector3(0, 0.12, 0.20), 0.09, kit.BRASS)
+			kit.box(prop, Vector3(0.08, 0.12, -0.15), Vector3(0.14, 0.06, 0.09), kit.BRASS)
+		"lever":
+			kit.box(prop, Vector3(0, 0.10, 0), Vector3(0.37, 0.20, 0.32), kit.STEEL)
+			kit.cylinder(prop, Vector3(0, 0.34, 0), 0.035, 0.42, kit.STEEL, -1.0, Vector3(0.5, 0, 0))
+			kit.gem(prop, Vector3(0, 0.52, 0.10), 0.08, kit.WOOD)
+		_:
+			kit.box(prop, Vector3(0, 0.44, 0), Vector3(0.48, 0.88, 0.26), kit.STEEL)
+			for i in range(5):
+				kit.box(prop, Vector3(0, 0.25 + i * 0.10, -0.14), Vector3(0.29, 0.018, 0.015), kit.BRASS)
 	var labels := {"chest":"CHEST [E]", "crate":"CRATE", "inscription":"INSCRIPTION [E]", "key":"FLOOR KEY [E]", "lever":"GATE LEVER [E]", "seal":"RUNE SEAL [E]", "sealed_chest":"SEALED CACHE [E]", "plate":"PRESSURE PLATE", "plate_cache":"PLATE CACHE [E]", "ward":"ARENA WARD [E]"}
 	marker(prop, Vector3.ZERO, labels.get(kind, kind.to_upper()), Color("#d3ae76"))
 	entry.node = prop
